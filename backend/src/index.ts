@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes';
 import orderRoutes from './routes/orderRoutes';
 import uploadRoutes from './routes/uploadRoutes';
+import userRoutes from './routes/userRoutes';
 
 dotenv.config();
 
@@ -14,6 +15,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/user', userRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Melosa Agenda API running' });

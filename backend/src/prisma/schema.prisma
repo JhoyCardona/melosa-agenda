@@ -11,6 +11,7 @@ model User {
   id           String   @id @default(uuid())
   username     String   @unique
   passwordHash String
+  pushToken    String?
   createdAt    DateTime @default(now())
 }
 
