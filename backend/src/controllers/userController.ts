@@ -13,7 +13,7 @@ export async function savePushToken(req: AuthRequest, res: Response) {
 
   try {
     await prisma.user.update({
-      where: { id: req.userId },
+      where: { id: req.userId as string },
       data: { pushToken },
     });
 
