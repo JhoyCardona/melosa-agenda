@@ -152,3 +152,100 @@ export async function listOrders(req: AuthRequest, res: Response) {
     res.status(500).json({ error: 'Error al listar pedidos' });
   }
 }
+
+export async function updateOrder(req: AuthRequest, res: Response) {
+  const orderId = req.params.orderId as string;
+  const { clientName, clientPhone, deliveryDate, deliveryAddress, notes, totalPrice, depositPaid, status } = req.body;
+
+  const validStatuses = ['PENDING', 'COMPLETED', 'CANCELLED', 'EXPIRED'];
+
+  if (status && !validStatuses.includes(status)) {
+    return res.status(400).json({
+      error: `status debe ser una de: ${validStatuses.join(', ')}`,
+    });
+  }
+
+  try {
+    const existingOrder = await prisma.order.findUnique({ where: { id: orderId } });
+
+    if (!existingOrder) {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        ...(clientName !== undefined && { clientName }),
+        ...(clientPhone !== undefined && { clientPhone }),
+        ...(deliveryDate !== undefined && { deliveryDate: new Date(deliveryDate) }),
+        ...(deliveryAddress !== undefined && { deliveryAddress }),
+        ...(notes !== undefined && { notes }),
+        ...(totalPrice !== undefined && { totalPrice }),
+        ...(depositPaid !== undefined && { depositPaid }),
+        ...(status !== undefined && { status }),
+      },
+    });
+
+    res.json(updatedOrder);
+  } catch (error) {
+    console.error('Error actualizando pedido:', error);
+    res.status(500).json({ error: 'Error al actualizar el pedido' });
+  }
+}
+
+export async function updateOrderItem(req: AuthRequest, res: Response) {
+  const itemId = req.params.itemId as string;
+  const { category, price, imageUrl, details } = req.body;
+
+  try {
+    const existingItem = await prisma.orderItem.findUnique({ where: { id: itemId } });
+
+    if (!existingItem) {
+      return res.status(404).json({ error: 'Producto no encontrado' });
+    }
+
+    const updatedItem = await prisma.orderItem.update({
+      where: { id: itemId },
+      data: {
+        ...(category !== undefined && { category }),
+        ...(price !== undefined && { price }),
+        ...(imageUrl !== undefined && { imageUrl }),
+        ...(details !== undefined && { details }),
+      },
+    });
+
+    if (price !== undefined) {
+      const allItems = await prisma.orderItem.findMany({ where: { orderId: existingItem.orderId } });
+      const newTotal = allItems.reduce((sum, i) => sum + Number(i.price), 0);
+
+      await prisma.order.update({
+        where: { id: existingItem.orderId },
+        data: { totalPrice: newTotal },
+      });
+    }
+
+    res.json(updatedItem);
+  } catch (error) {
+    console.error('Error actualizando producto:', error);
+    res.status(500).json({ error: 'Error al actualizar el producto' });
+  }
+}
+
+export async function deleteOrder(req: AuthRequest, res: Response) {
+  const orderId = req.params.orderId as string;
+
+  try {
+    const existingOrder = await prisma.order.findUnique({ where: { id: orderId } });
+
+    if (!existingOrder) {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    await prisma.order.delete({ where: { id: orderId } });
+
+    res.json({ message: 'Pedido eliminado correctamente' });
+  } catch (error) {
+    console.error('Error eliminando pedido:', error);
+    res.status(500).json({ error: 'Error al eliminar el pedido' });
+  }
+}
