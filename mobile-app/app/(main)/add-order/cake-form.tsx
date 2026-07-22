@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useNewOrder } from '../../../src/context/NewOrderContext';
 import { ItemCategory } from '../../../src/types/order';
+import AutocompleteInput from '../../../src/components/AutocompleteInput';
 
 export default function CakeFormScreen() {
   const { category } = useLocalSearchParams<{ category: ItemCategory }>();
@@ -17,6 +18,8 @@ export default function CakeFormScreen() {
   const [decorations, setDecorations] = useState('');
   const [cakeText, setCakeText] = useState('');
   const [price, setPrice] = useState('');
+
+  const activeCategory = (category as string) || 'CAKE';
 
   async function pickImage() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -78,10 +81,36 @@ export default function CakeFormScreen() {
         )}
       </TouchableOpacity>
 
-      <TextInput style={styles.input} placeholder="Porciones" value={servings} onChangeText={setServings} keyboardType="numeric" />
-      <TextInput style={styles.input} placeholder="Sabor" value={flavor} onChangeText={setFlavor} />
-      <TextInput style={styles.input} placeholder="Relleno" value={filling} onChangeText={setFilling} />
-      <TextInput style={styles.input} placeholder="Color de la torta" value={color} onChangeText={setColor} />
+      <AutocompleteInput
+        placeholder="Porciones"
+        value={servings}
+        onChangeText={setServings}
+        category={activeCategory}
+        field="servings"
+        keyboardType="numeric"
+      />
+      <AutocompleteInput
+        placeholder="Sabor"
+        value={flavor}
+        onChangeText={setFlavor}
+        category={activeCategory}
+        field="flavor"
+      />
+      <AutocompleteInput
+        placeholder="Relleno"
+        value={filling}
+        onChangeText={setFilling}
+        category={activeCategory}
+        field="filling"
+      />
+      <AutocompleteInput
+        placeholder="Color de la torta"
+        value={color}
+        onChangeText={setColor}
+        category={activeCategory}
+        field="color"
+      />
+
       <TextInput style={styles.input} placeholder="Adornos" value={decorations} onChangeText={setDecorations} />
       <TextInput style={styles.input} placeholder="Texto / frase en la torta" value={cakeText} onChangeText={setCakeText} />
       <TextInput style={styles.input} placeholder="Precio de este producto" value={price} onChangeText={setPrice} keyboardType="numeric" />
