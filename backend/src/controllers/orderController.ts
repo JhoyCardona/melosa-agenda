@@ -249,3 +249,33 @@ export async function deleteOrder(req: AuthRequest, res: Response) {
     res.status(500).json({ error: 'Error al eliminar el pedido' });
   }
 }
+
+export async function getFieldSuggestions(req: AuthRequest, res: Response) {
+  const { category, field } = req.query;
+
+  if (!category || !field) {
+    return res.status(400).json({ error: 'category y field son requeridos' });
+  }
+
+  try {
+    const items = await prisma.orderItem.findMany({
+      where: { category: category as any },
+      select: { details: true },
+    });
+
+    const values = new Set<string>();
+
+    items.forEach((item) => {
+      const details = item.details as Record<string, string>;
+      const value = details[field as string];
+      if (value && value.trim()) {
+        values.add(value.trim());
+      }
+    });
+
+    res.json(Array.from(values));
+  } catch (error) {
+    console.error('Error obteniendo sugerencias:', error);
+    res.status(500).json({ error: 'Error al obtener sugerencias' });
+  }
+}

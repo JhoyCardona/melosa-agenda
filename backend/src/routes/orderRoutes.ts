@@ -7,6 +7,7 @@ import {
   updateOrder,
   updateOrderItem,
   deleteOrder,
+  getFieldSuggestions,
 } from '../controllers/orderController';
 import { authMiddleware } from '../middleware/authMiddleware';
 
@@ -14,6 +15,7 @@ const router = Router();
 
 router.post('/', authMiddleware, createOrder);
 router.post('/:orderId/items', authMiddleware, addOrderItem);
+router.get('/suggestions/field', authMiddleware, getFieldSuggestions);
 router.get('/:orderId', authMiddleware, getOrderById);
 router.get('/', authMiddleware, listOrders);
 router.patch('/:orderId', authMiddleware, updateOrder);
