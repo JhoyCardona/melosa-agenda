@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mobile-app",
-    "slug": "mobile-app",
+    "name": "Melosa Agenda",
+    "slug": "melosa-agenda",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -39,7 +39,14 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Melosa Agenda necesita acceso a tus fotos para agregar imágenes de referencia a los pedidos."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
