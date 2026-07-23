@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import ImageViewerModal from './ImageViewerModal';
 
 interface OrderItem {
   id: string;
@@ -44,77 +45,114 @@ interface OrderCardProps {
   actions?: { label: string; onPress: () => void; destructive?: boolean }[];
 }
 
+function formatDeliveryDateTime(isoString: string): string {
+  const date = new Date(isoString);
+  const days = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+  const weekday = days[date.getUTCDay()];
+  const day = date.getUTCDate();
+  const month = months[date.getUTCMonth()];
+  const hours24 = date.getUTCHours();
+  const minutes = date.getUTCMinutes();
+
+  const dateLabel = `${weekday}, ${day} de ${month}`;
+
+  if (hours24 === 0 && minutes === 0) {
+    return dateLabel;
+  }
+
+  const period = hours24 >= 12 ? 'PM' : 'AM';
+  const hours12 = hours24 % 12 || 12;
+  const minutesStr = String(minutes).padStart(2, '0');
+
+  return `${dateLabel} · ${hours12}:${minutesStr} ${period}`;
+}
+
 export default function OrderCard({ order, actions = [] }: OrderCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
   const firstItem = order.items[0];
 
   return (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={() => setExpanded(!expanded)}
-      activeOpacity={0.8}
-    >
-      <Text style={styles.clientName}>{order.clientName}</Text>
-      <Text style={styles.category}>
-        {firstItem ? categoryLabels[firstItem.category] : ''}
-        {order.items.length > 1 ? ` + ${order.items.length - 1} más` : ''}
-      </Text>
-      <Text style={styles.price}>Total: ${Number(order.totalPrice).toLocaleString()}</Text>
+    <>
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() => setExpanded(!expanded)}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.clientName}>{order.clientName}</Text>
+        <Text style={styles.category}>
+          {firstItem ? categoryLabels[firstItem.category] : ''}
+          {order.items.length > 1 ? ` + ${order.items.length - 1} más` : ''}
+        </Text>
+        <Text style={styles.price}>Total: ${Number(order.totalPrice).toLocaleString()}</Text>
 
-      {expanded && (
-        <View style={styles.expandedSection}>
-          <View style={styles.divider} />
+        {expanded && (
+          <View style={styles.expandedSection}>
+            <View style={styles.divider} />
 
-          <Text style={styles.blockLabel}>Datos de contacto</Text>
-          <Text style={styles.detailLine}>Teléfono: {order.clientPhone}</Text>
-          {order.deliveryAddress ? (
-            <Text style={styles.detailLine}>Dirección: {order.deliveryAddress}</Text>
-          ) : null}
-          <Text style={styles.detailLine}>Anticipo pagado: ${Number(order.depositPaid).toLocaleString()}</Text>
-          {order.notes ? <Text style={styles.detailLine}>Notas: {order.notes}</Text> : null}
+            <Text style={styles.blockLabel}>Datos de contacto</Text>
+            <Text style={styles.detailLine}>Entrega: {formatDeliveryDateTime(order.deliveryDate)}</Text>
+            <Text style={styles.detailLine}>Teléfono: {order.clientPhone}</Text>
+            {order.deliveryAddress ? (
+              <Text style={styles.detailLine}>Dirección: {order.deliveryAddress}</Text>
+            ) : null}
+            <Text style={styles.detailLine}>Anticipo pagado: ${Number(order.depositPaid).toLocaleString()}</Text>
+            {order.notes ? <Text style={styles.detailLine}>Notas: {order.notes}</Text> : null}
 
-          <Text style={styles.blockLabel}>Productos ({order.items.length})</Text>
+            <Text style={styles.blockLabel}>Productos ({order.items.length})</Text>
 
-          {order.items.map((item, index) => (
-            <View key={item.id} style={styles.itemDetailCard}>
-              <Text style={styles.itemDetailTitle}>
-                {index + 1}. {categoryLabels[item.category]}
-              </Text>
+            {order.items.map((item, index) => (
+              <View key={item.id} style={styles.itemDetailCard}>
+                <Text style={styles.itemDetailTitle}>
+                  {index + 1}. {categoryLabels[item.category]}
+                </Text>
 
-              {item.imageUrl && <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />}
+                {item.imageUrl && (
+                  <TouchableOpacity onPress={() => setViewingImage(item.imageUrl)}>
+                    <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
+                  </TouchableOpacity>
+                )}
 
-              {Object.entries(item.details).map(([key, value]) => {
-                if (!value) return null;
-                const label = detailFieldLabels[key] || key;
-                return (
-                  <Text key={key} style={styles.detailLine}>
-                    {label}: {value}
-                  </Text>
-                );
-              })}
+                {Object.entries(item.details).map(([key, value]) => {
+                  if (!value) return null;
+                  const label = detailFieldLabels[key] || key;
+                  return (
+                    <Text key={key} style={styles.detailLine}>
+                      {label}: {value}
+                    </Text>
+                  );
+                })}
 
-              <Text style={styles.itemDetailPrice}>Precio: ${Number(item.price).toLocaleString()}</Text>
-            </View>
-          ))}
+                <Text style={styles.itemDetailPrice}>Precio: ${Number(item.price).toLocaleString()}</Text>
+              </View>
+            ))}
 
-          {actions.length > 0 && (
-            <View style={styles.actionsRow}>
-              {actions.map((action, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={action.destructive ? styles.deleteButton : styles.actionButton}
-                  onPress={action.onPress}
-                >
-                  <Text style={action.destructive ? styles.deleteText : styles.actionText}>
-                    {action.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
-      )}
-    </TouchableOpacity>
+            {actions.length > 0 && (
+              <View style={styles.actionsRow}>
+                {actions.map((action, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={action.destructive ? styles.deleteButton : styles.actionButton}
+                    onPress={action.onPress}
+                  >
+                    <Text style={action.destructive ? styles.deleteText : styles.actionText}>
+                      {action.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+      </TouchableOpacity>
+      <ImageViewerModal
+      visible={!!viewingImage}
+      imageUrl={viewingImage}
+      onClose={() => setViewingImage(null)}
+      />
+    </>
   );
 }
 

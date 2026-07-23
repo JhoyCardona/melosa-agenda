@@ -81,11 +81,12 @@ export async function addOrderItem(req: AuthRequest, res: Response) {
 
 async function markExpiredOrders() {
   const now = new Date();
+  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
   await prisma.order.updateMany({
     where: {
       status: 'PENDING',
-      deliveryDate: { lt: now },
+      deliveryDate: { lt: todayStart },
     },
     data: {
       status: 'EXPIRED',

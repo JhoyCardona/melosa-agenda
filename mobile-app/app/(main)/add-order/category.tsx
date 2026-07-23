@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { ItemCategory } from '../../../src/types/order';
 
@@ -14,8 +14,12 @@ export default function CategoryScreen() {
   function handleSelect(category: ItemCategory) {
     if (category === 'CAKE' || category === 'ALFAJOR_CAKE') {
       router.push({ pathname: '/(main)/add-order/cake-form', params: { category } });
+    } else if (category === 'ALFAJOR_UNIT') {
+      router.push('/(main)/add-order/alfajor-form');
+    } else if (category === 'CUPCAKE') {
+      router.push('/(main)/add-order/cupcake-form');
     } else {
-      alert('Esta categoría todavía no está lista, la agregamos pronto');
+      Alert.alert('Postres', 'Esta categoría está en mantenimiento — la vamos a organizar próximamente.');
     }
   }
 

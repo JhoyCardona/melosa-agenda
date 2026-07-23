@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, TextInput, Text, TouchableOpacity, StyleSheet, FlatList } from 'react-native';
+import { View, TextInput, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import api from '../config/api';
 
 interface AutocompleteInputProps {
@@ -56,22 +56,18 @@ export default function AutocompleteInput({
 
       {showSuggestions && value.length > 0 && filteredSuggestions.length > 0 && (
         <View style={styles.suggestionsBox}>
-          <FlatList
-            data={filteredSuggestions.slice(0, 4)}
-            keyExtractor={(item) => item}
-            keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.suggestionItem}
-                onPress={() => {
-                  onChangeText(item);
-                  setShowSuggestions(false);
-                }}
-              >
-                <Text style={styles.suggestionText}>{item}</Text>
-              </TouchableOpacity>
-            )}
-          />
+          {filteredSuggestions.slice(0, 4).map((item) => (
+            <TouchableOpacity
+              key={item}
+              style={styles.suggestionItem}
+              onPress={() => {
+                onChangeText(item);
+                setShowSuggestions(false);
+              }}
+            >
+              <Text style={styles.suggestionText}>{item}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
       )}
     </View>

@@ -4,6 +4,30 @@ import { router } from 'expo-router';
 import { useNewOrder } from '../../../src/context/NewOrderContext';
 import api from '../../../src/config/api';
 
+function formatDeliveryDateTime(isoString: string): string {
+  const date = new Date(isoString);
+  const days = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+  const weekday = days[date.getUTCDay()];
+  const day = date.getUTCDate();
+  const month = months[date.getUTCMonth()];
+  const hours24 = date.getUTCHours();
+  const minutes = date.getUTCMinutes();
+
+  const dateLabel = `${weekday}, ${day} de ${month}`;
+
+  if (hours24 === 0 && minutes === 0) {
+    return dateLabel;
+  }
+
+  const period = hours24 >= 12 ? 'PM' : 'AM';
+  const hours12 = hours24 % 12 || 12;
+  const minutesStr = String(minutes).padStart(2, '0');
+
+  return `${dateLabel} · ${hours12}:${minutesStr} ${period}`;
+}
+
 const categoryLabels: Record<string, string> = {
   CAKE: 'Torta',
   ALFAJOR_CAKE: 'Torta de alfajor',
@@ -84,7 +108,7 @@ export default function SummaryScreen() {
       <Text style={styles.sectionLabel}>Cliente</Text>
       <Text style={styles.infoText}>{clientData.clientName}</Text>
       <Text style={styles.infoText}>{clientData.clientPhone}</Text>
-      <Text style={styles.infoText}>Entrega: {clientData.deliveryDate}</Text>
+      <Text style={styles.infoText}>Entrega: {formatDeliveryDateTime(clientData.deliveryDate)}</Text>
 
       <Text style={styles.sectionLabel}>Productos</Text>
       {items.map((item, index) => (
