@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import api from '../../../src/config/api';
 import OrderCard from '../../../src/components/OrderCard';
@@ -7,32 +7,48 @@ import OrderCard from '../../../src/components/OrderCard';
 interface Order {
   id: string;
   deliveryDate: string;
+  status: string;
   [key: string]: any;
 }
 
+interface DaySummaryItem {
+  variantId: string;
+  productName: string;
+  variantLabel: string;
+  quantity: number;
+  totalPoints: number;
+}
+
+type Tab = 'resumen' | 'detalle';
+
 export default function DayDetailScreen() {
   const { date } = useLocalSearchParams<{ date: string }>();
+  const [tab, setTab] = useState<Tab>('resumen');
   const [orders, setOrders] = useState<Order[]>([]);
+  const [summary, setSummary] = useState<DaySummaryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [year, month] = date.split('-').map(Number);
-
-  const loadOrders = useCallback(async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await api.get('/orders', {
-        params: { month, year, status: 'PENDING' },
-      });
-      const filtered = response.data.filter((o: Order) => o.deliveryDate.slice(0, 10) === date);
+      const [year, month] = date.split('-').map(Number);
+      const [summaryRes, listRes] = await Promise.all([
+        api.get('/orders/day-summary', { params: { date } }),
+        api.get('/orders', { params: { month, year } }),
+      ]);
+      setSummary(summaryRes.data.items);
+      const filtered = listRes.data.filter(
+        (o: Order) => o.deliveryDate.slice(0, 10) === date && o.status !== 'CANCELLED'
+      );
       setOrders(filtered);
     } catch (error) {
-      console.error('Error cargando pedidos del día:', error);
+      console.error('Error cargando datos del día:', error);
     } finally {
       setLoading(false);
     }
   }, [date]);
 
-  useFocusEffect(useCallback(() => { loadOrders(); }, [loadOrders]));
+  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   function formatDisplayDate(): string {
     const d = new Date(date + 'T00:00:00');
@@ -44,7 +60,7 @@ export default function DayDetailScreen() {
   async function handleMarkCompleted(orderId: string) {
     try {
       await api.patch(`/orders/${orderId}`, { status: 'COMPLETED' });
-      loadOrders();
+      loadData();
     } catch (error) {
       Alert.alert('Error', 'No se pudo actualizar el pedido');
     }
@@ -53,7 +69,7 @@ export default function DayDetailScreen() {
   async function handleCancel(orderId: string) {
     try {
       await api.patch(`/orders/${orderId}`, { status: 'CANCELLED' });
-      loadOrders();
+      loadData();
     } catch (error) {
       Alert.alert('Error', 'No se pudo cancelar el pedido');
     }
@@ -68,7 +84,7 @@ export default function DayDetailScreen() {
         onPress: async () => {
           try {
             await api.delete(`/orders/${orderId}`);
-            loadOrders();
+            loadData();
           } catch (error) {
             Alert.alert('Error', 'No se pudo eliminar el pedido');
           }
@@ -81,10 +97,36 @@ export default function DayDetailScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>{formatDisplayDate()} · {orders.length} pedido{orders.length !== 1 ? 's' : ''}</Text>
 
+      <View style={styles.tabs}>
+        <TouchableOpacity
+          style={[styles.tabButton, tab === 'resumen' && styles.tabButtonActive]}
+          onPress={() => setTab('resumen')}
+        >
+          <Text style={[styles.tabText, tab === 'resumen' && styles.tabTextActive]}>Resumen para hornear</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, tab === 'detalle' && styles.tabButtonActive]}
+          onPress={() => setTab('detalle')}
+        >
+          <Text style={[styles.tabText, tab === 'detalle' && styles.tabTextActive]}>Detalle por pedido</Text>
+        </TouchableOpacity>
+      </View>
+
       {loading ? (
         <ActivityIndicator color="#C82333" style={{ marginTop: 30 }} />
+      ) : tab === 'resumen' ? (
+        summary.length === 0 ? (
+          <Text style={styles.emptyText}>No hay productos agendados este día</Text>
+        ) : (
+          summary.map((item) => (
+            <View key={item.variantId} style={styles.summaryCard}>
+              <Text style={styles.summaryProduct}>{item.productName} - {item.variantLabel}</Text>
+              <Text style={styles.summaryQty}>x{item.quantity}</Text>
+            </View>
+          ))
+        )
       ) : orders.length === 0 ? (
-        <Text style={styles.emptyText}>No hay pedidos pendientes este día</Text>
+        <Text style={styles.emptyText}>No hay pedidos este día</Text>
       ) : (
         orders.map((order) => (
           <OrderCard
@@ -107,4 +149,22 @@ const styles = StyleSheet.create({
   content: { padding: 20 },
   title: { fontSize: 16, fontWeight: '600', color: '#3E2723', textTransform: 'capitalize', marginBottom: 16 },
   emptyText: { color: '#999', textAlign: 'center', marginTop: 30 },
+  tabs: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  tabButton: { flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: '#F4DCD6', alignItems: 'center' },
+  tabButtonActive: { backgroundColor: '#C82333' },
+  tabText: { color: '#3E2723', fontSize: 13, fontWeight: '600' },
+  tabTextActive: { color: '#fff' },
+  summaryCard: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 0.5,
+    borderColor: '#F4DCD6',
+    padding: 14,
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  summaryProduct: { fontSize: 14, color: '#3E2723', fontWeight: '600', flex: 1 },
+  summaryQty: { fontSize: 16, color: '#C82333', fontWeight: '700' },
 });

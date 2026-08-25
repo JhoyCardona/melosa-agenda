@@ -16,38 +16,97 @@ model User {
 }
 
 model Order {
-  id              String      @id @default(uuid())
-  clientName      String
-  clientPhone     String
-  deliveryDate    DateTime
-  deliveryAddress String?
-  totalPrice      Decimal     @default(0)
-  depositPaid     Decimal     @default(0)
-  notes           String?
-  status          OrderStatus @default(PENDING)
-  notifiedAt      DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id                     String      @id @default(uuid())
+  ticketNumber           Int         @unique @default(autoincrement())
+  clientName             String
+  clientPhone            String
+  deliveryDate           DateTime    @db.Date
+  timeBlock              TimeBlock
+  deliveryAddress        String?
+  totalPrice             Decimal     @default(0)
+  depositPaid            Decimal     @default(0)
+  requiredPaymentPercent Int         @default(100)
+  paymentDueDate         DateTime?
+  notes                  String?
+  status                 OrderStatus @default(PENDING_REVIEW)
+  source                 OrderSource @default(MANUAL)
+  notifiedAt             DateTime?
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
 
   items OrderItem[]
 }
 
 model OrderItem {
+  id              String   @id @default(uuid())
+  orderId         String
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productDesignId String
+  productDesign   ProductDesign  @relation(fields: [productDesignId], references: [id])
+  variantId       String
+  variant         ProductVariant @relation(fields: [variantId], references: [id])
+  priceAtOrder    Decimal
+  pointsAtOrder   Int
+  customImageUrl  String?
+  customText      String?
+  createdAt       DateTime @default(now())
+}
+
+model ProductDesign {
   id        String       @id @default(uuid())
-  orderId   String
-  order     Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  name      String
   category  ItemCategory
-  price     Decimal
   imageUrl  String?
-  details   Json
   createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  variants   ProductVariant[]
+  orderItems OrderItem[]
+}
+
+model ProductVariant {
+  id              String        @id @default(uuid())
+  productDesignId String
+  productDesign   ProductDesign @relation(fields: [productDesignId], references: [id], onDelete: Cascade)
+  label           String
+  price           Decimal
+  points          Int
+  enPromocion     Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+
+  orderItems OrderItem[]
+}
+
+model TimeSlotUsage {
+  id         String   @id @default(uuid())
+  date       DateTime @db.Date
+  timeBlock  TimeBlock
+  pointsUsed Int      @default(0)
+
+  @@unique([date, timeBlock])
+}
+
+enum TimeBlock {
+  SLOT_14_15
+  SLOT_15_16
+  SLOT_16_17
+  SLOT_17_18
+  SLOT_18_19
 }
 
 enum OrderStatus {
-  PENDING
+  PENDING_REVIEW
+  AWAITING_PAYMENT
+  DEPOSIT_PAID
+  FULLY_PAID
   COMPLETED
   CANCELLED
   EXPIRED
+}
+
+enum OrderSource {
+  WEB_PUBLIC
+  MANUAL
 }
 
 enum ItemCategory {

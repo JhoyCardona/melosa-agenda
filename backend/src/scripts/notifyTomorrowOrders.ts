@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, OrderStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -31,7 +31,7 @@ async function notifyTomorrowOrders() {
 
   const ordersToNotify = await prisma.order.findMany({
     where: {
-      status: 'PENDING',
+      status: { notIn: [OrderStatus.CANCELLED, OrderStatus.EXPIRED, OrderStatus.COMPLETED] },
       notifiedAt: null,
       deliveryDate: {
         gte: tomorrowStart,

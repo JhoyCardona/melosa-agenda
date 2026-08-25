@@ -4,40 +4,36 @@ import ImageViewerModal from './ImageViewerModal';
 
 interface OrderItem {
   id: string;
-  category: string;
-  price: string;
-  imageUrl: string | null;
-  details: Record<string, string>;
+  priceAtOrder: string;
+  pointsAtOrder: number;
+  customImageUrl: string | null;
+  customText: string | null;
+  productDesign: { name: string };
+  variant: { label: string };
 }
 
 interface Order {
   id: string;
+  ticketNumber: number;
   clientName: string;
   clientPhone: string;
   deliveryAddress: string | null;
   deliveryDate: string;
   totalPrice: string;
   depositPaid: string;
+  status: string;
   notes: string | null;
   items: OrderItem[];
 }
 
-const categoryLabels: Record<string, string> = {
-  CAKE: 'Torta',
-  ALFAJOR_CAKE: 'Torta de alfajor',
-  ALFAJOR_UNIT: 'Alfajores por unidad',
-  CUPCAKE: 'Cupcakes',
-  DESSERT: 'Postre',
-};
-
-const detailFieldLabels: Record<string, string> = {
-  servings: 'Porciones',
-  flavor: 'Sabor',
-  filling: 'Relleno',
-  color: 'Color',
-  decorations: 'Adornos',
-  cakeText: 'Texto en la torta',
-  unitCount: 'Cantidad de unidades',
+const statusLabels: Record<string, string> = {
+  PENDING_REVIEW: 'Sin revisar',
+  AWAITING_PAYMENT: 'Esperando abono',
+  DEPOSIT_PAID: 'Abonado',
+  FULLY_PAID: 'Pagado',
+  COMPLETED: 'Entregado',
+  CANCELLED: 'Cancelado',
+  EXPIRED: 'Vencido',
 };
 
 interface OrderCardProps {
@@ -81,12 +77,14 @@ export default function OrderCard({ order, actions = [] }: OrderCardProps) {
         onPress={() => setExpanded(!expanded)}
         activeOpacity={0.8}
       >
-        <Text style={styles.clientName}>{order.clientName}</Text>
+        <Text style={styles.clientName}>#{order.ticketNumber} · {order.clientName}</Text>
         <Text style={styles.category}>
-          {firstItem ? categoryLabels[firstItem.category] : ''}
+          {firstItem ? `${firstItem.productDesign.name} - ${firstItem.variant.label}` : ''}
           {order.items.length > 1 ? ` + ${order.items.length - 1} más` : ''}
         </Text>
-        <Text style={styles.price}>Total: ${Number(order.totalPrice).toLocaleString()}</Text>
+        <Text style={styles.price}>
+          Total: ${Number(order.totalPrice).toLocaleString()} · {statusLabels[order.status] ?? order.status}
+        </Text>
 
         {expanded && (
           <View style={styles.expandedSection}>
@@ -106,26 +104,20 @@ export default function OrderCard({ order, actions = [] }: OrderCardProps) {
             {order.items.map((item, index) => (
               <View key={item.id} style={styles.itemDetailCard}>
                 <Text style={styles.itemDetailTitle}>
-                  {index + 1}. {categoryLabels[item.category]}
+                  {index + 1}. {item.productDesign.name} - {item.variant.label}
                 </Text>
 
-                {item.imageUrl && (
-                  <TouchableOpacity onPress={() => setViewingImage(item.imageUrl)}>
-                    <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
+                {item.customImageUrl && (
+                  <TouchableOpacity onPress={() => setViewingImage(item.customImageUrl)}>
+                    <Image source={{ uri: item.customImageUrl }} style={styles.itemImage} />
                   </TouchableOpacity>
                 )}
 
-                {Object.entries(item.details).map(([key, value]) => {
-                  if (!value) return null;
-                  const label = detailFieldLabels[key] || key;
-                  return (
-                    <Text key={key} style={styles.detailLine}>
-                      {label}: {value}
-                    </Text>
-                  );
-                })}
+                {item.customText ? (
+                  <Text style={styles.detailLine}>Texto personalizado: {item.customText}</Text>
+                ) : null}
 
-                <Text style={styles.itemDetailPrice}>Precio: ${Number(item.price).toLocaleString()}</Text>
+                <Text style={styles.itemDetailPrice}>Precio: ${Number(item.priceAtOrder).toLocaleString()}</Text>
               </View>
             ))}
 

@@ -1,16 +1,24 @@
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, TimeBlock, OrderStatus } from '@prisma/client';
 import { AuthRequest } from '../middleware/authMiddleware';
+import { computePaymentDueDate, todayColombiaDateString } from '../utils/colombiaTime';
 
 const prisma = new PrismaClient();
 
-export async function createOrder(req: AuthRequest, res: Response) {
-  const { clientName, clientPhone, deliveryDate, deliveryAddress, notes } = req.body;
+const VALID_TIME_BLOCKS = Object.values(TimeBlock);
+const VALID_STATUSES = Object.values(OrderStatus);
 
-  if (!clientName || !clientPhone || !deliveryDate) {
+export async function createOrder(req: AuthRequest, res: Response) {
+  const { clientName, clientPhone, deliveryDate, timeBlock, deliveryAddress, notes } = req.body;
+
+  if (!clientName || !clientPhone || !deliveryDate || !timeBlock) {
     return res.status(400).json({
-      error: 'clientName, clientPhone y deliveryDate son requeridos',
+      error: 'clientName, clientPhone, deliveryDate y timeBlock son requeridos',
     });
+  }
+
+  if (!VALID_TIME_BLOCKS.includes(timeBlock)) {
+    return res.status(400).json({ error: `timeBlock debe ser uno de: ${VALID_TIME_BLOCKS.join(', ')}` });
   }
 
   try {
@@ -19,6 +27,7 @@ export async function createOrder(req: AuthRequest, res: Response) {
         clientName,
         clientPhone,
         deliveryDate: new Date(deliveryDate),
+        timeBlock,
         deliveryAddress: deliveryAddress || null,
         notes: notes || null,
       },
@@ -31,41 +40,41 @@ export async function createOrder(req: AuthRequest, res: Response) {
   }
 }
 
+// Selecciona un diseño + variante ya existentes en el catálogo (ProductDesign/ProductVariant),
+// en vez de mandar category/price sueltos como antes.
 export async function addOrderItem(req: AuthRequest, res: Response) {
   const orderId = req.params.orderId as string;
-  const { category, price, imageUrl, details } = req.body;
+  const { productDesignId, variantId, customImageUrl, customText } = req.body;
 
-  const validCategories = ['CAKE', 'ALFAJOR_CAKE', 'ALFAJOR_UNIT', 'CUPCAKE', 'DESSERT'];
-
-  if (!category || !validCategories.includes(category)) {
-    return res.status(400).json({
-      error: `category debe ser una de: ${validCategories.join(', ')}`,
-    });
-  }
-
-  if (price === undefined || price === null) {
-    return res.status(400).json({ error: 'price es requerido' });
+  if (!productDesignId || !variantId) {
+    return res.status(400).json({ error: 'productDesignId y variantId son requeridos' });
   }
 
   try {
     const order = await prisma.order.findUnique({ where: { id: orderId } });
-
     if (!order) {
       return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    const variant = await prisma.productVariant.findUnique({ where: { id: variantId } });
+    if (!variant || variant.productDesignId !== productDesignId) {
+      return res.status(404).json({ error: 'Variante no encontrada para ese diseño' });
     }
 
     const item = await prisma.orderItem.create({
       data: {
         orderId,
-        category,
-        price,
-        imageUrl: imageUrl || null,
-        details: details || {},
+        productDesignId,
+        variantId,
+        priceAtOrder: variant.price,
+        pointsAtOrder: variant.points,
+        customImageUrl: customImageUrl || null,
+        customText: customText || null,
       },
     });
 
     const allItems = await prisma.orderItem.findMany({ where: { orderId } });
-    const newTotal = allItems.reduce((sum, i) => sum + Number(i.price), 0);
+    const newTotal = allItems.reduce((sum, i) => sum + Number(i.priceAtOrder), 0);
 
     await prisma.order.update({
       where: { id: orderId },
@@ -79,17 +88,17 @@ export async function addOrderItem(req: AuthRequest, res: Response) {
   }
 }
 
+// Only AWAITING_PAYMENT orders expire, and only once their paymentDueDate (computed
+// in Colombia time, see utils/colombiaTime.ts) has passed. This does NOT cancel the
+// order — Melosa reviews expired orders manually from the notifications section.
 async function markExpiredOrders() {
-  const now = new Date();
-  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-
   await prisma.order.updateMany({
     where: {
-      status: 'PENDING',
-      deliveryDate: { lt: todayStart },
+      status: OrderStatus.AWAITING_PAYMENT,
+      paymentDueDate: { lt: new Date() },
     },
     data: {
-      status: 'EXPIRED',
+      status: OrderStatus.EXPIRED,
     },
   });
 }
@@ -102,7 +111,7 @@ export async function getOrderById(req: AuthRequest, res: Response) {
 
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      include: { items: true },
+      include: { items: { include: { productDesign: true, variant: true } } },
     });
 
     if (!order) {
@@ -143,7 +152,7 @@ export async function listOrders(req: AuthRequest, res: Response) {
 
     const orders = await prisma.order.findMany({
       where,
-      include: { items: true },
+      include: { items: { include: { productDesign: true, variant: true } } },
       orderBy: { deliveryDate: 'asc' },
     });
 
@@ -154,16 +163,99 @@ export async function listOrders(req: AuthRequest, res: Response) {
   }
 }
 
+// Grouped by product+variant so Melosa can bake everything of one kind at once,
+// before decorating pedido por pedido. Priority view per Fase 3.1.
+export async function getDaySummary(req: AuthRequest, res: Response) {
+  const date = req.query.date as string;
+  if (!date) {
+    return res.status(400).json({ error: 'date es requerido (formato YYYY-MM-DD)' });
+  }
+
+  try {
+    await markExpiredOrders();
+
+    const orders = await prisma.order.findMany({
+      where: {
+        deliveryDate: new Date(`${date}T00:00:00.000Z`),
+        status: { not: OrderStatus.CANCELLED },
+      },
+      include: { items: { include: { productDesign: true, variant: true } } },
+    });
+
+    const groups = new Map<
+      string,
+      { productDesignId: string; variantId: string; productName: string; variantLabel: string; quantity: number; totalPoints: number }
+    >();
+
+    for (const order of orders) {
+      for (const item of order.items) {
+        const key = item.variantId;
+        const existing = groups.get(key);
+        if (existing) {
+          existing.quantity += 1;
+          existing.totalPoints += item.pointsAtOrder;
+        } else {
+          groups.set(key, {
+            productDesignId: item.productDesignId,
+            variantId: item.variantId,
+            productName: item.productDesign.name,
+            variantLabel: item.variant.label,
+            quantity: 1,
+            totalPoints: item.pointsAtOrder,
+          });
+        }
+      }
+    }
+
+    res.json({
+      date,
+      orderCount: orders.length,
+      items: Array.from(groups.values()).sort((a, b) => a.productName.localeCompare(b.productName)),
+    });
+  } catch (error) {
+    console.error('Error obteniendo resumen del día:', error);
+    res.status(500).json({ error: 'Error al obtener el resumen del día' });
+  }
+}
+
+// Orders in the next 2 days (Colombia calendar) that still haven't reached a
+// confirmed payment state. Fase 3.4 notifications section.
+export async function getNotifications(req: AuthRequest, res: Response) {
+  try {
+    await markExpiredOrders();
+
+    const today = todayColombiaDateString();
+    const [year, month, day] = today.split('-').map(Number);
+    const rangeStart = new Date(Date.UTC(year, month - 1, day));
+    const rangeEnd = new Date(Date.UTC(year, month - 1, day + 2, 23, 59, 59, 999));
+
+    const orders = await prisma.order.findMany({
+      where: {
+        status: { in: [OrderStatus.PENDING_REVIEW, OrderStatus.AWAITING_PAYMENT, OrderStatus.EXPIRED] },
+        deliveryDate: { gte: rangeStart, lte: rangeEnd },
+      },
+      orderBy: { deliveryDate: 'asc' },
+    });
+
+    res.json(orders);
+  } catch (error) {
+    console.error('Error obteniendo notificaciones:', error);
+    res.status(500).json({ error: 'Error al obtener las notificaciones' });
+  }
+}
+
 export async function updateOrder(req: AuthRequest, res: Response) {
   const orderId = req.params.orderId as string;
-  const { clientName, clientPhone, deliveryDate, deliveryAddress, notes, totalPrice, depositPaid, status } = req.body;
+  const { clientName, clientPhone, deliveryDate, timeBlock, deliveryAddress, notes, totalPrice, depositPaid, status } = req.body;
 
-  const validStatuses = ['PENDING', 'COMPLETED', 'CANCELLED', 'EXPIRED'];
-
-  if (status && !validStatuses.includes(status)) {
+  if (status && !VALID_STATUSES.includes(status)) {
     return res.status(400).json({
-      error: `status debe ser una de: ${validStatuses.join(', ')}`,
+      error: `status debe ser una de: ${VALID_STATUSES.join(', ')}`,
     });
+  }
+
+  if (timeBlock && !VALID_TIME_BLOCKS.includes(timeBlock)) {
+    return res.status(400).json({ error: `timeBlock debe ser uno de: ${VALID_TIME_BLOCKS.join(', ')}` });
   }
 
   try {
@@ -173,17 +265,31 @@ export async function updateOrder(req: AuthRequest, res: Response) {
       return res.status(404).json({ error: 'Pedido no encontrado' });
     }
 
+    // Entering AWAITING_PAYMENT is when the payment deadline gets set (business rule:
+    // 2 days before delivery, or 24h from order creation, whichever is sooner).
+    const enteringAwaitingPayment =
+      status === OrderStatus.AWAITING_PAYMENT && existingOrder.status !== OrderStatus.AWAITING_PAYMENT;
+
+    const paymentDueDate = enteringAwaitingPayment
+      ? computePaymentDueDate(
+          (deliveryDate ? new Date(deliveryDate) : existingOrder.deliveryDate).toISOString().slice(0, 10),
+          existingOrder.createdAt
+        )
+      : undefined;
+
     const updatedOrder = await prisma.order.update({
       where: { id: orderId },
       data: {
         ...(clientName !== undefined && { clientName }),
         ...(clientPhone !== undefined && { clientPhone }),
         ...(deliveryDate !== undefined && { deliveryDate: new Date(deliveryDate) }),
+        ...(timeBlock !== undefined && { timeBlock }),
         ...(deliveryAddress !== undefined && { deliveryAddress }),
         ...(notes !== undefined && { notes }),
         ...(totalPrice !== undefined && { totalPrice }),
         ...(depositPaid !== undefined && { depositPaid }),
         ...(status !== undefined && { status }),
+        ...(paymentDueDate !== undefined && { paymentDueDate }),
       },
     });
 
@@ -196,7 +302,7 @@ export async function updateOrder(req: AuthRequest, res: Response) {
 
 export async function updateOrderItem(req: AuthRequest, res: Response) {
   const itemId = req.params.itemId as string;
-  const { category, price, imageUrl, details } = req.body;
+  const { customImageUrl, customText } = req.body;
 
   try {
     const existingItem = await prisma.orderItem.findUnique({ where: { id: itemId } });
@@ -208,22 +314,10 @@ export async function updateOrderItem(req: AuthRequest, res: Response) {
     const updatedItem = await prisma.orderItem.update({
       where: { id: itemId },
       data: {
-        ...(category !== undefined && { category }),
-        ...(price !== undefined && { price }),
-        ...(imageUrl !== undefined && { imageUrl }),
-        ...(details !== undefined && { details }),
+        ...(customImageUrl !== undefined && { customImageUrl }),
+        ...(customText !== undefined && { customText }),
       },
     });
-
-    if (price !== undefined) {
-      const allItems = await prisma.orderItem.findMany({ where: { orderId: existingItem.orderId } });
-      const newTotal = allItems.reduce((sum, i) => sum + Number(i.price), 0);
-
-      await prisma.order.update({
-        where: { id: existingItem.orderId },
-        data: { totalPrice: newTotal },
-      });
-    }
 
     res.json(updatedItem);
   } catch (error) {
@@ -248,35 +342,5 @@ export async function deleteOrder(req: AuthRequest, res: Response) {
   } catch (error) {
     console.error('Error eliminando pedido:', error);
     res.status(500).json({ error: 'Error al eliminar el pedido' });
-  }
-}
-
-export async function getFieldSuggestions(req: AuthRequest, res: Response) {
-  const { category, field } = req.query;
-
-  if (!category || !field) {
-    return res.status(400).json({ error: 'category y field son requeridos' });
-  }
-
-  try {
-    const items = await prisma.orderItem.findMany({
-      where: { category: category as any },
-      select: { details: true },
-    });
-
-    const values = new Set<string>();
-
-    items.forEach((item) => {
-      const details = item.details as Record<string, string>;
-      const value = details[field as string];
-      if (value && value.trim()) {
-        values.add(value.trim());
-      }
-    });
-
-    res.json(Array.from(values));
-  } catch (error) {
-    console.error('Error obteniendo sugerencias:', error);
-    res.status(500).json({ error: 'Error al obtener sugerencias' });
   }
 }

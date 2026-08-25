@@ -8,6 +8,7 @@ export default function MainLayout() {
       <Stack.Screen name="add-order" options={{ headerShown: false }} />
       <Stack.Screen name="calendar" options={{ headerShown: false }} />
       <Stack.Screen name="finished" options={{ header: () => <Header /> }} />
+      <Stack.Screen name="notifications/index" options={{ header: () => <Header /> }} />
     </Stack>
   );
 }

@@ -26,6 +26,13 @@ export default function HomeScreen() {
       >
         <Text style={styles.buttonText}>Pedidos terminados</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => router.push('/(main)/notifications')}
+      >
+        <Text style={styles.buttonText}>Notificaciones</Text>
+      </TouchableOpacity>
     </View>
   );
 }
