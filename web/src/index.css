@@ -1,0 +1,31 @@
+:root {
+  --color-primary: #c82333;
+  --color-bg: #f5ebe0;
+  --color-bg-soft: #f4dcd6;
+  --color-text: #3e2723;
+  --color-muted: #8a7a72;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+a {
+  color: var(--color-primary);
+}
+
+button {
+  font-family: inherit;
+}

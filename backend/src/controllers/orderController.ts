@@ -142,6 +142,34 @@ export async function getOrderById(req: AuthRequest, res: Response) {
   }
 }
 
+// Lets Melosa jump straight to an order when a client sends her the ticket
+// number over WhatsApp, instead of hunting day by day on the calendar.
+export async function getOrderByTicket(req: AuthRequest, res: Response) {
+  const ticketNumber = Number(req.params.ticketNumber);
+
+  if (!Number.isInteger(ticketNumber)) {
+    return res.status(400).json({ error: 'ticketNumber debe ser un número' });
+  }
+
+  try {
+    await markExpiredOrders();
+
+    const order = await prisma.order.findUnique({
+      where: { ticketNumber },
+      include: { items: { include: { productDesign: true, variant: true } } },
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'No existe un pedido con ese número de ticket' });
+    }
+
+    res.json(order);
+  } catch (error) {
+    console.error('Error buscando pedido por ticket:', error);
+    res.status(500).json({ error: 'Error al buscar el pedido' });
+  }
+}
+
 export async function listOrders(req: AuthRequest, res: Response) {
   const { month, year, status } = req.query;
 

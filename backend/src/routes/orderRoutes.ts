@@ -3,6 +3,7 @@ import {
   createOrder,
   addOrderItem,
   getOrderById,
+  getOrderByTicket,
   listOrders,
   getDaySummary,
   getNotifications,
@@ -18,6 +19,7 @@ router.post('/', authMiddleware, createOrder);
 router.post('/:orderId/items', authMiddleware, addOrderItem);
 router.get('/day-summary', authMiddleware, getDaySummary);
 router.get('/notifications', authMiddleware, getNotifications);
+router.get('/ticket/:ticketNumber', authMiddleware, getOrderByTicket);
 router.get('/:orderId', authMiddleware, getOrderById);
 router.get('/', authMiddleware, listOrders);
 router.patch('/:orderId', authMiddleware, updateOrder);

@@ -40,6 +40,15 @@ export default function FinishedScreen() {
     }
   }
 
+  async function handlePaymentUpdate(orderId: string, status: 'DEPOSIT_PAID' | 'FULLY_PAID') {
+    try {
+      await api.patch(`/orders/${orderId}`, { status });
+      loadOrders();
+    } catch (error) {
+      Alert.alert('Error', 'No se pudo actualizar el pago');
+    }
+  }
+
   async function handleMarkCompleted(orderId: string) {
     try {
       await api.patch(`/orders/${orderId}`, { status: 'COMPLETED' });
@@ -106,7 +115,12 @@ export default function FinishedScreen() {
           <Text style={styles.emptyText}>No hay pedidos en esta categoría</Text>
         ) : (
           orders.map((order) => (
-            <OrderCard key={order.id} order={order} actions={getActionsForTab(order.id)} />
+            <OrderCard
+              key={order.id}
+              order={order}
+              actions={getActionsForTab(order.id)}
+              onPaymentUpdate={(status) => handlePaymentUpdate(order.id, status)}
+            />
           ))
         )}
       </ScrollView>

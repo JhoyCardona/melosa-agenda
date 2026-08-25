@@ -32,19 +32,18 @@ interface Order {
   items: OrderItem[];
 }
 
-const statusLabels: Record<string, string> = {
-  PENDING_REVIEW: 'Sin revisar',
-  AWAITING_PAYMENT: 'Esperando abono',
-  DEPOSIT_PAID: 'Abonado',
-  FULLY_PAID: 'Pagado',
-  COMPLETED: 'Entregado',
-  CANCELLED: 'Cancelado',
-  EXPIRED: 'Vencido',
-};
+// Payment status dot: red = no ha pagado nada, azul = abono, verde = pago completo.
+// This is about the transfer/payment, not the order's lifecycle status.
+function paymentDotColor(status: string): string {
+  if (status === 'FULLY_PAID' || status === 'COMPLETED') return '#2E7D32';
+  if (status === 'DEPOSIT_PAID') return '#1565C0';
+  return '#C82333';
+}
 
 interface OrderCardProps {
   order: Order;
   actions?: { label: string; onPress: () => void; destructive?: boolean }[];
+  onPaymentUpdate?: (status: 'DEPOSIT_PAID' | 'FULLY_PAID') => void;
 }
 
 function formatDeliveryDateTime(isoString: string): string {
@@ -71,10 +70,13 @@ function formatDeliveryDateTime(isoString: string): string {
   return `${dateLabel} · ${hours12}:${minutesStr} ${period}`;
 }
 
-export default function OrderCard({ order, actions = [] }: OrderCardProps) {
+export default function OrderCard({ order, actions = [], onPaymentUpdate }: OrderCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const firstItem = order.items[0];
+
+  const showMarkDeposit = onPaymentUpdate && order.status !== 'DEPOSIT_PAID' && order.status !== 'FULLY_PAID' && order.status !== 'COMPLETED' && order.status !== 'CANCELLED';
+  const showMarkFull = onPaymentUpdate && order.status !== 'FULLY_PAID' && order.status !== 'COMPLETED' && order.status !== 'CANCELLED';
 
   return (
     <>
@@ -83,14 +85,15 @@ export default function OrderCard({ order, actions = [] }: OrderCardProps) {
         onPress={() => setExpanded(!expanded)}
         activeOpacity={0.8}
       >
-        <Text style={styles.clientName}>#{order.ticketNumber} · {order.clientName}</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.clientName}>#{order.ticketNumber} · {order.clientName}</Text>
+          <View style={[styles.paymentDot, { backgroundColor: paymentDotColor(order.status) }]} />
+        </View>
         <Text style={styles.category}>
           {firstItem ? `${firstItem.productDesign.name} - ${firstItem.variant.label}` : ''}
           {order.items.length > 1 ? ` + ${order.items.length - 1} más` : ''}
         </Text>
-        <Text style={styles.price}>
-          Total: ${Number(order.totalPrice).toLocaleString()} · {statusLabels[order.status] ?? order.status}
-        </Text>
+        <Text style={styles.price}>Total: ${Number(order.totalPrice).toLocaleString()}</Text>
 
         {expanded && (
           <View style={styles.expandedSection}>
@@ -128,6 +131,21 @@ export default function OrderCard({ order, actions = [] }: OrderCardProps) {
               </View>
             ))}
 
+            {(showMarkDeposit || showMarkFull) && (
+              <View style={styles.actionsRow}>
+                {showMarkDeposit && (
+                  <TouchableOpacity style={styles.depositButton} onPress={() => onPaymentUpdate!('DEPOSIT_PAID')}>
+                    <Text style={styles.fullPaidText}>Marcar abono pagado</Text>
+                  </TouchableOpacity>
+                )}
+                {showMarkFull && (
+                  <TouchableOpacity style={styles.fullPaidButton} onPress={() => onPaymentUpdate!('FULLY_PAID')}>
+                    <Text style={styles.fullPaidText}>Marcar pago completo</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
             {actions.length > 0 && (
               <View style={styles.actionsRow}>
                 {actions.map((action, index) => (
@@ -164,7 +182,9 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
   },
-  clientName: { fontSize: 15, fontWeight: '600', color: '#3E2723' },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  clientName: { fontSize: 15, fontWeight: '600', color: '#3E2723', flex: 1 },
+  paymentDot: { width: 12, height: 12, borderRadius: 6, marginLeft: 8 },
   category: { fontSize: 13, color: '#C82333', marginTop: 2 },
   price: { fontSize: 13, color: '#999', marginTop: 2 },
   expandedSection: { marginTop: 4 },
@@ -187,4 +207,7 @@ const styles = StyleSheet.create({
   actionText: { color: '#3E2723', fontSize: 13, fontWeight: '600' },
   deleteButton: { flex: 1, backgroundColor: '#C82333', borderRadius: 6, paddingVertical: 10, alignItems: 'center' },
   deleteText: { color: '#F5EBE0', fontSize: 13, fontWeight: '600' },
+  depositButton: { flex: 1, backgroundColor: '#1565C0', borderRadius: 6, paddingVertical: 10, alignItems: 'center' },
+  fullPaidButton: { flex: 1, backgroundColor: '#2E7D32', borderRadius: 6, paddingVertical: 10, alignItems: 'center' },
+  fullPaidText: { color: '#fff', fontSize: 13, fontWeight: '600' },
 });

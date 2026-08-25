@@ -26,6 +26,13 @@ export default function HomeScreen() {
       >
         <Text style={styles.buttonText}>Notificaciones</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => router.push('/(main)/search')}
+      >
+        <Text style={styles.buttonText}>Buscar por ticket</Text>
+      </TouchableOpacity>
     </View>
   );
 }
