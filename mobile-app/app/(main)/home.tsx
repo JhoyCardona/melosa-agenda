@@ -8,13 +8,6 @@ export default function HomeScreen() {
 
       <TouchableOpacity
         style={styles.button}
-        onPress={() => router.push('/(main)/add-order')}
-      >
-        <Text style={styles.buttonText}>Agregar pedido</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.button}
         onPress={() => router.push('/(main)/calendar')}
       >
         <Text style={styles.buttonText}>Pedidos pendientes</Text>

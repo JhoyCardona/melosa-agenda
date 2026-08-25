@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { PrismaClient, TimeBlock, OrderStatus, Flavor } from '@prisma/client';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { computePaymentDueDate, todayColombiaDateString } from '../utils/colombiaTime';
+import { reserveSlotPoints, releaseSlotPoints } from '../services/availability';
 
 const prisma = new PrismaClient();
 
@@ -66,30 +67,40 @@ export async function addOrderItem(req: AuthRequest, res: Response) {
       return res.status(404).json({ error: 'Variante no encontrada para ese diseño' });
     }
 
-    const item = await prisma.orderItem.create({
-      data: {
-        orderId,
-        productDesignId,
-        variantId,
-        priceAtOrder: variant.price,
-        pointsAtOrder: variant.points,
-        flavor,
-        customImageUrl: customImageUrl || null,
-        customText: customText || null,
-      },
-    });
+    const item = await prisma.$transaction(async (tx) => {
+      // Reserve points same as the public booking flow does, so a manually-added
+      // item can't push a block past its 12-point cap either.
+      await reserveSlotPoints(tx, order.deliveryDate.toISOString().slice(0, 10), order.timeBlock, variant.points);
 
-    const allItems = await prisma.orderItem.findMany({ where: { orderId } });
-    const newTotal = allItems.reduce((sum, i) => sum + Number(i.priceAtOrder), 0);
+      const created = await tx.orderItem.create({
+        data: {
+          orderId,
+          productDesignId,
+          variantId,
+          priceAtOrder: variant.price,
+          pointsAtOrder: variant.points,
+          flavor,
+          customImageUrl: customImageUrl || null,
+          customText: customText || null,
+        },
+      });
 
-    await prisma.order.update({
-      where: { id: orderId },
-      data: { totalPrice: newTotal },
+      const allItems = await tx.orderItem.findMany({ where: { orderId } });
+      const newTotal = allItems.reduce((sum, i) => sum + Number(i.priceAtOrder), 0);
+
+      await tx.order.update({ where: { id: orderId }, data: { totalPrice: newTotal } });
+
+      return created;
     });
 
     res.status(201).json(item);
   } catch (error) {
     console.error('Error agregando producto:', error);
+
+    if (error instanceof Error && error.message.includes('no tiene suficiente disponibilidad')) {
+      return res.status(409).json({ error: error.message });
+    }
+
     res.status(500).json({ error: 'Error al agregar el producto' });
   }
 }
@@ -283,7 +294,10 @@ export async function updateOrder(req: AuthRequest, res: Response) {
   }
 
   try {
-    const existingOrder = await prisma.order.findUnique({ where: { id: orderId } });
+    const existingOrder = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { items: true },
+    });
 
     if (!existingOrder) {
       return res.status(404).json({ error: 'Pedido no encontrado' });
@@ -301,25 +315,51 @@ export async function updateOrder(req: AuthRequest, res: Response) {
         )
       : undefined;
 
-    const updatedOrder = await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        ...(clientName !== undefined && { clientName }),
-        ...(clientPhone !== undefined && { clientPhone }),
-        ...(deliveryDate !== undefined && { deliveryDate: new Date(deliveryDate) }),
-        ...(timeBlock !== undefined && { timeBlock }),
-        ...(deliveryAddress !== undefined && { deliveryAddress }),
-        ...(notes !== undefined && { notes }),
-        ...(totalPrice !== undefined && { totalPrice }),
-        ...(depositPaid !== undefined && { depositPaid }),
-        ...(status !== undefined && { status }),
-        ...(paymentDueDate !== undefined && { paymentDueDate }),
-      },
+    const oldDateStr = existingOrder.deliveryDate.toISOString().slice(0, 10);
+    const newDateStr = deliveryDate !== undefined ? new Date(deliveryDate).toISOString().slice(0, 10) : oldDateStr;
+    const newTimeBlock = timeBlock !== undefined ? timeBlock : existingOrder.timeBlock;
+    const totalPoints = existingOrder.items.reduce((sum, i) => sum + i.pointsAtOrder, 0);
+
+    const enteringCancelled = status === OrderStatus.CANCELLED && existingOrder.status !== OrderStatus.CANCELLED;
+    const wasAlreadyCancelled = existingOrder.status === OrderStatus.CANCELLED;
+    const isRescheduling = (newDateStr !== oldDateStr || newTimeBlock !== existingOrder.timeBlock) && !wasAlreadyCancelled;
+
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      if (enteringCancelled) {
+        // Cancelling frees up the slot's points — a fresh booking can now use them.
+        await releaseSlotPoints(tx, oldDateStr, existingOrder.timeBlock, totalPoints);
+      } else if (isRescheduling && totalPoints > 0) {
+        // Moving date/block: release the old slot, then reserve on the new one —
+        // throws (rolling back) if the new slot doesn't have room.
+        await releaseSlotPoints(tx, oldDateStr, existingOrder.timeBlock, totalPoints);
+        await reserveSlotPoints(tx, newDateStr, newTimeBlock, totalPoints);
+      }
+
+      return tx.order.update({
+        where: { id: orderId },
+        data: {
+          ...(clientName !== undefined && { clientName }),
+          ...(clientPhone !== undefined && { clientPhone }),
+          ...(deliveryDate !== undefined && { deliveryDate: new Date(deliveryDate) }),
+          ...(timeBlock !== undefined && { timeBlock }),
+          ...(deliveryAddress !== undefined && { deliveryAddress }),
+          ...(notes !== undefined && { notes }),
+          ...(totalPrice !== undefined && { totalPrice }),
+          ...(depositPaid !== undefined && { depositPaid }),
+          ...(status !== undefined && { status }),
+          ...(paymentDueDate !== undefined && { paymentDueDate }),
+        },
+      });
     });
 
     res.json(updatedOrder);
   } catch (error) {
     console.error('Error actualizando pedido:', error);
+
+    if (error instanceof Error && error.message.includes('no tiene suficiente disponibilidad')) {
+      return res.status(409).json({ error: error.message });
+    }
+
     res.status(500).json({ error: 'Error al actualizar el pedido' });
   }
 }
@@ -354,13 +394,27 @@ export async function deleteOrder(req: AuthRequest, res: Response) {
   const orderId = req.params.orderId as string;
 
   try {
-    const existingOrder = await prisma.order.findUnique({ where: { id: orderId } });
+    const existingOrder = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { items: true },
+    });
 
     if (!existingOrder) {
       return res.status(404).json({ error: 'Pedido no encontrado' });
     }
 
-    await prisma.order.delete({ where: { id: orderId } });
+    await prisma.$transaction(async (tx) => {
+      if (existingOrder.status !== OrderStatus.CANCELLED) {
+        const totalPoints = existingOrder.items.reduce((sum, i) => sum + i.pointsAtOrder, 0);
+        await releaseSlotPoints(
+          tx,
+          existingOrder.deliveryDate.toISOString().slice(0, 10),
+          existingOrder.timeBlock,
+          totalPoints
+        );
+      }
+      await tx.order.delete({ where: { id: orderId } });
+    });
 
     res.json({ message: 'Pedido eliminado correctamente' });
   } catch (error) {

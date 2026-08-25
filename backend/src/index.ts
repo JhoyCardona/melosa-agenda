@@ -6,6 +6,7 @@ import orderRoutes from './routes/orderRoutes';
 import uploadRoutes from './routes/uploadRoutes';
 import userRoutes from './routes/userRoutes';
 import publicOrderRoutes from './routes/publicOrderRoutes';
+import productDesignRoutes from './routes/productDesignRoutes';
 
 dotenv.config();
 
@@ -18,6 +19,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/public-orders', publicOrderRoutes);
+app.use('/api/product-designs', productDesignRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Melosa Agenda API running' });
