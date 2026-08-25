@@ -33,7 +33,7 @@ export default function FinishedScreen() {
 
   async function handleReactivate(orderId: string) {
     try {
-      await api.patch(`/orders/${orderId}`, { status: 'PENDING' });
+      await api.patch(`/orders/${orderId}`, { status: 'PENDING_REVIEW' });
       loadOrders();
     } catch (error) {
       Alert.alert('Error', 'No se pudo reactivar el pedido');

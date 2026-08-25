@@ -11,13 +11,27 @@ interface Order {
   [key: string]: any;
 }
 
-interface DaySummaryItem {
-  variantId: string;
-  productName: string;
-  variantLabel: string;
+interface FlavorGroup {
+  flavor: 'VAINILLA' | 'CHOCOLATE';
   quantity: number;
-  totalPoints: number;
 }
+
+interface ShapeGroup {
+  shape: string;
+  quantity: number;
+  flavors: FlavorGroup[];
+}
+
+interface SizeGroup {
+  sizeLabel: string;
+  quantity: number;
+  shapes: ShapeGroup[];
+}
+
+const flavorLabels: Record<string, string> = {
+  VAINILLA: 'vainilla',
+  CHOCOLATE: 'chocolate',
+};
 
 type Tab = 'resumen' | 'detalle';
 
@@ -25,7 +39,7 @@ export default function DayDetailScreen() {
   const { date } = useLocalSearchParams<{ date: string }>();
   const [tab, setTab] = useState<Tab>('resumen');
   const [orders, setOrders] = useState<Order[]>([]);
-  const [summary, setSummary] = useState<DaySummaryItem[]>([]);
+  const [summary, setSummary] = useState<SizeGroup[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
@@ -36,7 +50,7 @@ export default function DayDetailScreen() {
         api.get('/orders/day-summary', { params: { date } }),
         api.get('/orders', { params: { month, year } }),
       ]);
-      setSummary(summaryRes.data.items);
+      setSummary(summaryRes.data.sizes);
       const filtered = listRes.data.filter(
         (o: Order) => o.deliveryDate.slice(0, 10) === date && o.status !== 'CANCELLED'
       );
@@ -118,10 +132,18 @@ export default function DayDetailScreen() {
         summary.length === 0 ? (
           <Text style={styles.emptyText}>No hay productos agendados este día</Text>
         ) : (
-          summary.map((item) => (
-            <View key={item.variantId} style={styles.summaryCard}>
-              <Text style={styles.summaryProduct}>{item.productName} - {item.variantLabel}</Text>
-              <Text style={styles.summaryQty}>x{item.quantity}</Text>
+          summary.map((size) => (
+            <View key={size.sizeLabel} style={styles.summaryCard}>
+              <Text style={styles.summarySize}>{size.sizeLabel} x{size.quantity}</Text>
+              {size.shapes.map((shape) => (
+                <Text key={shape.shape} style={styles.summaryShapeLine}>
+                  {shape.shape} x{shape.quantity}
+                  {'  '}
+                  {shape.flavors
+                    .map((f) => `${flavorLabels[f.flavor] ?? f.flavor} x${f.quantity}`)
+                    .join('  ')}
+                </Text>
+              ))}
             </View>
           ))
         )
@@ -161,10 +183,7 @@ const styles = StyleSheet.create({
     borderColor: '#F4DCD6',
     padding: 14,
     marginBottom: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
-  summaryProduct: { fontSize: 14, color: '#3E2723', fontWeight: '600', flex: 1 },
-  summaryQty: { fontSize: 16, color: '#C82333', fontWeight: '700' },
+  summarySize: { fontSize: 16, color: '#C82333', fontWeight: '700', marginBottom: 6 },
+  summaryShapeLine: { fontSize: 13, color: '#3E2723', marginLeft: 8, marginTop: 2 },
 });

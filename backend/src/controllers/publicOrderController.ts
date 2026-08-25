@@ -1,15 +1,17 @@
 import { Request, Response } from 'express';
-import { PrismaClient, TimeBlock } from '@prisma/client';
+import { PrismaClient, TimeBlock, Flavor } from '@prisma/client';
 import { isBusinessDay } from '../utils/colombianHolidays';
 import { reserveSlotPoints } from '../services/availability';
 
 const prisma = new PrismaClient();
 
 const VALID_TIME_BLOCKS = Object.values(TimeBlock);
+const VALID_FLAVORS = Object.values(Flavor);
 
 interface PublicOrderItemInput {
   productDesignId: string;
   variantId: string;
+  flavor: Flavor;
   customImageUrl?: string;
   customText?: string;
 }
@@ -50,6 +52,9 @@ export async function createPublicOrder(req: Request, res: Response) {
       if (!variant || variant.productDesignId !== item.productDesignId) {
         return res.status(404).json({ error: 'Uno de los productos seleccionados no existe' });
       }
+      if (!item.flavor || !VALID_FLAVORS.includes(item.flavor)) {
+        return res.status(400).json({ error: `flavor debe ser uno de: ${VALID_FLAVORS.join(', ')}` });
+      }
     }
 
     const totalPoints = (items as PublicOrderItemInput[]).reduce(
@@ -84,6 +89,7 @@ export async function createPublicOrder(req: Request, res: Response) {
                 variantId: item.variantId,
                 priceAtOrder: variant.price,
                 pointsAtOrder: variant.points,
+                flavor: item.flavor,
                 customImageUrl: item.customImageUrl || null,
                 customText: item.customText || null,
               };

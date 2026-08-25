@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { PrismaClient, TimeBlock, OrderStatus } from '@prisma/client';
+import { PrismaClient, TimeBlock, OrderStatus, Flavor } from '@prisma/client';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { computePaymentDueDate, todayColombiaDateString } from '../utils/colombiaTime';
 
@@ -7,6 +7,7 @@ const prisma = new PrismaClient();
 
 const VALID_TIME_BLOCKS = Object.values(TimeBlock);
 const VALID_STATUSES = Object.values(OrderStatus);
+const VALID_FLAVORS = Object.values(Flavor);
 
 export async function createOrder(req: AuthRequest, res: Response) {
   const { clientName, clientPhone, deliveryDate, timeBlock, deliveryAddress, notes } = req.body;
@@ -44,10 +45,14 @@ export async function createOrder(req: AuthRequest, res: Response) {
 // en vez de mandar category/price sueltos como antes.
 export async function addOrderItem(req: AuthRequest, res: Response) {
   const orderId = req.params.orderId as string;
-  const { productDesignId, variantId, customImageUrl, customText } = req.body;
+  const { productDesignId, variantId, flavor, customImageUrl, customText } = req.body;
 
-  if (!productDesignId || !variantId) {
-    return res.status(400).json({ error: 'productDesignId y variantId son requeridos' });
+  if (!productDesignId || !variantId || !flavor) {
+    return res.status(400).json({ error: 'productDesignId, variantId y flavor son requeridos' });
+  }
+
+  if (!VALID_FLAVORS.includes(flavor)) {
+    return res.status(400).json({ error: `flavor debe ser uno de: ${VALID_FLAVORS.join(', ')}` });
   }
 
   try {
@@ -68,6 +73,7 @@ export async function addOrderItem(req: AuthRequest, res: Response) {
         variantId,
         priceAtOrder: variant.price,
         pointsAtOrder: variant.points,
+        flavor,
         customImageUrl: customImageUrl || null,
         customText: customText || null,
       },
@@ -182,36 +188,54 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
       include: { items: { include: { productDesign: true, variant: true } } },
     });
 
-    const groups = new Map<
-      string,
-      { productDesignId: string; variantId: string; productName: string; variantLabel: string; quantity: number; totalPoints: number }
-    >();
+    // 3 levels: size (variant.label, e.g. "Torta 10 porciones") -> shape
+    // (productDesign.shape, e.g. "Corazón") -> flavor (vainilla/chocolate).
+    // This is the priority view: it tells Melosa exactly how many of each to
+    // bake before she starts decorating pedido por pedido.
+    interface FlavorGroup { flavor: Flavor; quantity: number }
+    interface ShapeGroup { shape: string; quantity: number; flavors: FlavorGroup[] }
+    interface SizeGroup { sizeLabel: string; sortKey: number; quantity: number; shapes: Map<string, ShapeGroup> }
+
+    const sizeGroups = new Map<string, SizeGroup>();
 
     for (const order of orders) {
       for (const item of order.items) {
-        const key = item.variantId;
-        const existing = groups.get(key);
-        if (existing) {
-          existing.quantity += 1;
-          existing.totalPoints += item.pointsAtOrder;
+        const sizeLabel = item.variant.label;
+        const shape = item.productDesign.shape ?? 'Sin forma definida';
+        const flavor = item.flavor;
+
+        let sizeGroup = sizeGroups.get(sizeLabel);
+        if (!sizeGroup) {
+          sizeGroup = { sizeLabel, sortKey: item.pointsAtOrder, quantity: 0, shapes: new Map() };
+          sizeGroups.set(sizeLabel, sizeGroup);
+        }
+        sizeGroup.quantity += 1;
+
+        let shapeGroup = sizeGroup.shapes.get(shape);
+        if (!shapeGroup) {
+          shapeGroup = { shape, quantity: 0, flavors: [] };
+          sizeGroup.shapes.set(shape, shapeGroup);
+        }
+        shapeGroup.quantity += 1;
+
+        const flavorGroup = shapeGroup.flavors.find((f) => f.flavor === flavor);
+        if (flavorGroup) {
+          flavorGroup.quantity += 1;
         } else {
-          groups.set(key, {
-            productDesignId: item.productDesignId,
-            variantId: item.variantId,
-            productName: item.productDesign.name,
-            variantLabel: item.variant.label,
-            quantity: 1,
-            totalPoints: item.pointsAtOrder,
-          });
+          shapeGroup.flavors.push({ flavor, quantity: 1 });
         }
       }
     }
 
-    res.json({
-      date,
-      orderCount: orders.length,
-      items: Array.from(groups.values()).sort((a, b) => a.productName.localeCompare(b.productName)),
-    });
+    const sizes = Array.from(sizeGroups.values())
+      .sort((a, b) => a.sortKey - b.sortKey)
+      .map((size) => ({
+        sizeLabel: size.sizeLabel,
+        quantity: size.quantity,
+        shapes: Array.from(size.shapes.values()).sort((a, b) => b.quantity - a.quantity),
+      }));
+
+    res.json({ date, orderCount: orders.length, sizes });
   } catch (error) {
     console.error('Error obteniendo resumen del día:', error);
     res.status(500).json({ error: 'Error al obtener el resumen del día' });

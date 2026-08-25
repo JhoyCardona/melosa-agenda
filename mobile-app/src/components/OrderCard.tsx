@@ -6,11 +6,17 @@ interface OrderItem {
   id: string;
   priceAtOrder: string;
   pointsAtOrder: number;
+  flavor: 'VAINILLA' | 'CHOCOLATE';
   customImageUrl: string | null;
   customText: string | null;
   productDesign: { name: string };
   variant: { label: string };
 }
+
+const flavorLabels: Record<string, string> = {
+  VAINILLA: 'Vainilla',
+  CHOCOLATE: 'Chocolate',
+};
 
 interface Order {
   id: string;
@@ -106,6 +112,7 @@ export default function OrderCard({ order, actions = [] }: OrderCardProps) {
                 <Text style={styles.itemDetailTitle}>
                   {index + 1}. {item.productDesign.name} - {item.variant.label}
                 </Text>
+                <Text style={styles.detailLine}>Sabor: {flavorLabels[item.flavor] ?? item.flavor}</Text>
 
                 {item.customImageUrl && (
                   <TouchableOpacity onPress={() => setViewingImage(item.customImageUrl)}>

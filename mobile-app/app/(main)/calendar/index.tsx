@@ -7,6 +7,7 @@ interface OrderSummary {
   id: string;
   clientName: string;
   deliveryDate: string;
+  status: string;
 }
 
 const months = [
@@ -26,9 +27,12 @@ export default function CalendarScreen() {
     setLoading(true);
     try {
       const response = await api.get('/orders', {
-        params: { month: currentMonth + 1, year: currentYear, status: 'PENDING' },
+        params: { month: currentMonth + 1, year: currentYear },
       });
-      setOrders(response.data);
+      const pending = response.data.filter(
+        (o: OrderSummary) => o.status !== 'CANCELLED' && o.status !== 'COMPLETED'
+      );
+      setOrders(pending);
     } catch (error) {
       console.error('Error cargando pedidos:', error);
     } finally {
