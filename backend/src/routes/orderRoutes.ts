@@ -6,6 +6,8 @@ import {
   getOrderByTicket,
   listOrders,
   getDaySummary,
+  getDayGallery,
+  downloadDayGalleryZip,
   getNotifications,
   updateOrder,
   updateOrderItem,
@@ -18,6 +20,8 @@ const router = Router();
 router.post('/', authMiddleware, createOrder);
 router.post('/:orderId/items', authMiddleware, addOrderItem);
 router.get('/day-summary', authMiddleware, getDaySummary);
+router.get('/day-gallery', authMiddleware, getDayGallery);
+router.get('/day-gallery/zip', authMiddleware, downloadDayGalleryZip);
 router.get('/notifications', authMiddleware, getNotifications);
 router.get('/ticket/:ticketNumber', authMiddleware, getOrderByTicket);
 router.get('/:orderId', authMiddleware, getOrderById);

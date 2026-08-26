@@ -1,8 +1,12 @@
 import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, TouchableOpacity, Image, Linking } from 'react-native';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import api from '../../../src/config/api';
 import OrderCard from '../../../src/components/OrderCard';
+import ImageViewerModal from '../../../src/components/ImageViewerModal';
+
+const API_URL = 'https://melosa-agenda-backend.onrender.com/api';
 
 interface Order {
   id: string;
@@ -33,34 +37,64 @@ const flavorLabels: Record<string, string> = {
   CHOCOLATE: 'chocolate',
 };
 
-type Tab = 'resumen' | 'detalle';
+interface GalleryImage {
+  itemId: string;
+  ticketNumber: number;
+  clientName: string;
+  productDesignName: string;
+  variantLabel: string;
+  imageUrl: string;
+}
+
+type Tab = 'resumen' | 'detalle' | 'galeria';
 
 export default function DayDetailScreen() {
   const { date } = useLocalSearchParams<{ date: string }>();
   const [tab, setTab] = useState<Tab>('resumen');
   const [orders, setOrders] = useState<Order[]>([]);
   const [summary, setSummary] = useState<SizeGroup[]>([]);
+  const [gallery, setGallery] = useState<GalleryImage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingZip, setDownloadingZip] = useState(false);
+  const [viewerImageUrl, setViewerImageUrl] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [year, month] = date.split('-').map(Number);
-      const [summaryRes, listRes] = await Promise.all([
+      const [summaryRes, listRes, galleryRes] = await Promise.all([
         api.get('/orders/day-summary', { params: { date } }),
         api.get('/orders', { params: { month, year } }),
+        api.get('/orders/day-gallery', { params: { date } }),
       ]);
       setSummary(summaryRes.data.sizes);
       const filtered = listRes.data.filter(
         (o: Order) => o.deliveryDate.slice(0, 10) === date && o.status !== 'CANCELLED'
       );
       setOrders(filtered);
+      setGallery(galleryRes.data);
     } catch (error) {
       console.error('Error cargando datos del día:', error);
     } finally {
       setLoading(false);
     }
   }, [date]);
+
+  // Opens the ZIP in the system browser/downloader instead of fetching it in-app —
+  // simplest way to hand Melosa a real file in her phone's Downloads (or, once she
+  // copies the link, on her PC too) without adding file-system/sharing dependencies.
+  async function handleDownloadZip() {
+    setDownloadingZip(true);
+    try {
+      const token = await SecureStore.getItemAsync('authToken');
+      const url = `${API_URL}/orders/day-gallery/zip?date=${date}&token=${encodeURIComponent(token ?? '')}`;
+      await Linking.openURL(url);
+    } catch (error) {
+      Alert.alert('Error', 'No se pudo iniciar la descarga del ZIP');
+    } finally {
+      setDownloadingZip(false);
+    }
+  }
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
@@ -133,6 +167,12 @@ export default function DayDetailScreen() {
         >
           <Text style={[styles.tabText, tab === 'detalle' && styles.tabTextActive]}>Detalle por pedido</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, tab === 'galeria' && styles.tabButtonActive]}
+          onPress={() => setTab('galeria')}
+        >
+          <Text style={[styles.tabText, tab === 'galeria' && styles.tabTextActive]}>Galería{gallery.length > 0 ? ` (${gallery.length})` : ''}</Text>
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -156,22 +196,58 @@ export default function DayDetailScreen() {
             </View>
           ))
         )
-      ) : orders.length === 0 ? (
-        <Text style={styles.emptyText}>No hay pedidos este día</Text>
+      ) : tab === 'detalle' ? (
+        orders.length === 0 ? (
+          <Text style={styles.emptyText}>No hay pedidos este día</Text>
+        ) : (
+          orders.map((order) => (
+            <OrderCard
+              key={order.id}
+              order={order as any}
+              onPaymentUpdate={(status, depositAmount) => handlePaymentUpdate(order.id, status, depositAmount)}
+              actions={[
+                { label: 'Completar', onPress: () => handleMarkCompleted(order.id) },
+                { label: 'Cancelar', onPress: () => handleCancel(order.id) },
+                { label: 'Eliminar', onPress: () => handleDelete(order.id), destructive: true },
+              ]}
+            />
+          ))
+        )
+      ) : gallery.length === 0 ? (
+        <Text style={styles.emptyText}>No hay imágenes personalizadas este día</Text>
       ) : (
-        orders.map((order) => (
-          <OrderCard
-            key={order.id}
-            order={order as any}
-            onPaymentUpdate={(status, depositAmount) => handlePaymentUpdate(order.id, status, depositAmount)}
-            actions={[
-              { label: 'Completar', onPress: () => handleMarkCompleted(order.id) },
-              { label: 'Cancelar', onPress: () => handleCancel(order.id) },
-              { label: 'Eliminar', onPress: () => handleDelete(order.id), destructive: true },
-            ]}
-          />
-        ))
+        <>
+          <TouchableOpacity
+            style={styles.zipButton}
+            onPress={handleDownloadZip}
+            disabled={downloadingZip}
+          >
+            <Text style={styles.zipButtonText}>
+              {downloadingZip ? 'Preparando descarga...' : `Descargar todo (.zip, ${gallery.length})`}
+            </Text>
+          </TouchableOpacity>
+          <View style={styles.galleryGrid}>
+            {gallery.map((image) => (
+              <TouchableOpacity
+                key={image.itemId}
+                style={styles.galleryThumbWrap}
+                onPress={() => setViewerImageUrl(image.imageUrl)}
+              >
+                <Image source={{ uri: image.imageUrl }} style={styles.galleryThumb} />
+                <Text style={styles.galleryCaption} numberOfLines={1}>
+                  #{image.ticketNumber} · {image.clientName}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
       )}
+
+      <ImageViewerModal
+        visible={!!viewerImageUrl}
+        imageUrl={viewerImageUrl}
+        onClose={() => setViewerImageUrl(null)}
+      />
     </ScrollView>
   );
 }
@@ -196,4 +272,21 @@ const styles = StyleSheet.create({
   },
   summarySize: { fontSize: 16, color: '#C82333', fontWeight: '700', marginBottom: 6 },
   summaryShapeLine: { fontSize: 13, color: '#3E2723', marginLeft: 8, marginTop: 2 },
+  zipButton: {
+    backgroundColor: '#C82333',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  zipButtonText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  galleryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  galleryThumbWrap: { width: '31%' },
+  galleryThumb: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 8,
+    backgroundColor: '#F4DCD6',
+  },
+  galleryCaption: { fontSize: 11, color: '#3E2723', marginTop: 4 },
 });

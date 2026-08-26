@@ -16,6 +16,7 @@ export interface ProductDesign {
   category: string;
   shape: string | null;
   imageUrl: string | null;
+  allowsCustomImage: boolean;
   variants: ProductVariant[];
 }
 
@@ -25,6 +26,8 @@ export interface BlockAvailability {
   pointsUsed: number;
   pointsAvailable: number;
 }
+
+export type ItemCategory = 'CAKE' | 'ALFAJOR_CAKE' | 'ALFAJOR_UNIT' | 'CUPCAKE' | 'DESSERT';
 
 export interface DraftItem {
   key: string;
@@ -36,4 +39,5 @@ export interface DraftItem {
   points: number;
   flavor: Flavor;
   customText?: string;
+  customImageUrl?: string;
 }

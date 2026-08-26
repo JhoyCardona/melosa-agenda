@@ -2,8 +2,46 @@ import { Request, Response } from 'express';
 import { PrismaClient, TimeBlock, Flavor } from '@prisma/client';
 import { isBusinessDay } from '../utils/colombianHolidays';
 import { reserveSlotPoints } from '../services/availability';
+import cloudinary from '../config/cloudinary';
 
 const prisma = new PrismaClient();
+
+// Public, no-auth image upload for the web booking form — only reachable for a
+// ProductDesign that has allowsCustomImage set (checked here, not just in the UI,
+// since anyone can call the endpoint directly).
+export async function uploadPublicImage(req: Request, res: Response) {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No se envió ninguna imagen' });
+  }
+
+  const { productDesignId } = req.body;
+  if (!productDesignId) {
+    return res.status(400).json({ error: 'productDesignId es requerido' });
+  }
+
+  try {
+    const design = await prisma.productDesign.findUnique({ where: { id: productDesignId } });
+    if (!design || !design.allowsCustomImage) {
+      return res.status(400).json({ error: 'Ese producto no admite imagen personalizada' });
+    }
+
+    const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+
+    const result = await cloudinary.uploader.upload(base64Image, {
+      folder: 'melosa-agenda/pedidos-web',
+      transformation: [
+        { width: 1200, crop: 'limit' },
+        { quality: 'auto' },
+        { fetch_format: 'auto' },
+      ],
+    });
+
+    res.status(201).json({ imageUrl: result.secure_url });
+  } catch (error) {
+    console.error('Error subiendo imagen pública:', error);
+    res.status(500).json({ error: 'Error al subir la imagen' });
+  }
+}
 
 const VALID_TIME_BLOCKS = Object.values(TimeBlock);
 const VALID_FLAVORS = Object.values(Flavor);

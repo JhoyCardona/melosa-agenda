@@ -29,6 +29,9 @@ export default function BookingPage() {
   const [selectedVariantId, setSelectedVariantId] = useState('');
   const [selectedFlavor, setSelectedFlavor] = useState<Flavor>('VAINILLA');
   const [selectedCustomText, setSelectedCustomText] = useState('');
+  const [selectedCustomImageUrl, setSelectedCustomImageUrl] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState('');
 
   const [deliveryDate, setDeliveryDate] = useState('');
   const [availability, setAvailability] = useState<BlockAvailability[] | null>(null);
@@ -78,6 +81,27 @@ export default function BookingPage() {
     }
   }, [selectedDesign, selectedVariantId]);
 
+  async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !selectedDesign) return;
+
+    setImageError('');
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('productDesignId', selectedDesign.id);
+      const response = await api.post<{ imageUrl: string }>('/public-orders/upload-image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setSelectedCustomImageUrl(response.data.imageUrl);
+    } catch (error: any) {
+      setImageError(error?.response?.data?.error ?? 'No se pudo subir la imagen. Intentá con otra foto.');
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
   function handleAddItem() {
     if (!selectedDesign || !selectedVariant) return;
     const newItem: DraftItem = {
@@ -90,9 +114,12 @@ export default function BookingPage() {
       points: selectedVariant.points,
       flavor: selectedFlavor,
       customText: selectedCustomText || undefined,
+      customImageUrl: selectedCustomImageUrl || undefined,
     };
     setItems((prev) => [...prev, newItem]);
     setSelectedCustomText('');
+    setSelectedCustomImageUrl('');
+    setImageError('');
   }
 
   function handleRemoveItem(key: string) {
@@ -121,6 +148,7 @@ export default function BookingPage() {
           variantId: i.variantId,
           flavor: i.flavor,
           customText: i.customText,
+          customImageUrl: i.customImageUrl,
         })),
       });
       setResult(response.data);
@@ -182,7 +210,15 @@ export default function BookingPage() {
         ) : (
           <>
             <label className="field-label">Diseño</label>
-            <select value={selectedDesignId} onChange={(e) => { setSelectedDesignId(e.target.value); setSelectedVariantId(''); }}>
+            <select
+              value={selectedDesignId}
+              onChange={(e) => {
+                setSelectedDesignId(e.target.value);
+                setSelectedVariantId('');
+                setSelectedCustomImageUrl('');
+                setImageError('');
+              }}
+            >
               {designs.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
@@ -225,7 +261,24 @@ export default function BookingPage() {
               onChange={(e) => setSelectedCustomText(e.target.value)}
             />
 
-            <button type="button" className="secondary-button" onClick={handleAddItem} disabled={!selectedVariant}>
+            {selectedDesign?.allowsCustomImage && (
+              <>
+                <label className="field-label">Imagen para imprimir (opcional)</label>
+                <input type="file" accept="image/*" onChange={handleImageChange} disabled={uploadingImage} />
+                {uploadingImage && <p className="muted">Subiendo imagen...</p>}
+                {imageError && <p className="warning">{imageError}</p>}
+                {selectedCustomImageUrl && (
+                  <img className="design-preview" src={selectedCustomImageUrl} alt="Imagen personalizada" />
+                )}
+              </>
+            )}
+
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handleAddItem}
+              disabled={!selectedVariant || uploadingImage}
+            >
               + Agregar al pedido
             </button>
           </>

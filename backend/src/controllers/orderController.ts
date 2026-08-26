@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { PrismaClient, TimeBlock, OrderStatus, Flavor } from '@prisma/client';
+import archiver from 'archiver';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { computePaymentDueDate, todayColombiaDateString } from '../utils/colombiaTime';
 import { reserveSlotPoints, releaseSlotPoints } from '../services/availability';
@@ -278,6 +279,102 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
   } catch (error) {
     console.error('Error obteniendo resumen del día:', error);
     res.status(500).json({ error: 'Error al obtener el resumen del día' });
+  }
+}
+
+// Shared by getDayGallery and downloadDayGalleryZip below — the set of order items
+// for a delivery day that carry a client-uploaded custom image.
+async function findDayImageItems(date: string) {
+  const orders = await prisma.order.findMany({
+    where: {
+      deliveryDate: new Date(`${date}T00:00:00.000Z`),
+      status: { not: OrderStatus.CANCELLED },
+    },
+    include: { items: { include: { productDesign: true, variant: true } } },
+  });
+
+  return orders.flatMap((order) =>
+    order.items
+      .filter((item) => !!item.customImageUrl)
+      .map((item) => ({
+        itemId: item.id,
+        ticketNumber: order.ticketNumber,
+        clientName: order.clientName,
+        productDesignName: item.productDesign.name,
+        variantLabel: item.variant.label,
+        imageUrl: item.customImageUrl as string,
+      }))
+  );
+}
+
+// Fase 3.3: gallery of custom-print images for a delivery day, grouped implicitly
+// by returning one entry per order item (a ticket can carry more than one image).
+export async function getDayGallery(req: AuthRequest, res: Response) {
+  const date = req.query.date as string;
+  if (!date) {
+    return res.status(400).json({ error: 'date es requerido (formato YYYY-MM-DD)' });
+  }
+
+  try {
+    const images = await findDayImageItems(date);
+    res.json(images);
+  } catch (error) {
+    console.error('Error obteniendo galería del día:', error);
+    res.status(500).json({ error: 'Error al obtener la galería del día' });
+  }
+}
+
+// Streams a ZIP with every custom image for the day, named by ticket so Melosa can
+// match each file back to its order once she's editing in Canva on the PC.
+export async function downloadDayGalleryZip(req: AuthRequest, res: Response) {
+  const date = req.query.date as string;
+  if (!date) {
+    return res.status(400).json({ error: 'date es requerido (formato YYYY-MM-DD)' });
+  }
+
+  try {
+    const images = await findDayImageItems(date);
+    if (images.length === 0) {
+      return res.status(404).json({ error: 'No hay imágenes personalizadas para ese día' });
+    }
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="melosa-imagenes-${date}.zip"`);
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.on('error', (error) => {
+      console.error('Error generando ZIP de galería:', error);
+      res.status(500).end();
+    });
+    archive.pipe(res);
+
+    // Sequential fetches keep this simple and safe on Render's free tier — a day's
+    // worth of custom images is small (a handful, not hundreds).
+    const usedNames = new Set<string>();
+    for (const image of images) {
+      const response = await fetch(image.imageUrl);
+      if (!response.ok) continue;
+      const buffer = Buffer.from(await response.arrayBuffer());
+
+      const extension = image.imageUrl.split('.').pop()?.split('?')[0] || 'jpg';
+      const safeName = image.clientName.replace(/[^a-zA-Z0-9]+/g, '-');
+      let fileName = `ticket-${image.ticketNumber}-${safeName}.${extension}`;
+      let suffix = 2;
+      while (usedNames.has(fileName)) {
+        fileName = `ticket-${image.ticketNumber}-${safeName}-${suffix}.${extension}`;
+        suffix += 1;
+      }
+      usedNames.add(fileName);
+
+      archive.append(buffer, { name: fileName });
+    }
+
+    await archive.finalize();
+  } catch (error) {
+    console.error('Error generando ZIP de galería:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Error al generar el ZIP de la galería' });
+    }
   }
 }
 

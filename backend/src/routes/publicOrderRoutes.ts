@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { createPublicOrder } from '../controllers/publicOrderController';
+import { createPublicOrder, uploadPublicImage } from '../controllers/publicOrderController';
 import { getDayAvailability } from '../services/availability';
+import upload from '../config/multer';
 
 const router = Router();
 
@@ -15,7 +16,18 @@ const createOrderLimiter = rateLimit({
   message: { error: 'Demasiados pedidos desde esta conexión. Intenta de nuevo más tarde.' },
 });
 
+// Looser than the order limiter — one order can carry several custom-image items,
+// so a client legitimately uploads more than once per booking.
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas imágenes subidas desde esta conexión. Intenta de nuevo más tarde.' },
+});
+
 router.post('/', createOrderLimiter, createPublicOrder);
+router.post('/upload-image', uploadLimiter, upload.single('image'), uploadPublicImage);
 
 router.get('/availability', async (req, res) => {
   const date = req.query.date as string;

@@ -54,13 +54,14 @@ model OrderItem {
 }
 
 model ProductDesign {
-  id        String       @id @default(uuid())
-  name      String
-  category  ItemCategory
-  shape     String?
-  imageUrl  String?
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id                String       @id @default(uuid())
+  name              String
+  category          ItemCategory
+  shape             String?
+  imageUrl          String?
+  allowsCustomImage Boolean      @default(false)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   variants   ProductVariant[]
   orderItems OrderItem[]
