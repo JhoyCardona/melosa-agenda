@@ -1,34 +1,37 @@
 import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { router } from 'expo-router';
+import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import api from '../../../src/config/api';
+import OrderCard from '../../../src/components/OrderCard';
 
-interface NotificationOrder {
+interface Order {
   id: string;
   ticketNumber: number;
   clientName: string;
+  clientPhone: string;
+  deliveryAddress: string | null;
   deliveryDate: string;
   status: string;
   totalPrice: string;
   depositPaid: string;
+  notes: string | null;
+  items: any[];
 }
 
-const statusLabels: Record<string, string> = {
-  PENDING_REVIEW: 'Sin revisar',
-  AWAITING_PAYMENT: 'Esperando abono',
-  EXPIRED: 'Vencido, sin pago',
-};
+type Tab = 'porVencer' | 'vencidos';
 
 export default function NotificationsScreen() {
-  const [orders, setOrders] = useState<NotificationOrder[]>([]);
+  const [tab, setTab] = useState<Tab>('vencidos');
+  const [porVencer, setPorVencer] = useState<Order[]>([]);
+  const [vencidos, setVencidos] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const response = await api.get('/orders/notifications');
-      setOrders(response.data);
+      setPorVencer(response.data.porVencer);
+      setVencidos(response.data.vencidos);
     } catch (error) {
       console.error('Error cargando notificaciones:', error);
     } finally {
@@ -38,35 +41,63 @@ export default function NotificationsScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  function formatDate(isoString: string): string {
-    const d = new Date(isoString);
-    const days = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-    const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-    return `${days[d.getUTCDay()]} ${d.getUTCDate()} ${months[d.getUTCMonth()]}`;
+  async function handlePaymentUpdate(orderId: string, status: 'DEPOSIT_PAID' | 'FULLY_PAID', depositAmount?: number) {
+    try {
+      await api.patch(`/orders/${orderId}`, { status, ...(depositAmount !== undefined && { depositPaid: depositAmount }) });
+      load();
+    } catch (error) {
+      Alert.alert('Error', 'No se pudo actualizar el pago');
+    }
   }
+
+  async function handleCancelWithAmount(orderId: string, depositAmount: number) {
+    try {
+      await api.patch(`/orders/${orderId}`, { status: 'CANCELLED', depositPaid: depositAmount });
+      load();
+    } catch (error) {
+      Alert.alert('Error', 'No se pudo cancelar el pedido');
+    }
+  }
+
+  const activeOrders = tab === 'porVencer' ? porVencer : vencidos;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Pedidos por revisar en los próximos 2 días</Text>
+      <Text style={styles.title}>Notificaciones</Text>
+
+      <View style={styles.tabs}>
+        <TouchableOpacity
+          style={[styles.tabButton, tab === 'porVencer' && styles.tabButtonActive]}
+          onPress={() => setTab('porVencer')}
+        >
+          <Text style={[styles.tabText, tab === 'porVencer' && styles.tabTextActive]}>
+            Por vencer{porVencer.length > 0 ? ` (${porVencer.length})` : ''}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, tab === 'vencidos' && styles.tabButtonActive]}
+          onPress={() => setTab('vencidos')}
+        >
+          <Text style={[styles.tabText, tab === 'vencidos' && styles.tabTextActive]}>
+            Vencidos{vencidos.length > 0 ? ` (${vencidos.length})` : ''}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       {loading ? (
         <ActivityIndicator color="#C82333" style={{ marginTop: 30 }} />
-      ) : orders.length === 0 ? (
-        <Text style={styles.emptyText}>No hay pedidos pendientes de pago próximos</Text>
+      ) : activeOrders.length === 0 ? (
+        <Text style={styles.emptyText}>
+          {tab === 'porVencer' ? 'No hay pedidos por revisar o con pago próximo a vencer' : 'No hay pedidos vencidos sin pago'}
+        </Text>
       ) : (
-        orders.map((order) => (
-          <TouchableOpacity
+        activeOrders.map((order) => (
+          <OrderCard
             key={order.id}
-            style={[styles.card, order.status === 'EXPIRED' && styles.cardExpired]}
-            onPress={() => router.push({ pathname: '/(main)/calendar/day', params: { date: order.deliveryDate.slice(0, 10) } })}
-          >
-            <Text style={styles.clientName}>#{order.ticketNumber} · {order.clientName}</Text>
-            <Text style={styles.detail}>Entrega: {formatDate(order.deliveryDate)}</Text>
-            <Text style={styles.detail}>
-              {statusLabels[order.status] ?? order.status} · Total: ${Number(order.totalPrice).toLocaleString()}
-              {Number(order.depositPaid) > 0 ? ` · Abonado: $${Number(order.depositPaid).toLocaleString()}` : ''}
-            </Text>
-          </TouchableOpacity>
+            order={order as any}
+            onPaymentUpdate={(status, depositAmount) => handlePaymentUpdate(order.id, status, depositAmount)}
+            onCancelWithAmount={tab === 'vencidos' ? (amount) => handleCancelWithAmount(order.id, amount) : undefined}
+          />
         ))
       )}
     </ScrollView>
@@ -78,15 +109,9 @@ const styles = StyleSheet.create({
   content: { padding: 20 },
   title: { fontSize: 16, fontWeight: '600', color: '#3E2723', marginBottom: 16 },
   emptyText: { color: '#999', textAlign: 'center', marginTop: 30 },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    borderWidth: 0.5,
-    borderColor: '#F4DCD6',
-    padding: 14,
-    marginBottom: 10,
-  },
-  cardExpired: { borderColor: '#C82333', borderWidth: 1 },
-  clientName: { fontSize: 15, fontWeight: '600', color: '#3E2723' },
-  detail: { fontSize: 13, color: '#666', marginTop: 2 },
+  tabs: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  tabButton: { flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: '#F4DCD6', alignItems: 'center' },
+  tabButtonActive: { backgroundColor: '#C82333' },
+  tabText: { color: '#3E2723', fontSize: 13, fontWeight: '600' },
+  tabTextActive: { color: '#fff' },
 });

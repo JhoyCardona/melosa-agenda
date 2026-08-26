@@ -44,6 +44,10 @@ interface OrderCardProps {
   order: Order;
   actions?: { label: string; onPress: () => void; destructive?: boolean }[];
   onPaymentUpdate?: (status: 'DEPOSIT_PAID' | 'FULLY_PAID', depositAmount?: number) => void;
+  // For orders past their payment deadline (vencidos): cancels the order but keeps
+  // whatever amount the client actually transferred, since Melosa doesn't refund
+  // partial payments (e.g. a minicake needs 100% but she got 20%, keeps it anyway).
+  onCancelWithAmount?: (depositAmount: number) => void;
 }
 
 function formatDeliveryDateTime(isoString: string): string {
@@ -70,7 +74,7 @@ function formatDeliveryDateTime(isoString: string): string {
   return `${dateLabel} · ${hours12}:${minutesStr} ${period}`;
 }
 
-export default function OrderCard({ order, actions = [], onPaymentUpdate }: OrderCardProps) {
+export default function OrderCard({ order, actions = [], onPaymentUpdate, onCancelWithAmount }: OrderCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [depositInput, setDepositInput] = useState('');
@@ -83,8 +87,16 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate }: Orde
     setDepositInput('');
   }
 
+  function handleCancelWithAmount() {
+    const amount = depositInput ? Number(depositInput) : 0;
+    if (Number.isNaN(amount) || amount < 0) return;
+    onCancelWithAmount!(amount);
+    setDepositInput('');
+  }
+
   const showMarkDeposit = onPaymentUpdate && order.status !== 'DEPOSIT_PAID' && order.status !== 'FULLY_PAID' && order.status !== 'COMPLETED' && order.status !== 'CANCELLED';
   const showMarkFull = onPaymentUpdate && order.status !== 'FULLY_PAID' && order.status !== 'COMPLETED' && order.status !== 'CANCELLED';
+  const showCancelWithAmount = onCancelWithAmount && order.status !== 'CANCELLED' && order.status !== 'COMPLETED';
 
   return (
     <>
@@ -139,12 +151,12 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate }: Orde
               </View>
             ))}
 
-            {(showMarkDeposit || showMarkFull) && (
+            {(showMarkDeposit || showMarkFull || showCancelWithAmount) && (
               <View style={styles.depositForm}>
-                {showMarkDeposit && (
+                {(showMarkDeposit || showCancelWithAmount) && (
                   <TextInput
                     style={styles.depositInputFull}
-                    placeholder="¿Cuánto abonó? Ej: 20000"
+                    placeholder="¿Cuánto abonó? Ej: 20000 (vacío = nada)"
                     keyboardType="numeric"
                     value={depositInput}
                     onChangeText={setDepositInput}
@@ -166,6 +178,13 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate }: Orde
                     </TouchableOpacity>
                   )}
                 </View>
+                {showCancelWithAmount && (
+                  <TouchableOpacity style={styles.deleteButton} onPress={handleCancelWithAmount}>
+                    <Text style={styles.deleteText}>
+                      {depositInput ? `Cancelar (se queda con $${Number(depositInput).toLocaleString()})` : 'Cancelar (no pagó nada)'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
 

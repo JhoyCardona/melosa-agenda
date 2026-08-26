@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { PrismaClient, TimeBlock, OrderStatus, Flavor } from '@prisma/client';
 import archiver from 'archiver';
 import { AuthRequest } from '../middleware/authMiddleware';
-import { computePaymentDueDate, todayColombiaDateString } from '../utils/colombiaTime';
+import { computePaymentDueDate } from '../utils/colombiaTime';
 import { reserveSlotPoints, releaseSlotPoints } from '../services/availability';
 
 const prisma = new PrismaClient();
@@ -378,26 +378,37 @@ export async function downloadDayGalleryZip(req: AuthRequest, res: Response) {
   }
 }
 
-// Orders in the next 2 days (Colombia calendar) that still haven't reached a
-// confirmed payment state. Fase 3.4 notifications section.
+// Split in two: "porVencer" still has time to pay (reuses the already-computed
+// paymentDueDate instead of a fixed days-before-delivery rule, so orders booked
+// long in advance don't get flagged early), "vencidos" already missed their
+// deadline (status EXPIRED, set by markExpiredOrders) and need a manual call —
+// pay now or cancel. Fase 3.4 notifications section.
 export async function getNotifications(req: AuthRequest, res: Response) {
   try {
     await markExpiredOrders();
 
-    const today = todayColombiaDateString();
-    const [year, month, day] = today.split('-').map(Number);
-    const rangeStart = new Date(Date.UTC(year, month - 1, day));
-    const rangeEnd = new Date(Date.UTC(year, month - 1, day + 2, 23, 59, 59, 999));
+    const dueSoonCutoff = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    const include = { items: { include: { productDesign: true, variant: true } } };
 
-    const orders = await prisma.order.findMany({
-      where: {
-        status: { in: [OrderStatus.PENDING_REVIEW, OrderStatus.AWAITING_PAYMENT, OrderStatus.EXPIRED] },
-        deliveryDate: { gte: rangeStart, lte: rangeEnd },
-      },
-      orderBy: { deliveryDate: 'asc' },
-    });
+    const [porVencer, vencidos] = await Promise.all([
+      prisma.order.findMany({
+        where: {
+          OR: [
+            { status: OrderStatus.PENDING_REVIEW },
+            { status: OrderStatus.AWAITING_PAYMENT, paymentDueDate: { lte: dueSoonCutoff } },
+          ],
+        },
+        include,
+        orderBy: { deliveryDate: 'asc' },
+      }),
+      prisma.order.findMany({
+        where: { status: OrderStatus.EXPIRED },
+        include,
+        orderBy: { deliveryDate: 'asc' },
+      }),
+    ]);
 
-    res.json(orders);
+    res.json({ porVencer, vencidos });
   } catch (error) {
     console.error('Error obteniendo notificaciones:', error);
     res.status(500).json({ error: 'Error al obtener las notificaciones' });
