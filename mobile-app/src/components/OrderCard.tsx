@@ -73,7 +73,6 @@ function formatDeliveryDateTime(isoString: string): string {
 export default function OrderCard({ order, actions = [], onPaymentUpdate }: OrderCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
-  const [enteringDeposit, setEnteringDeposit] = useState(false);
   const [depositInput, setDepositInput] = useState('');
   const firstItem = order.items[0];
 
@@ -81,7 +80,6 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate }: Orde
     const amount = Number(depositInput);
     if (!depositInput || Number.isNaN(amount) || amount <= 0) return;
     onPaymentUpdate!('DEPOSIT_PAID', amount);
-    setEnteringDeposit(false);
     setDepositInput('');
   }
 
@@ -141,37 +139,33 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate }: Orde
               </View>
             ))}
 
-            {enteringDeposit && (
+            {(showMarkDeposit || showMarkFull) && (
               <View style={styles.depositForm}>
-                <Text style={styles.detailLine}>¿Cuánto abonó?</Text>
-                <View style={styles.depositFormRow}>
+                {showMarkDeposit && (
                   <TextInput
-                    style={styles.depositInput}
-                    placeholder="Ej: 20000"
+                    style={styles.depositInputFull}
+                    placeholder="¿Cuánto abonó? Ej: 20000"
                     keyboardType="numeric"
                     value={depositInput}
                     onChangeText={setDepositInput}
-                    autoFocus
                   />
-                  <TouchableOpacity style={styles.depositButton} onPress={handleConfirmDeposit}>
-                    <Text style={styles.fullPaidText}>Confirmar</Text>
-                  </TouchableOpacity>
+                )}
+                <View style={styles.actionsRow}>
+                  {showMarkDeposit && (
+                    <TouchableOpacity
+                      style={[styles.depositButton, !depositInput && styles.buttonDisabled]}
+                      onPress={handleConfirmDeposit}
+                      disabled={!depositInput}
+                    >
+                      <Text style={styles.fullPaidText}>Marcar abono pagado</Text>
+                    </TouchableOpacity>
+                  )}
+                  {showMarkFull && (
+                    <TouchableOpacity style={styles.fullPaidButton} onPress={() => onPaymentUpdate!('FULLY_PAID')}>
+                      <Text style={styles.fullPaidText}>Marcar pago completo</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-              </View>
-            )}
-
-            {(showMarkDeposit || showMarkFull) && !enteringDeposit && (
-              <View style={styles.actionsRow}>
-                {showMarkDeposit && (
-                  <TouchableOpacity style={styles.depositButton} onPress={() => setEnteringDeposit(true)}>
-                    <Text style={styles.fullPaidText}>Marcar abono pagado</Text>
-                  </TouchableOpacity>
-                )}
-                {showMarkFull && (
-                  <TouchableOpacity style={styles.fullPaidButton} onPress={() => onPaymentUpdate!('FULLY_PAID')}>
-                    <Text style={styles.fullPaidText}>Marcar pago completo</Text>
-                  </TouchableOpacity>
-                )}
               </View>
             )}
 
@@ -238,9 +232,7 @@ const styles = StyleSheet.create({
   deleteText: { color: '#F5EBE0', fontSize: 13, fontWeight: '600' },
   depositButton: { flex: 1, backgroundColor: '#1565C0', borderRadius: 6, paddingVertical: 10, alignItems: 'center' },
   depositForm: { marginTop: 12 },
-  depositFormRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
-  depositInput: {
-    flex: 1,
+  depositInputFull: {
     borderWidth: 1,
     borderColor: '#F4DCD6',
     borderRadius: 6,
@@ -248,7 +240,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     backgroundColor: '#F5EBE0',
     color: '#3E2723',
+    marginBottom: 8,
   },
+  buttonDisabled: { opacity: 0.5 },
   fullPaidButton: { flex: 1, backgroundColor: '#2E7D32', borderRadius: 6, paddingVertical: 10, alignItems: 'center' },
   fullPaidText: { color: '#fff', fontSize: 13, fontWeight: '600' },
 });
