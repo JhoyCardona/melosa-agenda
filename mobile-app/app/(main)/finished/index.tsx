@@ -40,9 +40,9 @@ export default function FinishedScreen() {
     }
   }
 
-  async function handlePaymentUpdate(orderId: string, status: 'DEPOSIT_PAID' | 'FULLY_PAID') {
+  async function handlePaymentUpdate(orderId: string, status: 'DEPOSIT_PAID' | 'FULLY_PAID', depositAmount?: number) {
     try {
-      await api.patch(`/orders/${orderId}`, { status });
+      await api.patch(`/orders/${orderId}`, { status, ...(depositAmount !== undefined && { depositPaid: depositAmount }) });
       loadOrders();
     } catch (error) {
       Alert.alert('Error', 'No se pudo actualizar el pago');
@@ -119,7 +119,7 @@ export default function FinishedScreen() {
               key={order.id}
               order={order}
               actions={getActionsForTab(order.id)}
-              onPaymentUpdate={(status) => handlePaymentUpdate(order.id, status)}
+              onPaymentUpdate={(status, depositAmount) => handlePaymentUpdate(order.id, status, depositAmount)}
             />
           ))
         )}

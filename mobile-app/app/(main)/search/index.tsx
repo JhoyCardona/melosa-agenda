@@ -24,10 +24,10 @@ export default function SearchByTicketScreen() {
     }
   }
 
-  async function handlePaymentUpdate(status: 'DEPOSIT_PAID' | 'FULLY_PAID') {
+  async function handlePaymentUpdate(status: 'DEPOSIT_PAID' | 'FULLY_PAID', depositAmount?: number) {
     if (!order) return;
     try {
-      await api.patch(`/orders/${order.id}`, { status });
+      await api.patch(`/orders/${order.id}`, { status, ...(depositAmount !== undefined && { depositPaid: depositAmount }) });
       handleSearch();
     } catch (error) {
       Alert.alert('Error', 'No se pudo actualizar el pago');

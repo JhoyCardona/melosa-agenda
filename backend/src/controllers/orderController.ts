@@ -348,6 +348,11 @@ export async function updateOrder(req: AuthRequest, res: Response) {
     const newTimeBlock = timeBlock !== undefined ? timeBlock : existingOrder.timeBlock;
     const totalPoints = existingOrder.items.reduce((sum, i) => sum + i.pointsAtOrder, 0);
 
+    // Marking FULLY_PAID always means the whole order is settled — auto-fill
+    // depositPaid with the total unless a specific amount was sent explicitly.
+    const autoFullDepositPaid =
+      status === OrderStatus.FULLY_PAID && depositPaid === undefined ? existingOrder.totalPrice : undefined;
+
     const enteringCancelled = status === OrderStatus.CANCELLED && existingOrder.status !== OrderStatus.CANCELLED;
     const wasAlreadyCancelled = existingOrder.status === OrderStatus.CANCELLED;
     const isRescheduling = (newDateStr !== oldDateStr || newTimeBlock !== existingOrder.timeBlock) && !wasAlreadyCancelled;
@@ -374,6 +379,7 @@ export async function updateOrder(req: AuthRequest, res: Response) {
           ...(notes !== undefined && { notes }),
           ...(totalPrice !== undefined && { totalPrice }),
           ...(depositPaid !== undefined && { depositPaid }),
+          ...(autoFullDepositPaid !== undefined && { depositPaid: autoFullDepositPaid }),
           ...(status !== undefined && { status }),
           ...(paymentDueDate !== undefined && { paymentDueDate }),
         },

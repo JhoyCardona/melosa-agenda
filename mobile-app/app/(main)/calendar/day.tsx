@@ -80,9 +80,9 @@ export default function DayDetailScreen() {
     }
   }
 
-  async function handlePaymentUpdate(orderId: string, status: 'DEPOSIT_PAID' | 'FULLY_PAID') {
+  async function handlePaymentUpdate(orderId: string, status: 'DEPOSIT_PAID' | 'FULLY_PAID', depositAmount?: number) {
     try {
-      await api.patch(`/orders/${orderId}`, { status });
+      await api.patch(`/orders/${orderId}`, { status, ...(depositAmount !== undefined && { depositPaid: depositAmount }) });
       loadData();
     } catch (error) {
       Alert.alert('Error', 'No se pudo actualizar el pago');
@@ -163,7 +163,7 @@ export default function DayDetailScreen() {
           <OrderCard
             key={order.id}
             order={order as any}
-            onPaymentUpdate={(status) => handlePaymentUpdate(order.id, status)}
+            onPaymentUpdate={(status, depositAmount) => handlePaymentUpdate(order.id, status, depositAmount)}
             actions={[
               { label: 'Completar', onPress: () => handleMarkCompleted(order.id) },
               { label: 'Cancelar', onPress: () => handleCancel(order.id) },

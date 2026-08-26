@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, TextInput } from 'react-native';
 import ImageViewerModal from './ImageViewerModal';
 
 interface OrderItem {
@@ -43,7 +43,7 @@ function paymentDotColor(status: string): string {
 interface OrderCardProps {
   order: Order;
   actions?: { label: string; onPress: () => void; destructive?: boolean }[];
-  onPaymentUpdate?: (status: 'DEPOSIT_PAID' | 'FULLY_PAID') => void;
+  onPaymentUpdate?: (status: 'DEPOSIT_PAID' | 'FULLY_PAID', depositAmount?: number) => void;
 }
 
 function formatDeliveryDateTime(isoString: string): string {
@@ -73,7 +73,17 @@ function formatDeliveryDateTime(isoString: string): string {
 export default function OrderCard({ order, actions = [], onPaymentUpdate }: OrderCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
+  const [enteringDeposit, setEnteringDeposit] = useState(false);
+  const [depositInput, setDepositInput] = useState('');
   const firstItem = order.items[0];
+
+  function handleConfirmDeposit() {
+    const amount = Number(depositInput);
+    if (!depositInput || Number.isNaN(amount) || amount <= 0) return;
+    onPaymentUpdate!('DEPOSIT_PAID', amount);
+    setEnteringDeposit(false);
+    setDepositInput('');
+  }
 
   const showMarkDeposit = onPaymentUpdate && order.status !== 'DEPOSIT_PAID' && order.status !== 'FULLY_PAID' && order.status !== 'COMPLETED' && order.status !== 'CANCELLED';
   const showMarkFull = onPaymentUpdate && order.status !== 'FULLY_PAID' && order.status !== 'COMPLETED' && order.status !== 'CANCELLED';
@@ -131,10 +141,29 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate }: Orde
               </View>
             ))}
 
-            {(showMarkDeposit || showMarkFull) && (
+            {enteringDeposit && (
+              <View style={styles.depositForm}>
+                <Text style={styles.detailLine}>¿Cuánto abonó?</Text>
+                <View style={styles.depositFormRow}>
+                  <TextInput
+                    style={styles.depositInput}
+                    placeholder="Ej: 20000"
+                    keyboardType="numeric"
+                    value={depositInput}
+                    onChangeText={setDepositInput}
+                    autoFocus
+                  />
+                  <TouchableOpacity style={styles.depositButton} onPress={handleConfirmDeposit}>
+                    <Text style={styles.fullPaidText}>Confirmar</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {(showMarkDeposit || showMarkFull) && !enteringDeposit && (
               <View style={styles.actionsRow}>
                 {showMarkDeposit && (
-                  <TouchableOpacity style={styles.depositButton} onPress={() => onPaymentUpdate!('DEPOSIT_PAID')}>
+                  <TouchableOpacity style={styles.depositButton} onPress={() => setEnteringDeposit(true)}>
                     <Text style={styles.fullPaidText}>Marcar abono pagado</Text>
                   </TouchableOpacity>
                 )}
@@ -208,6 +237,18 @@ const styles = StyleSheet.create({
   deleteButton: { flex: 1, backgroundColor: '#C82333', borderRadius: 6, paddingVertical: 10, alignItems: 'center' },
   deleteText: { color: '#F5EBE0', fontSize: 13, fontWeight: '600' },
   depositButton: { flex: 1, backgroundColor: '#1565C0', borderRadius: 6, paddingVertical: 10, alignItems: 'center' },
+  depositForm: { marginTop: 12 },
+  depositFormRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  depositInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#F4DCD6',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: '#F5EBE0',
+    color: '#3E2723',
+  },
   fullPaidButton: { flex: 1, backgroundColor: '#2E7D32', borderRadius: 6, paddingVertical: 10, alignItems: 'center' },
   fullPaidText: { color: '#fff', fontSize: 13, fontWeight: '600' },
 });
