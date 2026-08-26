@@ -4,7 +4,26 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>web</title>
+    <title>Melosa</title>
+    <script>
+      // GitHub Pages has no server-side rewrites, so a hard refresh on a deep
+      // link (e.g. /melosa-agenda/agendar) 404s. The matching redirect script
+      // in public/404.html encodes that path into a query string and bounces
+      // here; this restores the real path via history.replaceState before
+      // React Router ever sees it. See https://github.com/rafgraph/spa-github-pages
+      (function (l) {
+        if (l.search[1] === '/') {
+          var decoded = l.search
+            .slice(1)
+            .split('&')
+            .map(function (s) {
+              return s.replace(/~and~/g, '&');
+            })
+            .join('?');
+          window.history.replaceState(null, '', l.pathname.slice(0, -1) + decoded + l.hash);
+        }
+      })(window.location);
+    </script>
   </head>
   <body>
     <div id="root"></div>
