@@ -31,13 +31,15 @@ export function todayColombiaDateString(now: Date = new Date()): string {
   ).padStart(2, '0')}`;
 }
 
-// Business rule: payment deadline is 2 days before delivery, end of day Colombia time,
-// OR 24h from order creation — whichever is EARLIER (protects close-to-delivery orders).
+// Business rule: payment deadline is 2 days before delivery (end of day Colombia
+// time), unless that's already too close to (or past) order creation, in which case
+// it falls back to 24h from creation instead. So: take the LATER of the two — the
+// 24h floor only kicks in when 2-days-before-delivery wouldn't give any real margin.
 export function computePaymentDueDate(deliveryDateStr: string, createdAt: Date): Date {
   const twoDaysBeforeDeadline = endOfDayColombia(subtractDays(deliveryDateStr, 2));
   const twentyFourHoursFromCreation = new Date(createdAt.getTime() + 24 * 60 * 60 * 1000);
 
-  return twoDaysBeforeDeadline < twentyFourHoursFromCreation
+  return twoDaysBeforeDeadline > twentyFourHoursFromCreation
     ? twoDaysBeforeDeadline
     : twentyFourHoursFromCreation;
 }
