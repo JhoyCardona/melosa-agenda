@@ -429,6 +429,10 @@ export async function updateOrder(req: AuthRequest, res: Response) {
     return res.status(400).json({ error: `timeBlock debe ser uno de: ${VALID_TIME_BLOCKS.join(', ')}` });
   }
 
+  if (depositPaid !== undefined && (typeof depositPaid !== 'number' || Number.isNaN(depositPaid) || depositPaid < 0)) {
+    return res.status(400).json({ error: 'depositPaid debe ser un número mayor o igual a 0' });
+  }
+
   try {
     const existingOrder = await prisma.order.findUnique({
       where: { id: orderId },
@@ -437,6 +441,16 @@ export async function updateOrder(req: AuthRequest, res: Response) {
 
     if (!existingOrder) {
       return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    // A FULLY_PAID/COMPLETED order already has confirmed money on record — cancelling
+    // it would silently wipe that depositPaid amount, so it's blocked outright rather
+    // than left to the mobile UI (which just hides the button) to enforce.
+    if (
+      status === OrderStatus.CANCELLED &&
+      (existingOrder.status === OrderStatus.FULLY_PAID || existingOrder.status === OrderStatus.COMPLETED)
+    ) {
+      return res.status(409).json({ error: 'No se puede cancelar un pedido ya pagado por completo o entregado' });
     }
 
     // Entering AWAITING_PAYMENT is when the payment deadline gets set (business rule:
