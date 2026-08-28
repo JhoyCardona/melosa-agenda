@@ -45,6 +45,10 @@ export async function uploadPublicImage(req: Request, res: Response) {
 }
 
 const VALID_FLAVORS = Object.values(Flavor);
+// A self-service web order bigger than this should go through WhatsApp / the admin
+// panel instead — also caps spam and "one order eats half the day" cases.
+const MAX_ITEMS_PER_PUBLIC_ORDER = 12;
+const MAX_CUSTOM_TEXT_LENGTH = 200;
 
 interface PublicOrderItemInput {
   productDesignId: string;
@@ -55,8 +59,7 @@ interface PublicOrderItemInput {
 }
 
 // Public, no-auth endpoint clients use to book their own order from the web form.
-// Always lands as PENDING_REVIEW/WEB_PUBLIC — Melosa still reviews and approves it
-// manually before it moves to AWAITING_PAYMENT.
+// Lands as AWAITING_PAYMENT/WEB_PUBLIC with its payment deadline already set.
 export async function createPublicOrder(req: Request, res: Response) {
   const { clientName, clientPhone, deliveryDate, deliveryAddress, notes, items } = req.body;
 
@@ -68,6 +71,21 @@ export async function createPublicOrder(req: Request, res: Response) {
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'items debe ser un arreglo con al menos un producto' });
+  }
+
+  if (items.length > MAX_ITEMS_PER_PUBLIC_ORDER) {
+    return res.status(400).json({
+      error: `Un pedido web admite hasta ${MAX_ITEMS_PER_PUBLIC_ORDER} productos. Para más, escríbenos por WhatsApp.`,
+    });
+  }
+
+  const overLongText = (items as PublicOrderItemInput[]).some(
+    (item) => (item.customText?.trim().length ?? 0) > MAX_CUSTOM_TEXT_LENGTH
+  );
+  if (overLongText) {
+    return res.status(400).json({
+      error: `El texto personalizado no puede pasar de ${MAX_CUSTOM_TEXT_LENGTH} caracteres.`,
+    });
   }
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(deliveryDate)) {
@@ -99,10 +117,13 @@ export async function createPublicOrder(req: Request, res: Response) {
 
   try {
     const variantIds = (items as PublicOrderItemInput[]).map((item) => item.variantId);
-    const variants = await prisma.productVariant.findMany({
-      where: { id: { in: variantIds } },
-    });
+    const designIds = (items as PublicOrderItemInput[]).map((item) => item.productDesignId);
+    const [variants, designs] = await Promise.all([
+      prisma.productVariant.findMany({ where: { id: { in: variantIds } } }),
+      prisma.productDesign.findMany({ where: { id: { in: designIds } } }),
+    ]);
     const variantById = new Map(variants.map((v) => [v.id, v]));
+    const designById = new Map(designs.map((d) => [d.id, d]));
 
     for (const item of items as PublicOrderItemInput[]) {
       const variant = variantById.get(item.variantId);
@@ -149,14 +170,17 @@ export async function createPublicOrder(req: Request, res: Response) {
           items: {
             create: (items as PublicOrderItemInput[]).map((item) => {
               const variant = variantById.get(item.variantId)!;
+              const design = designById.get(item.productDesignId)!;
+              // Honour the design's flags even if the client posts these fields
+              // directly (the form already hides the inputs when not allowed).
               return {
                 productDesignId: item.productDesignId,
                 variantId: item.variantId,
                 priceAtOrder: variant.price,
                 pointsAtOrder: variant.points,
                 flavor: item.flavor,
-                customImageUrl: item.customImageUrl || null,
-                customText: item.customText || null,
+                customImageUrl: design.allowsCustomImage ? item.customImageUrl || null : null,
+                customText: design.allowsCustomText ? item.customText?.trim() || null : null,
               };
             }),
           },

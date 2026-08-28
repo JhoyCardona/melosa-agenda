@@ -10,6 +10,12 @@ import './BookingPage.css';
 const flavorLabels: Record<Flavor, string> = { VAINILLA: 'Vainilla', CHOCOLATE: 'Chocolate' };
 const FLAVORS: Flavor[] = ['VAINILLA', 'CHOCOLATE'];
 
+// Mirrors the backend cap (createPublicOrder). Bigger orders go through WhatsApp.
+const MAX_ITEMS = 12;
+const MAX_CUSTOM_TEXT = 200;
+// Last confirmation, kept only to survive an accidental page reload (consumed once).
+const CONFIRM_KEY = 'melosa_last_confirmation';
+
 // Earliest bookable delivery date = today (Colombia, UTC-5) + 2 calendar days,
 // i.e. the 48h booking cutoff. The public order endpoint re-checks this.
 function earliestDeliveryDateString(): string {
@@ -98,6 +104,28 @@ export default function BookingPage() {
     if (designsLoaded && !design) navigate('/catalogo', { replace: true });
   }, [designsLoaded, design, navigate]);
 
+  // On mount: always consume any stored confirmation, but only re-show it when
+  // this was an actual page reload — so an accidental F5 on "¡Pedido recibido!"
+  // doesn't wipe the ticket number, while navigating back to book again doesn't
+  // resurrect the old confirmation.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(CONFIRM_KEY);
+      if (!raw) return;
+      sessionStorage.removeItem(CONFIRM_KEY);
+      const nav = performance.getEntriesByType('navigation')[0] as
+        | PerformanceNavigationTiming
+        | undefined;
+      if (nav?.type !== 'reload') return;
+      const saved = JSON.parse(raw) as { result: OrderResult; name: string; breakdown: string };
+      setResult(saved.result);
+      setConfirmedName(saved.name);
+      setConfirmedBreakdown(saved.breakdown);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   // Reset the configurator whenever the design changes.
   useEffect(() => {
     setVariantId(design && design.variants.length > 0 ? design.variants[0].id : '');
@@ -150,8 +178,10 @@ export default function BookingPage() {
     }
   }
 
+  const cartFull = draft.items.length >= MAX_ITEMS;
+
   function handleAddItem() {
-    if (!design || !variant) return;
+    if (!design || !variant || cartFull) return;
     draft.addItem({
       key: newKey(),
       designId: design.id,
@@ -200,10 +230,20 @@ export default function BookingPage() {
           customImageUrl: i.customImageUrl,
         })),
       });
-      setConfirmedName(draft.clientName.trim());
-      setConfirmedBreakdown(itemsBreakdown(draft.items));
+      const name = draft.clientName.trim();
+      const breakdown = itemsBreakdown(draft.items);
+      setConfirmedName(name);
+      setConfirmedBreakdown(breakdown);
       setResult(response.data);
       draft.reset();
+      try {
+        sessionStorage.setItem(
+          CONFIRM_KEY,
+          JSON.stringify({ result: response.data, name, breakdown })
+        );
+      } catch {
+        // storage disabled — the confirmation still shows, just won't survive a reload
+      }
     } catch (error) {
       const message =
         (error as { response?: { data?: { error?: string } } })?.response?.data?.error ??
@@ -333,6 +373,7 @@ export default function BookingPage() {
               <label className="field-label">Texto personalizado (opcional)</label>
               <input
                 type="text"
+                maxLength={MAX_CUSTOM_TEXT}
                 placeholder="Una frase o un número. Ej: Feliz cumple Ana — 30"
                 value={customText}
                 onChange={(e) => setCustomText(e.target.value)}
@@ -356,11 +397,16 @@ export default function BookingPage() {
             type="button"
             className="btn btn-primary"
             onClick={handleAddItem}
-            disabled={!variant || uploadingImage}
+            disabled={!variant || uploadingImage || cartFull}
           >
             Agregar al pedido
           </button>
-          {justAdded && <p className="added-flash">Agregado a tu pedido ✓</p>}
+          {cartFull && (
+            <p className="warning">
+              Un pedido web admite hasta {MAX_ITEMS} productos. Para más, escríbenos por WhatsApp.
+            </p>
+          )}
+          {justAdded && !cartFull && <p className="added-flash">Agregado a tu pedido ✓</p>}
         </section>
 
         {/* ---------- Carrito ---------- */}
