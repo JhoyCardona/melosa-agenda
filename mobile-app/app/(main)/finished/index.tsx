@@ -4,12 +4,14 @@ import { useFocusEffect } from 'expo-router';
 import api from '../../../src/config/api';
 import OrderCard from '../../../src/components/OrderCard';
 
-type TabStatus = 'COMPLETED' | 'CANCELLED' | 'EXPIRED';
+// EXPIRED orders live only in Notificaciones → "Vencidos" (that's where the
+// "cancel keeping the partial deposit" action is). This screen is just the
+// terminal archive.
+type TabStatus = 'COMPLETED' | 'CANCELLED';
 
 const tabs: { label: string; status: TabStatus }[] = [
   { label: 'Completados', status: 'COMPLETED' },
   { label: 'Cancelados', status: 'CANCELLED' },
-  { label: 'Vencidos', status: 'EXPIRED' },
 ];
 
 export default function FinishedScreen() {
@@ -31,33 +33,6 @@ export default function FinishedScreen() {
 
   useFocusEffect(useCallback(() => { loadOrders(); }, [loadOrders]));
 
-  async function handleReactivate(orderId: string) {
-    try {
-      await api.patch(`/orders/${orderId}`, { status: 'PENDING_REVIEW' });
-      loadOrders();
-    } catch (error) {
-      Alert.alert('Error', 'No se pudo reactivar el pedido');
-    }
-  }
-
-  async function handlePaymentUpdate(orderId: string, status: 'DEPOSIT_PAID' | 'FULLY_PAID', depositAmount?: number) {
-    try {
-      await api.patch(`/orders/${orderId}`, { status, ...(depositAmount !== undefined && { depositPaid: depositAmount }) });
-      loadOrders();
-    } catch (error) {
-      Alert.alert('Error', 'No se pudo actualizar el pago');
-    }
-  }
-
-  async function handleMarkCompleted(orderId: string) {
-    try {
-      await api.patch(`/orders/${orderId}`, { status: 'COMPLETED' });
-      loadOrders();
-    } catch (error) {
-      Alert.alert('Error', 'No se pudo actualizar el pedido');
-    }
-  }
-
   function handleDelete(orderId: string) {
     Alert.alert('Eliminar pedido', '¿Estás segura? Esta acción no se puede deshacer.', [
       { text: 'Cancelar', style: 'cancel' },
@@ -77,19 +52,10 @@ export default function FinishedScreen() {
   }
 
   function getActionsForTab(orderId: string) {
-    if (activeTab === 'COMPLETED') {
-      return [];
-    }
     if (activeTab === 'CANCELLED') {
-      return [
-        { label: 'Reactivar', onPress: () => handleReactivate(orderId) },
-        { label: 'Eliminar', onPress: () => handleDelete(orderId), destructive: true },
-      ];
+      return [{ label: 'Eliminar', onPress: () => handleDelete(orderId), destructive: true }];
     }
-    return [
-      { label: 'Completar', onPress: () => handleMarkCompleted(orderId) },
-      { label: 'Eliminar', onPress: () => handleDelete(orderId), destructive: true },
-    ];
+    return []; // COMPLETED — terminal, no actions
   }
 
   return (
@@ -115,12 +81,7 @@ export default function FinishedScreen() {
           <Text style={styles.emptyText}>No hay pedidos en esta categoría</Text>
         ) : (
           orders.map((order) => (
-            <OrderCard
-              key={order.id}
-              order={order}
-              actions={getActionsForTab(order.id)}
-              onPaymentUpdate={(status, depositAmount) => handlePaymentUpdate(order.id, status, depositAmount)}
-            />
+            <OrderCard key={order.id} order={order} actions={getActionsForTab(order.id)} />
           ))
         )}
       </ScrollView>
