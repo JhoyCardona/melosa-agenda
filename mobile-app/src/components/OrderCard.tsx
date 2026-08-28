@@ -9,7 +9,7 @@ interface OrderItem {
   flavor: 'VAINILLA' | 'CHOCOLATE';
   customImageUrl: string | null;
   customText: string | null;
-  productDesign: { name: string };
+  productDesign: { name: string; imageUrl: string | null };
   variant: { label: string };
 }
 
@@ -25,6 +25,9 @@ interface Order {
   clientPhone: string;
   deliveryAddress: string | null;
   deliveryDate: string;
+  // Minutes-from-midnight on the delivery timeline. Pickup time = start + duration.
+  deliveryStartMinutes: number;
+  deliveryDurationMin: number;
   totalPrice: string;
   depositPaid: string;
   status: string;
@@ -74,6 +77,15 @@ function formatDeliveryDateTime(isoString: string): string {
   return `${dateLabel} · ${hours12}:${minutesStr} ${period}`;
 }
 
+// minutes-from-midnight -> "3:40 p.m."
+function minutesToLabel(minutesFromMidnight: number): string {
+  let hour = Math.floor(minutesFromMidnight / 60);
+  const minute = minutesFromMidnight % 60;
+  const meridiem = hour >= 12 ? 'p.m.' : 'a.m.';
+  hour = hour % 12 || 12;
+  return `${hour}:${String(minute).padStart(2, '0')} ${meridiem}`;
+}
+
 export default function OrderCard({ order, actions = [], onPaymentUpdate, onCancelWithAmount }: OrderCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
@@ -106,7 +118,12 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
         activeOpacity={0.8}
       >
         <View style={styles.headerRow}>
-          <Text style={styles.clientName}>#{order.ticketNumber} · {order.clientName}</Text>
+          <Text style={styles.clientName} numberOfLines={1}>#{order.ticketNumber} · {order.clientName}</Text>
+          {(order.status === 'AWAITING_PAYMENT' || order.status === 'EXPIRED') && (
+            <View style={styles.unpaidBadge}>
+              <Text style={styles.unpaidBadgeText}>NO PAGÓ</Text>
+            </View>
+          )}
           <View style={[styles.paymentDot, { backgroundColor: paymentDotColor(order.status) }]} />
         </View>
         <Text style={styles.category}>
@@ -114,6 +131,12 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
           {order.items.length > 1 ? ` + ${order.items.length - 1} más` : ''}
         </Text>
         <Text style={styles.price}>Total: ${Number(order.totalPrice).toLocaleString()}</Text>
+        {!expanded && typeof order.deliveryStartMinutes === 'number' && (
+          <Text style={styles.pickupLine}>
+            Recoge desde las{' '}
+            {minutesToLabel(order.deliveryStartMinutes + (order.deliveryDurationMin ?? 0))}
+          </Text>
+        )}
 
         {expanded && (
           <View style={styles.expandedSection}>
@@ -121,6 +144,12 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
 
             <Text style={styles.blockLabel}>Datos de contacto</Text>
             <Text style={styles.detailLine}>Entrega: {formatDeliveryDateTime(order.deliveryDate)}</Text>
+            {typeof order.deliveryStartMinutes === 'number' && (
+              <Text style={styles.detailLine}>
+                Listo a partir de las{' '}
+                {minutesToLabel(order.deliveryStartMinutes + (order.deliveryDurationMin ?? 0))}
+              </Text>
+            )}
             <Text style={styles.detailLine}>Teléfono: {order.clientPhone}</Text>
             {order.deliveryAddress ? (
               <Text style={styles.detailLine}>Dirección: {order.deliveryAddress}</Text>
@@ -130,16 +159,20 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
 
             <Text style={styles.blockLabel}>Productos ({order.items.length})</Text>
 
-            {order.items.map((item, index) => (
+            {order.items.map((item, index) => {
+              // Client's print image if there is one, otherwise the catalog photo
+              // of the design (so Melosa always sees what the order looks like).
+              const photoUrl = item.customImageUrl ?? item.productDesign.imageUrl;
+              return (
               <View key={item.id} style={styles.itemDetailCard}>
                 <Text style={styles.itemDetailTitle}>
                   {index + 1}. {item.productDesign.name} - {item.variant.label}
                 </Text>
                 <Text style={styles.detailLine}>Sabor: {flavorLabels[item.flavor] ?? item.flavor}</Text>
 
-                {item.customImageUrl && (
-                  <TouchableOpacity onPress={() => setViewingImage(item.customImageUrl)}>
-                    <Image source={{ uri: item.customImageUrl }} style={styles.itemImage} />
+                {photoUrl && (
+                  <TouchableOpacity onPress={() => setViewingImage(photoUrl)}>
+                    <Image source={{ uri: photoUrl }} style={styles.itemImage} />
                   </TouchableOpacity>
                 )}
 
@@ -149,7 +182,8 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
 
                 <Text style={styles.itemDetailPrice}>Precio: ${Number(item.priceAtOrder).toLocaleString()}</Text>
               </View>
-            ))}
+              );
+            })}
 
             {(showMarkDeposit || showMarkFull || showCancelWithAmount) && (
               <View style={styles.depositForm}>
@@ -227,8 +261,11 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   clientName: { fontSize: 15, fontWeight: '600', color: '#3E2723', flex: 1 },
   paymentDot: { width: 12, height: 12, borderRadius: 6, marginLeft: 8 },
+  unpaidBadge: { backgroundColor: '#C82333', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 8 },
+  unpaidBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
   category: { fontSize: 13, color: '#C82333', marginTop: 2 },
   price: { fontSize: 13, color: '#999', marginTop: 2 },
+  pickupLine: { fontSize: 12, color: '#3E2723', marginTop: 2 },
   expandedSection: { marginTop: 4 },
   divider: { height: 1, backgroundColor: '#F4DCD6', marginVertical: 12 },
   blockLabel: {

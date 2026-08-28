@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
-import { PrismaClient, TimeBlock, Flavor } from '@prisma/client';
+import { PrismaClient, Flavor, OrderStatus } from '@prisma/client';
 import { isBusinessDay } from '../utils/colombianHolidays';
-import { reserveSlotPoints } from '../services/availability';
+import { computePaymentDueDate, earliestPublicDeliveryDate } from '../utils/colombiaTime';
+import { reserveDeliverySlot, minutesToLabel, isNotEnoughRoomError } from '../services/availability';
 import cloudinary from '../config/cloudinary';
 
 const prisma = new PrismaClient();
@@ -43,7 +44,6 @@ export async function uploadPublicImage(req: Request, res: Response) {
   }
 }
 
-const VALID_TIME_BLOCKS = Object.values(TimeBlock);
 const VALID_FLAVORS = Object.values(Flavor);
 
 interface PublicOrderItemInput {
@@ -58,24 +58,43 @@ interface PublicOrderItemInput {
 // Always lands as PENDING_REVIEW/WEB_PUBLIC — Melosa still reviews and approves it
 // manually before it moves to AWAITING_PAYMENT.
 export async function createPublicOrder(req: Request, res: Response) {
-  const { clientName, clientPhone, deliveryDate, timeBlock, deliveryAddress, notes, items } = req.body;
+  const { clientName, clientPhone, deliveryDate, deliveryAddress, notes, items } = req.body;
 
-  if (!clientName || !clientPhone || !deliveryDate || !timeBlock) {
+  if (!clientName || !clientPhone || !deliveryDate) {
     return res.status(400).json({
-      error: 'clientName, clientPhone, deliveryDate y timeBlock son requeridos',
+      error: 'clientName, clientPhone y deliveryDate son requeridos',
     });
-  }
-
-  if (!VALID_TIME_BLOCKS.includes(timeBlock)) {
-    return res.status(400).json({ error: `timeBlock debe ser uno de: ${VALID_TIME_BLOCKS.join(', ')}` });
   }
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'items debe ser un arreglo con al menos un producto' });
   }
 
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(deliveryDate)) {
+    return res.status(400).json({ error: 'deliveryDate debe tener el formato YYYY-MM-DD' });
+  }
+
+  // 48h booking cutoff (also enforced by the form's date picker; re-checked here
+  // because the endpoint is public). Catches past dates too, since `earliest` is
+  // always today (Colombia) + 2 days.
+  const earliest = earliestPublicDeliveryDate();
+  if (deliveryDate < earliest) {
+    return res.status(400).json({
+      error: `Necesitamos al menos 48 horas de anticipación. Elige una fecha a partir del ${earliest}.`,
+    });
+  }
+
   if (!isBusinessDay(deliveryDate)) {
     return res.status(400).json({ error: 'No se agenda ese día (domingo o festivo)' });
+  }
+
+  // Accept any international number — clients on holiday book from foreign lines.
+  // Only strip formatting; require enough digits to be a real number.
+  const normalizedPhone = String(clientPhone).replace(/[^\d+]/g, '');
+  if (normalizedPhone.replace(/\D/g, '').length < 7) {
+    return res.status(400).json({
+      error: 'El teléfono no parece válido. Escríbelo con el indicativo del país si es del exterior.',
+    });
   }
 
   try {
@@ -95,29 +114,37 @@ export async function createPublicOrder(req: Request, res: Response) {
       }
     }
 
-    const totalPoints = (items as PublicOrderItemInput[]).reduce(
-      (sum, item) => sum + variantById.get(item.variantId)!.points,
-      0
-    );
     const totalPrice = (items as PublicOrderItemInput[]).reduce(
       (sum, item) => sum + Number(variantById.get(item.variantId)!.price),
       0
     );
+    const rawDurationMin = (items as PublicOrderItemInput[]).reduce(
+      (sum, item) => sum + variantById.get(item.variantId)!.prepMinutes,
+      0
+    );
 
     const order = await prisma.$transaction(async (tx) => {
-      // Throws if the block doesn't have enough free points, rolling back the whole
-      // transaction — no order/points get created if the slot filled up meanwhile.
-      await reserveSlotPoints(tx, deliveryDate, timeBlock, totalPoints);
+      // Assigns the pickup slot and advances the day cursor, all-or-nothing with
+      // the order create. Throws (rolling back) if the day is already full.
+      const slot = await reserveDeliverySlot(tx, deliveryDate, rawDurationMin);
+
+      // Every order enters AWAITING_PAYMENT right away: the payment deadline
+      // (pickup time - 24h) starts counting from creation. It's excluded from the
+      // "resumen para hornear" until Melosa marks a payment.
+      const pickupMinutes = slot.startMinutes + slot.durationMin;
 
       return tx.order.create({
         data: {
           clientName,
-          clientPhone,
+          clientPhone: normalizedPhone,
           deliveryDate: new Date(deliveryDate),
-          timeBlock,
+          deliveryStartMinutes: slot.startMinutes,
+          deliveryDurationMin: slot.durationMin,
           deliveryAddress: deliveryAddress || null,
           notes: notes || null,
           source: 'WEB_PUBLIC',
+          status: OrderStatus.AWAITING_PAYMENT,
+          paymentDueDate: computePaymentDueDate(deliveryDate, pickupMinutes),
           totalPrice,
           items: {
             create: (items as PublicOrderItemInput[]).map((item) => {
@@ -138,14 +165,16 @@ export async function createPublicOrder(req: Request, res: Response) {
       });
     });
 
-    res.status(201).json(order);
+    res.status(201).json({
+      ...order,
+      deliveryTimeLabel: minutesToLabel(order.deliveryStartMinutes + order.deliveryDurationMin),
+    });
   } catch (error) {
     console.error('Error creando pedido público:', error);
 
-    // reserveSlotPoints throws a plain Error for "not enough capacity" — that's the
-    // only expected failure mode here, so it's the only one we surface to the client.
-    if (error instanceof Error && error.message.includes('no tiene suficiente disponibilidad')) {
-      return res.status(409).json({ error: error.message });
+    // "Day is full" is the only expected failure mode here — surface it as 409.
+    if (isNotEnoughRoomError(error)) {
+      return res.status(409).json({ error: (error as Error).message });
     }
 
     res.status(500).json({ error: 'Error al crear el pedido' });

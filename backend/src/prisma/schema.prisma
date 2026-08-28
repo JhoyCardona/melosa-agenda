@@ -21,14 +21,19 @@ model Order {
   clientName             String
   clientPhone            String
   deliveryDate           DateTime    @db.Date
-  timeBlock              TimeBlock
+  // Delivery is scheduled on a continuous per-day timeline, 2:00pm-7:00pm
+  // (minutes 0-300). deliveryStartMinutes = where this order starts,
+  // deliveryDurationMin = how long it occupies (sum of variant prepMinutes,
+  // rounded up to 5). The customer-facing pickup time is start + duration.
+  deliveryStartMinutes   Int
+  deliveryDurationMin     Int
   deliveryAddress        String?
   totalPrice             Decimal     @default(0)
   depositPaid            Decimal     @default(0)
   requiredPaymentPercent Int         @default(100)
   paymentDueDate         DateTime?
   notes                  String?
-  status                 OrderStatus @default(PENDING_REVIEW)
+  status                 OrderStatus @default(AWAITING_PAYMENT)
   source                 OrderSource @default(MANUAL)
   notifiedAt             DateTime?
   createdAt              DateTime    @default(now())
@@ -60,6 +65,7 @@ model ProductDesign {
   shape             String?
   imageUrl          String?
   allowsCustomImage Boolean      @default(false)
+  allowsCustomText  Boolean      @default(true)
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
@@ -74,27 +80,25 @@ model ProductVariant {
   label           String
   price           Decimal
   points          Int
+  // Minutes this variant consumes on the delivery timeline. Set per variant
+  // from the admin catalog screen. Replaces `points` as the scheduling unit;
+  // `points` stays only for historical OrderItem.pointsAtOrder records.
+  prepMinutes     Int           @default(20)
   enPromocion     Boolean       @default(false)
   createdAt       DateTime      @default(now())
 
   orderItems OrderItem[]
 }
 
-model TimeSlotUsage {
-  id         String   @id @default(uuid())
-  date       DateTime @db.Date
-  timeBlock  TimeBlock
-  pointsUsed Int      @default(0)
-
-  @@unique([date, timeBlock])
-}
-
-enum TimeBlock {
-  SLOT_14_15
-  SLOT_15_16
-  SLOT_16_17
-  SLOT_17_18
-  SLOT_18_19
+// One row per delivery day. cursorMinutes is the end of that day's booking
+// queue (0 = 2:00pm). It only ever moves forward: a cancelled order leaves its
+// slot as a gap (rest time) and never pulls the cursor back. This row is also
+// the lock point that serialises concurrent slot reservations for the same day.
+model DaySchedule {
+  id            String   @id @default(uuid())
+  date          DateTime @db.Date @unique
+  // Minutes from midnight; 840 = 2:00pm (opening).
+  cursorMinutes Int      @default(840)
 }
 
 enum OrderStatus {

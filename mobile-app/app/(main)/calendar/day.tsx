@@ -68,9 +68,11 @@ export default function DayDetailScreen() {
         api.get('/orders/day-gallery', { params: { date } }),
       ]);
       setSummary(summaryRes.data.sizes);
-      const filtered = listRes.data.filter(
-        (o: Order) => o.deliveryDate.slice(0, 10) === date && o.status !== 'CANCELLED'
-      );
+      const filtered = listRes.data
+        .filter((o: Order) => o.deliveryDate.slice(0, 10) === date && o.status !== 'CANCELLED')
+        .sort(
+          (a: Order, b: Order) => (a.deliveryStartMinutes ?? 0) - (b.deliveryStartMinutes ?? 0)
+        );
       setOrders(filtered);
       setGallery(galleryRes.data);
     } catch (error) {

@@ -1,83 +1,132 @@
-import { PrismaClient, Prisma, TimeBlock } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 type TransactionClient = Prisma.TransactionClient;
 import { isBusinessDay } from '../utils/colombianHolidays';
 
 const prisma = new PrismaClient();
 
-export const BLOCK_CAPACITY_POINTS = 12;
+// Delivery window: 2:00pm-7:00pm, expressed as minutes from MIDNIGHT (so admin
+// orders can use any clock time without negative offsets).
+export const OPEN_MINUTE = 840; // 2:00 p.m.
+export const CLOSE_MINUTE = 1140; // 7:00 p.m.
+// Assigned pickup times are rounded up to the next multiple of this, so times
+// stay clean (2:20, 3:40 — never 3:17).
+export const ROUND_TO_MINUTES = 5;
 
-export const TIME_BLOCKS: { block: TimeBlock; label: string }[] = [
-  { block: TimeBlock.SLOT_14_15, label: '2:00pm - 3:00pm' },
-  { block: TimeBlock.SLOT_15_16, label: '3:00pm - 4:00pm' },
-  { block: TimeBlock.SLOT_16_17, label: '4:00pm - 5:00pm' },
-  { block: TimeBlock.SLOT_17_18, label: '5:00pm - 6:00pm' },
-  { block: TimeBlock.SLOT_18_19, label: '6:00pm - 7:00pm' },
-];
+// Substring used both in the client-facing message and by isNotEnoughRoomError to
+// recognise this specific failure. Keep it human-readable.
+const NOT_ENOUGH_ROOM = 'ya no tiene espacio';
 
-export interface BlockAvailability {
-  block: TimeBlock;
-  label: string;
-  pointsUsed: number;
-  pointsAvailable: number;
+export function ceilToStep(minutes: number, step: number = ROUND_TO_MINUTES): number {
+  return Math.ceil(minutes / step) * step;
 }
 
-// date must be 'YYYY-MM-DD'. Returns [] for Sundays/holidays (nothing bookable that day).
-export async function getDayAvailability(date: string): Promise<BlockAvailability[]> {
-  if (!isBusinessDay(date)) return [];
-
-  const usageRows = await prisma.timeSlotUsage.findMany({
-    where: { date: new Date(`${date}T00:00:00.000Z`) },
-  });
-  const usedByBlock = new Map(usageRows.map((row) => [row.timeBlock, row.pointsUsed]));
-
-  return TIME_BLOCKS.map(({ block, label }) => {
-    const pointsUsed = usedByBlock.get(block) ?? 0;
-    return { block, label, pointsUsed, pointsAvailable: BLOCK_CAPACITY_POINTS - pointsUsed };
-  });
+// minutes-from-midnight -> "3:40 p.m."
+export function minutesToLabel(minutesFromMidnight: number): string {
+  let hour = Math.floor(minutesFromMidnight / 60);
+  const minute = minutesFromMidnight % 60;
+  const meridiem = hour >= 12 ? 'p.m.' : 'a.m.';
+  hour = hour % 12;
+  if (hour === 0) hour = 12;
+  return `${hour}:${String(minute).padStart(2, '0')} ${meridiem}`;
 }
 
-// Throws if the block doesn't have enough free points. Call inside the same
-// transaction that creates the Order, so a failed order never reserves points.
-export async function reserveSlotPoints(
+function dayDateValue(dateStr: string): Date {
+  return new Date(`${dateStr}T00:00:00.000Z`);
+}
+
+export interface DeliveryPreview {
+  isBusinessDay: boolean;
+  // Present only when isBusinessDay is true:
+  deliveryStartMinutes?: number;
+  deliveryDurationMin?: number;
+  deliveryEndMinutes?: number;
+  deliveryTimeLabel?: string;
+  closesAtLabel?: string;
+  fits?: boolean;
+}
+
+// What pickup time an order of `durationMin` minutes would get on `dateStr`, and
+// whether it still fits before closing. Read-only preview for the public form —
+// the authoritative assignment happens in reserveDeliverySlot inside the
+// order-creation transaction.
+export async function getDeliveryPreview(
+  dateStr: string,
+  durationMin: number
+): Promise<DeliveryPreview> {
+  if (!isBusinessDay(dateStr)) return { isBusinessDay: false };
+
+  const day = await prisma.daySchedule.findUnique({ where: { date: dayDateValue(dateStr) } });
+  const cursor = day?.cursorMinutes ?? OPEN_MINUTE;
+
+  const rounded = ceilToStep(Math.max(0, durationMin));
+  const start = cursor;
+  const end = start + rounded;
+
+  return {
+    isBusinessDay: true,
+    deliveryStartMinutes: start,
+    deliveryDurationMin: rounded,
+    deliveryEndMinutes: end,
+    deliveryTimeLabel: minutesToLabel(end),
+    closesAtLabel: minutesToLabel(CLOSE_MINUTE),
+    fits: end <= CLOSE_MINUTE,
+  };
+}
+
+export interface ReservedSlot {
+  startMinutes: number;
+  durationMin: number;
+  endMinutes: number;
+}
+
+// Assigns a slot on the day's timeline and advances the cursor. Call inside the
+// same transaction that creates/updates the Order, so a failed order never
+// advances the cursor.
+//
+// - Without explicitStartMin: append at the end of the queue (the normal path).
+// - With explicitStartMin: place at a fixed start (used when seeding the backlog
+//   of orders Melosa already promised times for). The cursor still only moves
+//   forward — never back.
+export async function reserveDeliverySlot(
   tx: TransactionClient,
-  date: string,
-  block: TimeBlock,
-  points: number
-) {
-  const dateValue = new Date(`${date}T00:00:00.000Z`);
+  dateStr: string,
+  durationMin: number,
+  explicitStartMin?: number
+): Promise<ReservedSlot> {
+  const rounded = ceilToStep(Math.max(0, durationMin));
+  const date = dayDateValue(dateStr);
 
-  const existing = await tx.timeSlotUsage.findUnique({
-    where: { date_timeBlock: { date: dateValue, timeBlock: block } },
-  });
-  const currentUsed = existing?.pointsUsed ?? 0;
+  // Serialise all slot reservations for the same day. Without this, two clients
+  // booking the same day in the same instant both read the same cursor and land
+  // on the same pickup time. pg_advisory_xact_lock is released automatically when
+  // the surrounding transaction ends.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${dateStr}))`;
 
-  if (currentUsed + points > BLOCK_CAPACITY_POINTS) {
-    throw new Error(`El bloque ${block} del ${date} no tiene suficiente disponibilidad`);
+  const existing = await tx.daySchedule.findUnique({ where: { date } });
+  const cursor = existing?.cursorMinutes ?? OPEN_MINUTE;
+
+  const start = explicitStartMin ?? cursor;
+  const end = start + rounded;
+
+  if (start < OPEN_MINUTE || end > CLOSE_MINUTE) {
+    throw new Error(
+      `Ese día ${NOT_ENOUGH_ROOM} para tu pedido (entregamos hasta las ${minutesToLabel(
+        CLOSE_MINUTE
+      )}). Elige otra fecha.`
+    );
   }
 
-  await tx.timeSlotUsage.upsert({
-    where: { date_timeBlock: { date: dateValue, timeBlock: block } },
-    create: { date: dateValue, timeBlock: block, pointsUsed: points },
-    update: { pointsUsed: currentUsed + points },
+  const newCursor = Math.max(cursor, end);
+  await tx.daySchedule.upsert({
+    where: { date },
+    create: { date, cursorMinutes: newCursor },
+    update: { cursorMinutes: newCursor },
   });
+
+  return { startMinutes: start, durationMin: rounded, endMinutes: end };
 }
 
-// Call when an order is cancelled/expires, to free up its points.
-export async function releaseSlotPoints(
-  tx: TransactionClient,
-  date: string,
-  block: TimeBlock,
-  points: number
-) {
-  const dateValue = new Date(`${date}T00:00:00.000Z`);
-  const existing = await tx.timeSlotUsage.findUnique({
-    where: { date_timeBlock: { date: dateValue, timeBlock: block } },
-  });
-  if (!existing) return;
-
-  await tx.timeSlotUsage.update({
-    where: { date_timeBlock: { date: dateValue, timeBlock: block } },
-    data: { pointsUsed: Math.max(0, existing.pointsUsed - points) },
-  });
+export function isNotEnoughRoomError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes(NOT_ENOUGH_ROOM);
 }

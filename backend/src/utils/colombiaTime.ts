@@ -1,16 +1,6 @@
 // Colombia is UTC-5 year-round (no daylight saving), so the offset is a constant.
 const COLOMBIA_UTC_OFFSET_HOURS = 5;
 
-// dateStr must be 'YYYY-MM-DD'. Returns the UTC instant for 23:59:59.999 Colombia
-// time on that calendar day (i.e. the actual end of that day for a Colombian user).
-export function endOfDayColombia(dateStr: string): Date {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  // 23:59:59.999 in UTC-5 == 04:59:59.999 UTC the next day.
-  const utcMs =
-    Date.UTC(year, month - 1, day + 1, COLOMBIA_UTC_OFFSET_HOURS - 1, 59, 59, 999);
-  return new Date(utcMs);
-}
-
 // dateStr must be 'YYYY-MM-DD'. Subtracts `days` calendar days (no timezone math needed
 // since we only shift the date part, before reinterpreting it in Colombia time).
 export function subtractDays(dateStr: string, days: number): string {
@@ -31,15 +21,27 @@ export function todayColombiaDateString(now: Date = new Date()): string {
   ).padStart(2, '0')}`;
 }
 
-// Business rule: payment deadline is 2 days before delivery (end of day Colombia
-// time), unless that's already too close to (or past) order creation, in which case
-// it falls back to 24h from creation instead. So: take the LATER of the two — the
-// 24h floor only kicks in when 2-days-before-delivery wouldn't give any real margin.
-export function computePaymentDueDate(deliveryDateStr: string, createdAt: Date): Date {
-  const twoDaysBeforeDeadline = endOfDayColombia(subtractDays(deliveryDateStr, 2));
-  const twentyFourHoursFromCreation = new Date(createdAt.getTime() + 24 * 60 * 60 * 1000);
+// Business rule (Aug 2026): a client must pay at least 24h before their pickup
+// time, or the order expires. `pickupMinutesFromMidnight` is the order's assigned
+// pickup slot (deliveryStartMinutes + deliveryDurationMin) on `deliveryDateStr`,
+// read as a Colombia wall-clock time. There is no "24h from creation" floor
+// anymore: the 48h booking cutoff (see earliestPublicDeliveryDate) already
+// guarantees at least 24h of margin to pay.
+export function computePaymentDueDate(
+  deliveryDateStr: string,
+  pickupMinutesFromMidnight: number
+): Date {
+  const [year, month, day] = deliveryDateStr.slice(0, 10).split('-').map(Number);
+  const hour = Math.floor(pickupMinutesFromMidnight / 60);
+  const minute = pickupMinutesFromMidnight % 60;
+  // Colombia local time -> UTC instant: add the constant 5h offset.
+  const pickupUtcMs = Date.UTC(year, month - 1, day, hour + COLOMBIA_UTC_OFFSET_HOURS, minute);
+  return new Date(pickupUtcMs - 24 * 60 * 60 * 1000);
+}
 
-  return twoDaysBeforeDeadline > twentyFourHoursFromCreation
-    ? twoDaysBeforeDeadline
-    : twentyFourHoursFromCreation;
+// Earliest delivery date a public client may book: today (Colombia) + 2 calendar
+// days, i.e. ~48h of lead time. Returned as 'YYYY-MM-DD'. This is the floor the
+// booking form's date picker and the public order endpoint both enforce.
+export function earliestPublicDeliveryDate(now: Date = new Date()): string {
+  return subtractDays(todayColombiaDateString(now), -2);
 }

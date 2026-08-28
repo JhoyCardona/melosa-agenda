@@ -1,50 +1,161 @@
 import { Response } from 'express';
-import { PrismaClient, TimeBlock, OrderStatus, Flavor } from '@prisma/client';
+import { PrismaClient, Prisma, OrderStatus, Flavor } from '@prisma/client';
 import archiver from 'archiver';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { computePaymentDueDate } from '../utils/colombiaTime';
-import { reserveSlotPoints, releaseSlotPoints } from '../services/availability';
+import { reserveDeliverySlot, minutesToLabel, isNotEnoughRoomError } from '../services/availability';
 
 const prisma = new PrismaClient();
 
-const VALID_TIME_BLOCKS = Object.values(TimeBlock);
 const VALID_STATUSES = Object.values(OrderStatus);
 const VALID_FLAVORS = Object.values(Flavor);
 
-export async function createOrder(req: AuthRequest, res: Response) {
-  const { clientName, clientPhone, deliveryDate, timeBlock, deliveryAddress, notes } = req.body;
+function dateStrOf(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
 
-  if (!clientName || !clientPhone || !deliveryDate || !timeBlock) {
+interface OrderItemInput {
+  productDesignId: string;
+  variantId: string;
+  flavor: Flavor;
+  customImageUrl?: string;
+  customText?: string;
+}
+
+// Re-place an order on its delivery day's timeline: recompute its duration from
+// its current items and append it at the end of that day's queue. The order's
+// previous slot is simply left as a gap (rest time) — the day cursor never moves
+// back. Used after items change or a reschedule. Runs inside a transaction.
+async function reEnqueueOrder(tx: Prisma.TransactionClient, orderId: string): Promise<void> {
+  const order = await tx.order.findUniqueOrThrow({
+    where: { id: orderId },
+    include: { items: { include: { variant: true } } },
+  });
+  const rawDurationMin = order.items.reduce((sum, i) => sum + i.variant.prepMinutes, 0);
+  const slot = await reserveDeliverySlot(tx, dateStrOf(order.deliveryDate), rawDurationMin);
+  await tx.order.update({
+    where: { id: orderId },
+    data: {
+      deliveryStartMinutes: slot.startMinutes,
+      deliveryDurationMin: slot.durationMin,
+    },
+  });
+}
+
+// Manual order creation from the mobile app. The whole order (all its items)
+// arrives in one call so its delivery slot can be reserved once, contiguously.
+// `deliveryStartMinutes` is optional: pass it when seeding the backlog of orders
+// Melosa already promised a time for; omit it to append at the end of the day.
+export async function createOrder(req: AuthRequest, res: Response) {
+  const {
+    clientName,
+    clientPhone,
+    deliveryDate,
+    deliveryAddress,
+    notes,
+    deliveryStartMinutes,
+    items,
+  } = req.body;
+
+  if (!clientName || !clientPhone || !deliveryDate) {
     return res.status(400).json({
-      error: 'clientName, clientPhone, deliveryDate y timeBlock son requeridos',
+      error: 'clientName, clientPhone y deliveryDate son requeridos',
     });
   }
 
-  if (!VALID_TIME_BLOCKS.includes(timeBlock)) {
-    return res.status(400).json({ error: `timeBlock debe ser uno de: ${VALID_TIME_BLOCKS.join(', ')}` });
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'items debe ser un arreglo con al menos un producto' });
+  }
+
+  if (
+    deliveryStartMinutes !== undefined &&
+    (typeof deliveryStartMinutes !== 'number' ||
+      !Number.isInteger(deliveryStartMinutes) ||
+      deliveryStartMinutes < 0)
+  ) {
+    return res.status(400).json({ error: 'deliveryStartMinutes debe ser un entero mayor o igual a 0' });
   }
 
   try {
-    const order = await prisma.order.create({
-      data: {
-        clientName,
-        clientPhone,
-        deliveryDate: new Date(deliveryDate),
-        timeBlock,
-        deliveryAddress: deliveryAddress || null,
-        notes: notes || null,
-      },
+    const variantIds = (items as OrderItemInput[]).map((i) => i.variantId);
+    const variants = await prisma.productVariant.findMany({ where: { id: { in: variantIds } } });
+    const variantById = new Map(variants.map((v) => [v.id, v]));
+
+    for (const item of items as OrderItemInput[]) {
+      const variant = variantById.get(item.variantId);
+      if (!variant || variant.productDesignId !== item.productDesignId) {
+        return res.status(404).json({ error: 'Una de las variantes seleccionadas no existe para ese diseño' });
+      }
+      if (!item.flavor || !VALID_FLAVORS.includes(item.flavor)) {
+        return res.status(400).json({ error: `flavor debe ser uno de: ${VALID_FLAVORS.join(', ')}` });
+      }
+    }
+
+    const totalPrice = (items as OrderItemInput[]).reduce(
+      (sum, i) => sum + Number(variantById.get(i.variantId)!.price),
+      0
+    );
+    const rawDurationMin = (items as OrderItemInput[]).reduce(
+      (sum, i) => sum + variantById.get(i.variantId)!.prepMinutes,
+      0
+    );
+
+    const order = await prisma.$transaction(async (tx) => {
+      const slot = await reserveDeliverySlot(tx, deliveryDate, rawDurationMin, deliveryStartMinutes);
+
+      // Manual orders also start in AWAITING_PAYMENT (schema default) with the
+      // deadline counting from now — pickup time minus 24h.
+      const pickupMinutes = slot.startMinutes + slot.durationMin;
+
+      return tx.order.create({
+        data: {
+          clientName,
+          clientPhone,
+          deliveryDate: new Date(deliveryDate),
+          deliveryStartMinutes: slot.startMinutes,
+          deliveryDurationMin: slot.durationMin,
+          deliveryAddress: deliveryAddress || null,
+          notes: notes || null,
+          paymentDueDate: computePaymentDueDate(deliveryDate, pickupMinutes),
+          totalPrice,
+          items: {
+            create: (items as OrderItemInput[]).map((item) => {
+              const variant = variantById.get(item.variantId)!;
+              return {
+                productDesignId: item.productDesignId,
+                variantId: item.variantId,
+                priceAtOrder: variant.price,
+                pointsAtOrder: variant.points,
+                flavor: item.flavor,
+                customImageUrl: item.customImageUrl || null,
+                customText: item.customText || null,
+              };
+            }),
+          },
+        },
+        include: { items: { include: { productDesign: true, variant: true } } },
+      });
     });
 
-    res.status(201).json(order);
+    res.status(201).json({
+      ...order,
+      deliveryTimeLabel: minutesToLabel(order.deliveryStartMinutes + order.deliveryDurationMin),
+    });
   } catch (error) {
     console.error('Error creando pedido:', error);
+
+    if (isNotEnoughRoomError(error)) {
+      return res.status(409).json({ error: (error as Error).message });
+    }
+
     res.status(500).json({ error: 'Error al crear el pedido' });
   }
 }
 
-// Selecciona un diseño + variante ya existentes en el catálogo (ProductDesign/ProductVariant),
-// en vez de mandar category/price sueltos como antes.
+// Adds one item to an order that's already scheduled. Because the order gets
+// longer, it's re-placed at the end of its day's queue (its old slot stays as a
+// gap) and its pickup time changes. The normal path is to build the whole order
+// up front in createOrder; this is for "the client called back, add one more".
 export async function addOrderItem(req: AuthRequest, res: Response) {
   const orderId = req.params.orderId as string;
   const { productDesignId, variantId, flavor, customImageUrl, customText } = req.body;
@@ -69,10 +180,6 @@ export async function addOrderItem(req: AuthRequest, res: Response) {
     }
 
     const item = await prisma.$transaction(async (tx) => {
-      // Reserve points same as the public booking flow does, so a manually-added
-      // item can't push a block past its 12-point cap either.
-      await reserveSlotPoints(tx, order.deliveryDate.toISOString().slice(0, 10), order.timeBlock, variant.points);
-
       const created = await tx.orderItem.create({
         data: {
           orderId,
@@ -91,6 +198,9 @@ export async function addOrderItem(req: AuthRequest, res: Response) {
 
       await tx.order.update({ where: { id: orderId }, data: { totalPrice: newTotal } });
 
+      // Re-place the (now longer) order at the end of its day's queue.
+      await reEnqueueOrder(tx, orderId);
+
       return created;
     });
 
@@ -98,8 +208,8 @@ export async function addOrderItem(req: AuthRequest, res: Response) {
   } catch (error) {
     console.error('Error agregando producto:', error);
 
-    if (error instanceof Error && error.message.includes('no tiene suficiente disponibilidad')) {
-      return res.status(409).json({ error: error.message });
+    if (isNotEnoughRoomError(error)) {
+      return res.status(409).json({ error: (error as Error).message });
     }
 
     res.status(500).json({ error: 'Error al agregar el producto' });
@@ -199,7 +309,7 @@ export async function listOrders(req: AuthRequest, res: Response) {
     const orders = await prisma.order.findMany({
       where,
       include: { items: { include: { productDesign: true, variant: true } } },
-      orderBy: { deliveryDate: 'asc' },
+      orderBy: [{ deliveryDate: 'asc' }, { deliveryStartMinutes: 'asc' }],
     });
 
     res.json(orders);
@@ -220,10 +330,13 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
   try {
     await markExpiredOrders();
 
+    // Only orders with a confirmed payment reach the bake summary — Melosa must
+    // never bake something that hasn't been paid. Unpaid orders still show in the
+    // per-order detail (with a "NO PAGÓ" badge), just not here.
     const orders = await prisma.order.findMany({
       where: {
         deliveryDate: new Date(`${date}T00:00:00.000Z`),
-        status: { not: OrderStatus.CANCELLED },
+        status: { in: [OrderStatus.DEPOSIT_PAID, OrderStatus.FULLY_PAID, OrderStatus.COMPLETED] },
       },
       include: { items: { include: { productDesign: true, variant: true } } },
     });
@@ -288,7 +401,13 @@ async function findDayImageItems(date: string) {
   const orders = await prisma.order.findMany({
     where: {
       deliveryDate: new Date(`${date}T00:00:00.000Z`),
-      status: { not: OrderStatus.CANCELLED },
+      // Images stay downloadable for orders still in play, including
+      // AWAITING_PAYMENT — Melosa can prep the artwork before the transfer lands.
+      // CANCELLED and EXPIRED are hidden; a lapsed order only reappears here if she
+      // manually records a payment (which moves it to DEPOSIT_PAID).
+      status: { notIn: [OrderStatus.CANCELLED, OrderStatus.EXPIRED] },
+      // To restrict the gallery to paid orders only, swap the line above for:
+      // status: { in: [OrderStatus.DEPOSIT_PAID, OrderStatus.FULLY_PAID, OrderStatus.COMPLETED] },
     },
     include: { items: { include: { productDesign: true, variant: true } } },
   });
@@ -316,6 +435,7 @@ export async function getDayGallery(req: AuthRequest, res: Response) {
   }
 
   try {
+    await markExpiredOrders();
     const images = await findDayImageItems(date);
     res.json(images);
   } catch (error) {
@@ -333,6 +453,7 @@ export async function downloadDayGalleryZip(req: AuthRequest, res: Response) {
   }
 
   try {
+    await markExpiredOrders();
     const images = await findDayImageItems(date);
     if (images.length === 0) {
       return res.status(404).json({ error: 'No hay imágenes personalizadas para ese día' });
@@ -378,33 +499,31 @@ export async function downloadDayGalleryZip(req: AuthRequest, res: Response) {
   }
 }
 
-// Split in two: "porVencer" still has time to pay (reuses the already-computed
-// paymentDueDate instead of a fixed days-before-delivery rule, so orders booked
-// long in advance don't get flagged early), "vencidos" already missed their
-// deadline (status EXPIRED, set by markExpiredOrders) and need a manual call —
-// pay now or cancel. Fase 3.4 notifications section.
+// Split in two: "porVencer" = unpaid orders whose payment deadline is within the
+// next 3 days (so Melosa can chase the transfer before the 24h-before-delivery
+// cutoff kicks in), "vencidos" = already past that deadline (status EXPIRED, set
+// by markExpiredOrders) — pay now or cancel. Fase 3.4 notifications section.
 export async function getNotifications(req: AuthRequest, res: Response) {
   try {
     await markExpiredOrders();
 
-    const dueSoonCutoff = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    const dueSoonCutoff = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
     const include = { items: { include: { productDesign: true, variant: true } } };
 
     const [porVencer, vencidos] = await Promise.all([
       prisma.order.findMany({
         where: {
-          OR: [
-            { status: OrderStatus.PENDING_REVIEW },
-            { status: OrderStatus.AWAITING_PAYMENT, paymentDueDate: { lte: dueSoonCutoff } },
-          ],
+          status: OrderStatus.AWAITING_PAYMENT,
+          depositPaid: 0,
+          paymentDueDate: { lte: dueSoonCutoff },
         },
         include,
-        orderBy: { deliveryDate: 'asc' },
+        orderBy: [{ deliveryDate: 'asc' }, { deliveryStartMinutes: 'asc' }],
       }),
       prisma.order.findMany({
         where: { status: OrderStatus.EXPIRED },
         include,
-        orderBy: { deliveryDate: 'asc' },
+        orderBy: [{ deliveryDate: 'asc' }, { deliveryStartMinutes: 'asc' }],
       }),
     ]);
 
@@ -417,16 +536,12 @@ export async function getNotifications(req: AuthRequest, res: Response) {
 
 export async function updateOrder(req: AuthRequest, res: Response) {
   const orderId = req.params.orderId as string;
-  const { clientName, clientPhone, deliveryDate, timeBlock, deliveryAddress, notes, totalPrice, depositPaid, status } = req.body;
+  const { clientName, clientPhone, deliveryDate, deliveryAddress, notes, totalPrice, depositPaid, status } = req.body;
 
   if (status && !VALID_STATUSES.includes(status)) {
     return res.status(400).json({
       error: `status debe ser una de: ${VALID_STATUSES.join(', ')}`,
     });
-  }
-
-  if (timeBlock && !VALID_TIME_BLOCKS.includes(timeBlock)) {
-    return res.status(400).json({ error: `timeBlock debe ser uno de: ${VALID_TIME_BLOCKS.join(', ')}` });
   }
 
   if (depositPaid !== undefined && (typeof depositPaid !== 'number' || Number.isNaN(depositPaid) || depositPaid < 0)) {
@@ -458,45 +573,34 @@ export async function updateOrder(req: AuthRequest, res: Response) {
     const enteringAwaitingPayment =
       status === OrderStatus.AWAITING_PAYMENT && existingOrder.status !== OrderStatus.AWAITING_PAYMENT;
 
+    // Vestigial now that orders start in AWAITING_PAYMENT — kept for the rare
+    // manual status flip back into it. Uses the order's current pickup slot; if a
+    // reschedule also changed the slot, reEnqueueOrder below recomputes the times
+    // (the deadline stays anchored to the pre-reschedule pickup, close enough).
     const paymentDueDate = enteringAwaitingPayment
       ? computePaymentDueDate(
           (deliveryDate ? new Date(deliveryDate) : existingOrder.deliveryDate).toISOString().slice(0, 10),
-          existingOrder.createdAt
+          existingOrder.deliveryStartMinutes + existingOrder.deliveryDurationMin
         )
       : undefined;
 
-    const oldDateStr = existingOrder.deliveryDate.toISOString().slice(0, 10);
-    const newDateStr = deliveryDate !== undefined ? new Date(deliveryDate).toISOString().slice(0, 10) : oldDateStr;
-    const newTimeBlock = timeBlock !== undefined ? timeBlock : existingOrder.timeBlock;
-    const totalPoints = existingOrder.items.reduce((sum, i) => sum + i.pointsAtOrder, 0);
+    const oldDateStr = dateStrOf(existingOrder.deliveryDate);
+    const newDateStr = deliveryDate !== undefined ? dateStrOf(new Date(deliveryDate)) : oldDateStr;
+    const wasAlreadyCancelled = existingOrder.status === OrderStatus.CANCELLED;
+    const isRescheduling = newDateStr !== oldDateStr && !wasAlreadyCancelled;
 
     // Marking FULLY_PAID always means the whole order is settled — auto-fill
     // depositPaid with the total unless a specific amount was sent explicitly.
     const autoFullDepositPaid =
       status === OrderStatus.FULLY_PAID && depositPaid === undefined ? existingOrder.totalPrice : undefined;
 
-    const enteringCancelled = status === OrderStatus.CANCELLED && existingOrder.status !== OrderStatus.CANCELLED;
-    const wasAlreadyCancelled = existingOrder.status === OrderStatus.CANCELLED;
-    const isRescheduling = (newDateStr !== oldDateStr || newTimeBlock !== existingOrder.timeBlock) && !wasAlreadyCancelled;
-
     const updatedOrder = await prisma.$transaction(async (tx) => {
-      if (enteringCancelled) {
-        // Cancelling frees up the slot's points — a fresh booking can now use them.
-        await releaseSlotPoints(tx, oldDateStr, existingOrder.timeBlock, totalPoints);
-      } else if (isRescheduling && totalPoints > 0) {
-        // Moving date/block: release the old slot, then reserve on the new one —
-        // throws (rolling back) if the new slot doesn't have room.
-        await releaseSlotPoints(tx, oldDateStr, existingOrder.timeBlock, totalPoints);
-        await reserveSlotPoints(tx, newDateStr, newTimeBlock, totalPoints);
-      }
-
-      return tx.order.update({
+      const updated = await tx.order.update({
         where: { id: orderId },
         data: {
           ...(clientName !== undefined && { clientName }),
           ...(clientPhone !== undefined && { clientPhone }),
           ...(deliveryDate !== undefined && { deliveryDate: new Date(deliveryDate) }),
-          ...(timeBlock !== undefined && { timeBlock }),
           ...(deliveryAddress !== undefined && { deliveryAddress }),
           ...(notes !== undefined && { notes }),
           ...(totalPrice !== undefined && { totalPrice }),
@@ -506,14 +610,29 @@ export async function updateOrder(req: AuthRequest, res: Response) {
           ...(paymentDueDate !== undefined && { paymentDueDate }),
         },
       });
+
+      // Moving the order to another day: append it to the new day's queue. The
+      // old day's slot is left as a gap (the cursor never moves back) and the
+      // pickup time changes — Melosa tells the client over WhatsApp. Cancelling
+      // does NOT free the slot, by design.
+      if (isRescheduling) {
+        await reEnqueueOrder(tx, orderId);
+        return tx.order.findUniqueOrThrow({ where: { id: orderId } });
+      }
+      return updated;
     });
 
-    res.json(updatedOrder);
+    res.json({
+      ...updatedOrder,
+      deliveryTimeLabel: minutesToLabel(
+        updatedOrder.deliveryStartMinutes + updatedOrder.deliveryDurationMin
+      ),
+    });
   } catch (error) {
     console.error('Error actualizando pedido:', error);
 
-    if (error instanceof Error && error.message.includes('no tiene suficiente disponibilidad')) {
-      return res.status(409).json({ error: error.message });
+    if (isNotEnoughRoomError(error)) {
+      return res.status(409).json({ error: (error as Error).message });
     }
 
     res.status(500).json({ error: 'Error al actualizar el pedido' });
@@ -550,27 +669,15 @@ export async function deleteOrder(req: AuthRequest, res: Response) {
   const orderId = req.params.orderId as string;
 
   try {
-    const existingOrder = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: { items: true },
-    });
+    const existingOrder = await prisma.order.findUnique({ where: { id: orderId } });
 
     if (!existingOrder) {
       return res.status(404).json({ error: 'Pedido no encontrado' });
     }
 
-    await prisma.$transaction(async (tx) => {
-      if (existingOrder.status !== OrderStatus.CANCELLED) {
-        const totalPoints = existingOrder.items.reduce((sum, i) => sum + i.pointsAtOrder, 0);
-        await releaseSlotPoints(
-          tx,
-          existingOrder.deliveryDate.toISOString().slice(0, 10),
-          existingOrder.timeBlock,
-          totalPoints
-        );
-      }
-      await tx.order.delete({ where: { id: orderId } });
-    });
+    // The order's slot on its day timeline is simply left as a gap — the day
+    // cursor never moves back.
+    await prisma.order.delete({ where: { id: orderId } });
 
     res.json({ message: 'Pedido eliminado correctamente' });
   } catch (error) {

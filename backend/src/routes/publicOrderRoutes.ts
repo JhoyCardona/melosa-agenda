@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { createPublicOrder, uploadPublicImage } from '../controllers/publicOrderController';
-import { getDayAvailability } from '../services/availability';
+import { getDeliveryPreview } from '../services/availability';
 import upload from '../config/multer';
 
 const router = Router();
@@ -29,14 +29,22 @@ const uploadLimiter = rateLimit({
 router.post('/', createOrderLimiter, createPublicOrder);
 router.post('/upload-image', uploadLimiter, upload.single('image'), uploadPublicImage);
 
+// Preview for the booking form: given the delivery date and how many minutes the
+// cart needs (sum of variant prepMinutes), returns the pickup time it would get
+// and whether it still fits before 7:00pm.
 router.get('/availability', async (req, res) => {
   const date = req.query.date as string;
   if (!date) {
     return res.status(400).json({ error: 'date es requerido (formato YYYY-MM-DD)' });
   }
 
-  const availability = await getDayAvailability(date);
-  res.json(availability);
+  const minutes = Number(req.query.minutes ?? 0);
+  if (!Number.isFinite(minutes) || minutes < 0) {
+    return res.status(400).json({ error: 'minutes debe ser un número mayor o igual a 0' });
+  }
+
+  const preview = await getDeliveryPreview(date, minutes);
+  res.json(preview);
 });
 
 export default router;
