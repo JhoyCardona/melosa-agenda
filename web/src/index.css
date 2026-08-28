@@ -1,11 +1,70 @@
+/* ============================================================================
+   Melosa — design tokens (Fase 5a)
+   Base minimalista tipo Levain + estética de marca Melosa.
+   Paleta oficial del cliente (misma que la app móvil).
+   ========================================================================== */
+
 :root {
-  --color-primary: #c82333;
-  --color-bg: #f5ebe0;
-  --color-bg-soft: #f4dcd6;
-  --color-text: #3e2723;
-  --color-muted: #8a7a72;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  /* --- Paleta oficial --- */
+  --color-primary: #c82333; /* Rojo Melosa — títulos y acentos */
+  --color-primary-dark: #a51d2b; /* hover/pressed sobre el rojo */
+  --color-bg: #f5ebe0; /* Beige — fondo principal (60% de la web) */
+  --color-bg-soft: #f4dcd6; /* Rosado coquette — bloques sutiles */
+  --color-text: #3e2723; /* Café oscuro — texto de lectura */
+
+  /* --- Tintes derivados (mismos tonos, distinta intensidad) --- */
+  --color-surface: #fffaf4; /* tarjetas sobre el beige */
+  --color-border: #e7d5c7; /* bordes suaves */
+  --color-muted: #8a7a72; /* texto secundario */
+  --color-on-primary: #fffaf4; /* texto sobre el rojo */
+  --color-accent: #f2b705; /* amarillo dorado — detalles decorativos sobre el rojo */
+
+  /* --- Tipografía --- */
+  --font-display: 'Fraunces', 'Georgia', 'Times New Roman', serif;
+  --font-body: 'Nunito Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  --text-xs: 0.8125rem; /* 13px */
+  --text-sm: 0.9375rem; /* 15px */
+  --text-base: 1.0625rem; /* 17px — cuerpo, algo grande tipo Levain */
+  --text-lg: 1.25rem;
+  --text-xl: 1.625rem;
+  --text-2xl: 2.25rem;
+  --text-3xl: 3rem;
+  --text-4xl: clamp(2.75rem, 8vw, 4.5rem); /* hero */
+
+  --leading-tight: 1.15;
+  --leading-normal: 1.65;
+
+  /* --- Espaciado (escala de 4px) --- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-24: 6rem;
+
+  /* --- Radios y sombras --- */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 1px 3px rgba(62, 39, 35, 0.08);
+  --shadow-md: 0 8px 24px rgba(62, 39, 35, 0.12);
+
+  /* --- Layout --- */
+  --container: 1080px; /* ancho máx. de contenido */
+  --container-narrow: 680px; /* texto de lectura, formularios */
+
   color-scheme: light;
+  font-family: var(--font-body);
+  font-size: 100%;
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 * {
@@ -16,10 +75,35 @@ body {
   margin: 0;
   background: var(--color-bg);
   color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
 }
 
 #root {
   min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  line-height: var(--leading-tight);
+  font-weight: 600;
+  margin: 0 0 var(--space-4);
+}
+
+h1 {
+  font-size: var(--text-3xl);
+  color: var(--color-primary);
+}
+
+h2 {
+  font-size: var(--text-2xl);
+}
+
+p {
+  margin: 0 0 var(--space-4);
 }
 
 a {
@@ -28,4 +112,134 @@ a {
 
 button {
   font-family: inherit;
+}
+
+img {
+  max-width: 100%;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* ============================================================================
+   Primitivos compartidos entre páginas (landing, catálogo, agendar).
+   ========================================================================== */
+.section {
+  padding: var(--space-24) var(--space-6);
+}
+
+.section-soft {
+  background: var(--color-bg-soft);
+}
+
+.section-inner {
+  max-width: var(--container-narrow);
+  margin: 0 auto;
+}
+
+.section-lead {
+  font-size: var(--text-lg);
+  line-height: var(--leading-normal);
+  margin-bottom: var(--space-8);
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-bottom: var(--space-2);
+}
+
+.muted {
+  color: var(--color-muted);
+}
+
+.warning {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.btn {
+  display: inline-block;
+  padding: var(--space-3) var(--space-6);
+  border-radius: var(--radius-pill);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  text-decoration: none;
+  cursor: pointer;
+  border: 2px solid transparent;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.btn-primary:hover {
+  background: var(--color-primary-dark);
+}
+
+.btn-ghost {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: transparent;
+}
+
+.btn-ghost:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+@media (max-width: 720px) {
+  .section {
+    padding: var(--space-16) var(--space-6);
+  }
+}
+
+/* Filas de círculos estáticos en los bordes superior e inferior de un elemento.
+   Se usa sobre las bandas rojas (barra de anuncios, "solo para recoger"). */
+.dot-edges {
+  position: relative;
+}
+
+.dot-edges::before,
+.dot-edges::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 12px;
+  background-image: radial-gradient(circle at center, var(--color-accent) 0 4px, transparent 4.5px);
+  background-size: 18px 12px;
+  background-repeat: repeat-x;
+  background-position: center;
+  pointer-events: none;
+}
+
+.dot-edges::before {
+  top: 0;
+}
+
+.dot-edges::after {
+  bottom: 0;
+}
+
+/* Cualquier animación/marquee debe rendirse a esto. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import type { ItemCategory, ProductDesign } from '../types';
-import './BookingPage.css';
+import PasswordPrompt from '../components/PasswordPrompt';
+import EditDesignRow from '../components/EditDesignRow';
+import './adminLegacy.css';
 
 const categoryLabels: Record<ItemCategory, string> = {
   CAKE: 'Torta / Minicake',
@@ -17,11 +19,19 @@ interface VariantDraft {
   label: string;
   price: string;
   points: string;
+  prepMinutes: string;
   enPromocion: boolean;
 }
 
 function emptyVariant(): VariantDraft {
-  return { key: `v-${Date.now()}-${Math.random()}`, label: '', price: '', points: '', enPromocion: false };
+  return {
+    key: `v-${Date.now()}-${Math.random()}`,
+    label: '',
+    price: '',
+    points: '',
+    prepMinutes: '20',
+    enPromocion: false,
+  };
 }
 
 export default function CatalogAdminPage() {
@@ -33,6 +43,7 @@ export default function CatalogAdminPage() {
   const [category, setCategory] = useState<ItemCategory>('CAKE');
   const [shape, setShape] = useState('');
   const [allowsCustomImage, setAllowsCustomImage] = useState(false);
+  const [allowsCustomText, setAllowsCustomText] = useState(true);
   const [imageUrl, setImageUrl] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const [variants, setVariants] = useState<VariantDraft[]>([emptyVariant()]);
@@ -40,6 +51,32 @@ export default function CatalogAdminPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+
+  // Password-gated edit actions on existing products (Fase 6).
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    message: string;
+    action: () => Promise<void>;
+  } | null>(null);
+  const [editError, setEditError] = useState('');
+
+  function requestConfirm(message: string, action: () => Promise<void>) {
+    setEditError('');
+    setPendingConfirm({ message, action });
+  }
+
+  async function runConfirmed() {
+    if (!pendingConfirm) return;
+    const { action } = pendingConfirm;
+    setPendingConfirm(null);
+    try {
+      await action();
+    } catch (err) {
+      setEditError(
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+          'No se pudo guardar el cambio'
+      );
+    }
+  }
 
   function loadDesigns() {
     setLoadingList(true);
@@ -101,6 +138,7 @@ export default function CatalogAdminPage() {
     setCategory('CAKE');
     setShape('');
     setAllowsCustomImage(false);
+    setAllowsCustomText(true);
     setImageUrl('');
     setVariants([emptyVariant()]);
   }
@@ -114,8 +152,8 @@ export default function CatalogAdminPage() {
       setError('El nombre es requerido');
       return;
     }
-    if (variants.some((v) => !v.label.trim() || v.price === '' || v.points === '')) {
-      setError('Completá label, precio y puntos en todos los tamaños');
+    if (variants.some((v) => !v.label.trim() || v.price === '' || v.points === '' || v.prepMinutes === '')) {
+      setError('Completa label, precio, puntos y minutos en todos los tamaños');
       return;
     }
 
@@ -127,10 +165,12 @@ export default function CatalogAdminPage() {
         shape: shape || undefined,
         imageUrl: imageUrl || undefined,
         allowsCustomImage,
+        allowsCustomText,
         variants: variants.map((v) => ({
           label: v.label,
           price: Number(v.price),
           points: Number(v.points),
+          prepMinutes: Number(v.prepMinutes),
           enPromocion: v.enPromocion,
         })),
       });
@@ -190,6 +230,15 @@ export default function CatalogAdminPage() {
           Admite imagen personalizada del cliente (para imprimir)
         </label>
 
+        <label className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={allowsCustomText}
+            onChange={(e) => setAllowsCustomText(e.target.checked)}
+          />
+          Admite texto personalizado (frase o número)
+        </label>
+
         <label className="field-label" style={{ marginTop: 16 }}>
           Tamaños
         </label>
@@ -219,6 +268,14 @@ export default function CatalogAdminPage() {
               onChange={(e) => updateVariant(v.key, { points: e.target.value })}
               style={{ flex: 1, minWidth: 80 }}
             />
+            <input
+              type="number"
+              placeholder="Minutos de agenda"
+              title="Minutos que ocupa en la agenda de entregas"
+              value={v.prepMinutes}
+              onChange={(e) => updateVariant(v.key, { prepMinutes: e.target.value })}
+              style={{ flex: 1, minWidth: 90 }}
+            />
             <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem' }}>
               <input
                 type="checkbox"
@@ -246,24 +303,31 @@ export default function CatalogAdminPage() {
 
       <section className="form-section">
         <h2>Productos existentes</h2>
+        <p className="edit-hint">Toca un producto para editarlo. Cada cambio pide tu contraseña.</p>
+        {editError && <p className="warning">{editError}</p>}
         {loadingList ? (
           <p className="muted">Cargando...</p>
         ) : designs.length === 0 ? (
           <p className="muted">Todavía no hay productos cargados</p>
         ) : (
-          <ul className="cart-list">
-            {designs.map((d) => (
-              <li key={d.id}>
-                <span>
-                  {d.name} · {categoryLabels[d.category as ItemCategory] ?? d.category}
-                  {d.allowsCustomImage ? ' · admite imagen' : ''}
-                </span>
-                <span className="cart-item-right">{d.variants.length} tamaño{d.variants.length !== 1 ? 's' : ''}</span>
-              </li>
-            ))}
-          </ul>
+          designs.map((d) => (
+            <EditDesignRow
+              key={d.id}
+              design={d}
+              onSaved={loadDesigns}
+              requestConfirm={requestConfirm}
+            />
+          ))
         )}
       </section>
+
+      {pendingConfirm && (
+        <PasswordPrompt
+          message={pendingConfirm.message}
+          onConfirm={runConfirmed}
+          onCancel={() => setPendingConfirm(null)}
+        />
+      )}
     </div>
   );
 }

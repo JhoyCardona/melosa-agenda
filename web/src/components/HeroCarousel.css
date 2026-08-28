@@ -1,0 +1,92 @@
+.hero-carousel {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  margin-inline: auto;
+}
+
+.hero-carousel-track {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  background: var(--color-bg-soft);
+}
+
+.hero-carousel-track::-webkit-scrollbar {
+  display: none;
+}
+
+.hero-carousel-slide {
+  flex: 0 0 100%;
+  scroll-snap-align: center;
+  aspect-ratio: 3 / 4;
+}
+
+.hero-carousel-slide img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.hero-carousel-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: color-mix(in srgb, var(--color-bg) 88%, transparent);
+  color: var(--color-text);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  display: grid;
+  place-items: center;
+}
+
+.hero-carousel-arrow:hover {
+  background: var(--color-bg);
+}
+
+.hero-carousel-arrow.prev {
+  left: var(--space-3);
+}
+
+.hero-carousel-arrow.next {
+  right: var(--space-3);
+}
+
+.hero-carousel-dots {
+  position: absolute;
+  bottom: var(--space-3);
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.hero-carousel-dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: color-mix(in srgb, var(--color-bg) 55%, transparent);
+  cursor: pointer;
+  transition: width 0.2s ease, background 0.2s ease;
+}
+
+.hero-carousel-dot.is-active {
+  width: 22px;
+  background: var(--color-primary);
+}

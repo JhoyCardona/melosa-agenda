@@ -1,106 +1,166 @@
 .landing {
-  max-width: 720px;
+  overflow-x: hidden;
+}
+
+/* Sticky-header offset for anchor jumps. */
+.landing section[id] {
+  scroll-margin-top: 80px;
+}
+
+/* ---------- Hero ---------- */
+.hero {
+  max-width: var(--container);
   margin: 0 auto;
-  padding: 0 20px 60px;
-}
-
-.landing-hero {
-  text-align: center;
-  padding: 48px 0 32px;
-}
-
-.landing-hero h1 {
-  font-size: 2.5rem;
-  color: var(--color-primary);
-  margin: 0 0 8px;
-}
-
-.tagline {
-  color: var(--color-muted);
-  margin: 0 0 24px;
-  font-size: 1.05rem;
-}
-
-.cta-button {
-  display: inline-block;
-  background: var(--color-primary);
-  color: #fff;
-  text-decoration: none;
-  font-weight: 600;
-  padding: 14px 28px;
-  border-radius: 8px;
-  font-size: 1rem;
-}
-
-.cta-button.secondary {
-  background: transparent;
-  border: 2px solid var(--color-primary);
-  color: var(--color-primary);
-}
-
-.promo-section,
-.how-it-works {
-  margin-top: 40px;
-}
-
-.promo-section h2,
-.how-it-works h2 {
-  color: var(--color-text);
-  font-size: 1.4rem;
-  margin-bottom: 4px;
-}
-
-.promo-note {
-  color: var(--color-muted);
-  margin-top: 0;
-  margin-bottom: 20px;
-}
-
-.muted {
-  color: var(--color-muted);
-}
-
-.promo-grid {
+  padding: var(--space-16) var(--space-6) var(--space-24);
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 16px;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-16);
+  align-items: center;
 }
 
-.promo-card {
-  background: #fff;
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid var(--color-bg-soft);
+.hero-text h1 {
+  font-size: var(--text-4xl);
+  margin-bottom: var(--space-6);
 }
 
-.promo-card img {
-  width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
-  display: block;
+.hero-lead {
+  font-size: var(--text-lg);
+  line-height: var(--leading-normal);
+  margin-bottom: var(--space-8);
+  max-width: 42ch;
 }
 
-.promo-card-body {
-  padding: 10px 12px;
+@media (max-width: 860px) {
+  .hero {
+    grid-template-columns: 1fr;
+    gap: var(--space-8);
+    /* Tighter top/bottom on mobile so the hero doesn't float far from the
+       first section. Desktop spacing is reviewed separately. */
+    padding: var(--space-8) var(--space-6) var(--space-6);
+    text-align: center;
+  }
+  .hero-text h1 {
+    font-size: var(--text-3xl);
+  }
+  .hero-lead {
+    margin-inline: auto;
+  }
+  .hero-media {
+    order: -1;
+  }
 }
 
-.promo-card-body h3 {
-  font-size: 0.95rem;
-  margin: 0 0 4px;
+/* ---------- Featured item (one photo per section) ---------- */
+.feature {
+  max-width: 320px;
+  margin-bottom: var(--space-8);
 }
 
-.promo-card-body .price {
+.feature-photo {
+  aspect-ratio: 3 / 4;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.feature-body {
+  margin-top: var(--space-3);
+}
+
+.feature-body h3 {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  font-weight: 700;
+  margin: 0 0 var(--space-1);
+}
+
+.feature-body .price {
   color: var(--color-primary);
   font-weight: 700;
   margin: 0;
 }
 
-.how-it-works ol {
-  padding-left: 20px;
-  color: var(--color-text);
-  line-height: 1.7;
+/* ---------- Steps ---------- */
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--space-6);
+  display: grid;
+  gap: var(--space-4);
 }
 
-.how-it-works .cta-button {
-  margin-top: 12px;
+.steps li {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+.step-num {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+/* ---------- Pickup callout ---------- */
+.pickup {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  text-align: center;
+}
+
+.pickup h2 {
+  color: var(--color-on-primary);
+}
+
+.pickup .section-lead {
+  margin-bottom: 0;
+}
+
+/* ---------- Location ---------- */
+.location-card {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: var(--space-8);
+  align-items: center;
+}
+
+.location-address {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  margin-bottom: var(--space-2);
+}
+
+.location-card .btn {
+  margin-top: var(--space-4);
+}
+
+.location-photo-placeholder {
+  aspect-ratio: 4 / 3;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 720px) {
+  .location-card {
+    grid-template-columns: 1fr;
+  }
 }

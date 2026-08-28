@@ -1,12 +1,12 @@
 export type Flavor = 'VAINILLA' | 'CHOCOLATE';
 
-export type TimeBlock = 'SLOT_14_15' | 'SLOT_15_16' | 'SLOT_16_17' | 'SLOT_17_18' | 'SLOT_18_19';
-
 export interface ProductVariant {
   id: string;
   label: string;
   price: string;
   points: number;
+  // Minutes this variant occupies on the delivery-day timeline.
+  prepMinutes: number;
   enPromocion: boolean;
 }
 
@@ -17,26 +17,35 @@ export interface ProductDesign {
   shape: string | null;
   imageUrl: string | null;
   allowsCustomImage: boolean;
+  allowsCustomText: boolean;
   variants: ProductVariant[];
 }
 
-export interface BlockAvailability {
-  block: TimeBlock;
-  label: string;
-  pointsUsed: number;
-  pointsAvailable: number;
+// Response of GET /public-orders/availability?date=&minutes=
+export interface DeliveryPreview {
+  isBusinessDay: boolean;
+  deliveryStartMinutes?: number;
+  deliveryDurationMin?: number;
+  deliveryEndMinutes?: number;
+  deliveryTimeLabel?: string;
+  closesAtLabel?: string;
+  fits?: boolean;
 }
 
 export type ItemCategory = 'CAKE' | 'ALFAJOR_CAKE' | 'ALFAJOR_UNIT' | 'CUPCAKE' | 'DESSERT';
 
-export interface DraftItem {
+// One configured product line in the in-progress order. Carries a snapshot of the
+// design/variant so the cart can render without re-fetching the catalog.
+export interface CartItem {
   key: string;
-  productDesignId: string;
-  productDesignName: string;
+  designId: string;
+  designName: string;
+  designImageUrl: string | null;
   variantId: string;
   variantLabel: string;
   price: number;
   points: number;
+  prepMinutes: number;
   flavor: Flavor;
   customText?: string;
   customImageUrl?: string;

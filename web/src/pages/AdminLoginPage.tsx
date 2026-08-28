@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
-import './BookingPage.css';
+import './adminLegacy.css';
 
 export default function AdminLoginPage() {
   const navigate = useNavigate();

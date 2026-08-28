@@ -1,136 +1,253 @@
 .booking-page {
-  max-width: 560px;
-  margin: 0 auto;
-  padding: 24px 20px 120px;
+  overflow-x: hidden;
 }
 
-.back-link {
+.booking-main {
+  max-width: var(--container-narrow);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6) var(--space-16);
+}
+
+.booking-main > h1 {
+  margin-bottom: var(--space-6);
+}
+
+.booking-back {
   display: inline-block;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-4);
   color: var(--color-muted);
   text-decoration: none;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
+  font-weight: 600;
 }
 
-h1 {
-  color: var(--color-primary);
-  font-size: 1.6rem;
-  margin-bottom: 20px;
+.booking-block {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
 }
 
-.form-section {
-  background: #fff;
-  border-radius: 10px;
-  border: 1px solid var(--color-bg-soft);
-  padding: 16px;
-  margin-bottom: 16px;
+.booking-block h2 {
+  font-family: var(--font-body);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  margin: 0 0 var(--space-4);
 }
 
-.form-section h2 {
-  font-size: 1rem;
-  color: var(--color-text);
-  margin: 0 0 12px;
+/* ---------- Configurator head ---------- */
+.config-head {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  margin-bottom: var(--space-6);
 }
 
+.config-photo {
+  width: 96px;
+  height: 128px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  display: block;
+  flex: 0 0 auto;
+}
+
+.config-photo-empty {
+  display: grid;
+  place-items: center;
+  background: var(--color-bg-soft);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+/* Uploaded-image preview reuses .config-photo but shows in full. */
+img.config-photo:not(.config-photo-empty) {
+  margin-top: var(--space-3);
+}
+
+/* ---------- Fields ---------- */
 .field-label {
   display: block;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: var(--color-muted);
-  margin: 10px 0 4px;
+  font-weight: 700;
+  margin: var(--space-4) 0 var(--space-2);
 }
 
-select,
-input[type='text'],
-input[type='tel'],
-input[type='date'],
-textarea {
+.field-hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+.booking-ticket-note {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.booking-block input[type='text'],
+.booking-block input[type='tel'],
+.booking-block input[type='date'],
+.booking-block input[type='file'],
+.booking-block textarea {
   width: 100%;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--color-bg-soft);
-  font-size: 0.95rem;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  font-size: var(--text-base);
+  font-family: inherit;
   color: var(--color-text);
   background: #fff;
 }
 
-textarea {
-  min-height: 70px;
+.booking-block textarea {
+  min-height: 72px;
   resize: vertical;
 }
 
-.design-preview {
-  width: 100%;
-  max-height: 180px;
-  object-fit: cover;
-  border-radius: 8px;
-  margin: 10px 0;
-}
-
-.flavor-options,
-.block-grid {
+/* ---------- Pills (tamaño, sabor, bloques) ---------- */
+.pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
-.chip {
+.pill {
   border: 1px solid var(--color-primary);
   color: var(--color-primary);
   background: #fff;
-  border-radius: 20px;
-  padding: 8px 14px;
-  font-size: 0.85rem;
+  border-radius: var(--radius-pill);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 600;
   cursor: pointer;
 }
 
-.chip-active {
+.pill-active {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--color-on-primary);
 }
 
-.chip:disabled {
-  border-color: var(--color-bg-soft);
+.pill:disabled {
+  border-color: var(--color-border);
   color: var(--color-muted);
   cursor: not-allowed;
 }
 
-.secondary-button {
-  margin-top: 14px;
+.booking-block .btn {
+  margin-top: var(--space-6);
+}
+
+.added-flash {
+  margin: var(--space-3) 0 0;
+  color: var(--color-primary);
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
+
+/* ---------- Live pickup-time estimate under the date ---------- */
+.slot-box {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-4);
   background: var(--color-bg-soft);
-  border: none;
-  border-radius: 8px;
-  padding: 10px 16px;
-  font-weight: 600;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+}
+
+.slot-hint {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.slot-label {
+  margin: 0;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+  font-weight: 700;
+}
+
+.slot-time {
+  margin: var(--space-1) 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.slot-sub {
+  margin: 0;
+  font-size: var(--text-sm);
   color: var(--color-text);
-  cursor: pointer;
 }
 
-.secondary-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.slot-box .warning {
+  margin: 0;
 }
 
+/* ---------- Pre-send recap ---------- */
+.recap-list {
+  margin: 0;
+}
+
+.recap-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.recap-list > div:last-child {
+  border-bottom: none;
+}
+
+.recap-list dt {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.recap-list dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+}
+
+/* ---------- Cart ---------- */
 .cart-list {
   list-style: none;
   padding: 0;
-  margin: 14px 0 0;
-  border-top: 1px solid var(--color-bg-soft);
+  margin: 0 0 var(--space-4);
+  border-top: 1px solid var(--color-border);
 }
 
 .cart-list li {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--color-bg-soft);
-  font-size: 0.9rem;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-sm);
 }
 
 .cart-item-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-3);
+  white-space: nowrap;
+  font-weight: 700;
 }
 
 .cart-item-right button {
@@ -138,65 +255,79 @@ textarea {
   background: transparent;
   color: var(--color-primary);
   cursor: pointer;
-  font-size: 1rem;
+  font-size: var(--text-base);
+  line-height: 1;
 }
 
-.muted {
-  color: var(--color-muted);
-  font-size: 0.9rem;
-}
-
-.warning {
-  color: var(--color-primary);
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.summary-bar {
+/* ---------- Sticky checkout bar ---------- */
+/* Lives as the last child of .booking-main; the negative inline margin lets it
+   span the column's full width past the page padding. */
+.checkout-bar {
   position: sticky;
   bottom: 0;
-  background: var(--color-bg);
-  padding: 16px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: stretch;
-  border-top: 1px solid var(--color-bg-soft);
+  z-index: 40;
+  margin: var(--space-6) calc(var(--space-6) * -1) 0;
+  padding: 0 var(--space-6);
+  background: color-mix(in srgb, var(--color-bg) 94%, transparent);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--color-border);
 }
 
-.summary-bar span {
+.checkout-bar-inner {
+  padding: var(--space-3) 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.checkout-total {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.checkout-total-label {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
   font-weight: 700;
-  font-size: 1.1rem;
+}
+
+.checkout-total-amount {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 700;
   color: var(--color-text);
 }
 
-.cta-button {
-  background: var(--color-primary);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 14px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
+.checkout-send {
+  flex: 0 0 auto;
 }
 
-.cta-button:disabled {
-  opacity: 0.5;
+.checkout-send:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
+.checkout-error {
+  margin: 0;
+  padding: 0 0 var(--space-3);
+}
+
+/* ---------- Confirmation ---------- */
 .confirmation-card {
-  background: #fff;
-  border-radius: 10px;
-  border: 1px solid var(--color-bg-soft);
-  padding: 24px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-12) var(--space-6);
   text-align: center;
-  margin-top: 40px;
+  margin-top: var(--space-12);
 }
 
 .confirmation-card h1 {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-4);
 }
 
 .whatsapp-button {
@@ -204,8 +335,13 @@ textarea {
   background: #25d366;
   color: #fff;
   text-decoration: none;
-  font-weight: 600;
-  padding: 12px 24px;
-  border-radius: 8px;
-  margin: 16px 0;
+  font-weight: 700;
+  padding: var(--space-3) var(--space-8);
+  border-radius: var(--radius-pill);
+  margin: var(--space-4) 0;
+}
+
+.confirmation-card .booking-back {
+  display: block;
+  margin-top: var(--space-4);
 }

@@ -1,16 +1,50 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../api';
-import type { BlockAvailability, DraftItem, Flavor, ProductDesign, TimeBlock } from '../types';
+import type { DeliveryPreview, Flavor, ProductDesign } from '../types';
+import { useOrderDraft } from '../context/OrderDraft';
+import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
+import { waLink } from '../config';
 import './BookingPage.css';
 
-const WHATSAPP_NUMBER = '573172932484';
-
 const flavorLabels: Record<Flavor, string> = { VAINILLA: 'Vainilla', CHOCOLATE: 'Chocolate' };
+const FLAVORS: Flavor[] = ['VAINILLA', 'CHOCOLATE'];
 
-function todayDateString(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+// Earliest bookable delivery date = today (Colombia, UTC-5) + 2 calendar days,
+// i.e. the 48h booking cutoff. The public order endpoint re-checks this.
+function earliestDeliveryDateString(): string {
+  const colombiaNow = new Date(Date.now() - 5 * 60 * 60 * 1000);
+  colombiaNow.setUTCDate(colombiaNow.getUTCDate() + 2);
+  return colombiaNow.toISOString().slice(0, 10);
+}
+
+// "Minicake Blanca y Rosada (2 porciones) x2, Torta 5 porciones x1" — the compact
+// breakdown that goes into the WhatsApp confirmation message.
+function itemsBreakdown(items: { designName: string; variantLabel: string }[]): string {
+  const counts = new Map<string, number>();
+  for (const i of items) {
+    const key = `${i.designName} (${i.variantLabel})`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([label, n]) => `${label} x${n}`)
+    .join(', ');
+}
+
+// "2026-09-01" -> "martes 1 de septiembre". Noon avoids any timezone day-shift.
+function formatDeliveryDate(dateStr: string): string {
+  if (!dateStr) return '';
+  return new Date(`${dateStr}T12:00:00`).toLocaleDateString('es-CO', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+}
+
+function newKey(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `k-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 interface OrderResult {
@@ -18,351 +52,487 @@ interface OrderResult {
   ticketNumber: number;
   totalPrice: string;
   requiredPaymentPercent: number;
+  deliveryTimeLabel?: string;
 }
 
 export default function BookingPage() {
-  const [designs, setDesigns] = useState<ProductDesign[]>([]);
-  const [items, setItems] = useState<DraftItem[]>([]);
+  const { designId } = useParams();
+  const navigate = useNavigate();
+  const draft = useOrderDraft();
 
-  // Product picker state (current selection being built, not yet added to cart)
-  const [selectedDesignId, setSelectedDesignId] = useState('');
-  const [selectedVariantId, setSelectedVariantId] = useState('');
-  const [selectedFlavor, setSelectedFlavor] = useState<Flavor>('VAINILLA');
-  const [selectedCustomText, setSelectedCustomText] = useState('');
-  const [selectedCustomImageUrl, setSelectedCustomImageUrl] = useState('');
+  const [designs, setDesigns] = useState<ProductDesign[]>([]);
+  const [designsLoaded, setDesignsLoaded] = useState(false);
+
+  // Per-item configurator (the product currently being built, not yet added).
+  const [variantId, setVariantId] = useState('');
+  const [flavor, setFlavor] = useState<Flavor>('VAINILLA');
+  const [customText, setCustomText] = useState('');
+  const [customImageUrl, setCustomImageUrl] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageError, setImageError] = useState('');
+  const [justAdded, setJustAdded] = useState(false);
 
-  const [deliveryDate, setDeliveryDate] = useState('');
-  const [availability, setAvailability] = useState<BlockAvailability[] | null>(null);
-  const [selectedBlock, setSelectedBlock] = useState<TimeBlock | ''>('');
-  const [loadingAvailability, setLoadingAvailability] = useState(false);
-
-  const [clientName, setClientName] = useState('');
-  const [clientPhone, setClientPhone] = useState('');
-  const [deliveryAddress, setDeliveryAddress] = useState('');
-  const [notes, setNotes] = useState('');
+  const [preview, setPreview] = useState<DeliveryPreview | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [result, setResult] = useState<OrderResult | null>(null);
+  const [confirmedName, setConfirmedName] = useState('');
+  const [confirmedBreakdown, setConfirmedBreakdown] = useState('');
+
+  const design = designs.find((d) => d.id === designId);
+  const variant = design?.variants.find((v) => v.id === variantId);
 
   useEffect(() => {
     api
       .get<ProductDesign[]>('/product-designs')
-      .then((res) => {
-        setDesigns(res.data);
-        if (res.data.length > 0) setSelectedDesignId(res.data[0].id);
-      })
-      .catch((err) => console.error('Error cargando catálogo:', err));
+      .then((res) => setDesigns(res.data))
+      .catch((err) => console.error('Error cargando catálogo:', err))
+      .finally(() => setDesignsLoaded(true));
   }, []);
 
+  // Bad or missing design id → back to the catalog to pick one.
   useEffect(() => {
-    if (!deliveryDate) {
-      setAvailability(null);
-      setSelectedBlock('');
+    if (designsLoaded && !design) navigate('/catalogo', { replace: true });
+  }, [designsLoaded, design, navigate]);
+
+  // Reset the configurator whenever the design changes.
+  useEffect(() => {
+    setVariantId(design && design.variants.length > 0 ? design.variants[0].id : '');
+    setFlavor('VAINILLA');
+    setCustomText('');
+    setCustomImageUrl('');
+    setImageError('');
+  }, [design]);
+
+  useEffect(() => {
+    if (!draft.deliveryDate) {
+      setPreview(null);
       return;
     }
-    setLoadingAvailability(true);
-    setSelectedBlock('');
+    setLoadingPreview(true);
+    setPreviewError(false);
     api
-      .get<BlockAvailability[]>('/public-orders/availability', { params: { date: deliveryDate } })
-      .then((res) => setAvailability(res.data))
-      .catch((err) => console.error('Error cargando disponibilidad:', err))
-      .finally(() => setLoadingAvailability(false));
-  }, [deliveryDate]);
-
-  const selectedDesign = designs.find((d) => d.id === selectedDesignId);
-  const selectedVariant = selectedDesign?.variants.find((v) => v.id === selectedVariantId);
-
-  useEffect(() => {
-    if (selectedDesign && selectedDesign.variants.length > 0 && !selectedVariantId) {
-      setSelectedVariantId(selectedDesign.variants[0].id);
-    }
-  }, [selectedDesign, selectedVariantId]);
+      .get<DeliveryPreview>('/public-orders/availability', {
+        params: { date: draft.deliveryDate, minutes: draft.totalMinutes },
+      })
+      .then((res) => setPreview(res.data))
+      .catch((err) => {
+        console.error('Error cargando disponibilidad:', err);
+        setPreview(null);
+        setPreviewError(true);
+      })
+      .finally(() => setLoadingPreview(false));
+  }, [draft.deliveryDate, draft.totalMinutes]);
 
   async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !selectedDesign) return;
-
+    if (!file || !design) return;
     setImageError('');
     setUploadingImage(true);
     try {
       const formData = new FormData();
       formData.append('image', file);
-      formData.append('productDesignId', selectedDesign.id);
+      formData.append('productDesignId', design.id);
       const response = await api.post<{ imageUrl: string }>('/public-orders/upload-image', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      setSelectedCustomImageUrl(response.data.imageUrl);
-    } catch (error: any) {
-      setImageError(error?.response?.data?.error ?? 'No se pudo subir la imagen. Intentá con otra foto.');
+      setCustomImageUrl(response.data.imageUrl);
+    } catch (error) {
+      const message =
+        (error as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        'No se pudo subir la imagen. Prueba con otra foto.';
+      setImageError(message);
     } finally {
       setUploadingImage(false);
     }
   }
 
   function handleAddItem() {
-    if (!selectedDesign || !selectedVariant) return;
-    const newItem: DraftItem = {
-      key: `${selectedVariant.id}-${Date.now()}`,
-      productDesignId: selectedDesign.id,
-      productDesignName: selectedDesign.name,
-      variantId: selectedVariant.id,
-      variantLabel: selectedVariant.label,
-      price: Number(selectedVariant.price),
-      points: selectedVariant.points,
-      flavor: selectedFlavor,
-      customText: selectedCustomText || undefined,
-      customImageUrl: selectedCustomImageUrl || undefined,
-    };
-    setItems((prev) => [...prev, newItem]);
-    setSelectedCustomText('');
-    setSelectedCustomImageUrl('');
+    if (!design || !variant) return;
+    draft.addItem({
+      key: newKey(),
+      designId: design.id,
+      designName: design.name,
+      designImageUrl: design.imageUrl,
+      variantId: variant.id,
+      variantLabel: variant.label,
+      price: Number(variant.price),
+      points: variant.points,
+      prepMinutes: variant.prepMinutes,
+      flavor,
+      customText: customText.trim() || undefined,
+      customImageUrl: customImageUrl || undefined,
+    });
+    setCustomText('');
+    setCustomImageUrl('');
     setImageError('');
+    setJustAdded(true);
+    window.setTimeout(() => setJustAdded(false), 2500);
   }
-
-  function handleRemoveItem(key: string) {
-    setItems((prev) => prev.filter((i) => i.key !== key));
-  }
-
-  const totalPrice = items.reduce((sum, i) => sum + i.price, 0);
-  const totalPoints = items.reduce((sum, i) => sum + i.points, 0);
 
   const canSubmit =
-    items.length > 0 && !!deliveryDate && !!selectedBlock && !!clientName && !!clientPhone && !submitting;
+    draft.items.length > 0 &&
+    !!draft.deliveryDate &&
+    !!preview?.isBusinessDay &&
+    !!preview?.fits &&
+    !!draft.clientName.trim() &&
+    !!draft.clientPhone.trim() &&
+    !submitting;
 
   async function handleSubmit() {
     setErrorMessage('');
     setSubmitting(true);
     try {
-      const response = await api.post('/public-orders', {
-        clientName,
-        clientPhone,
-        deliveryDate,
-        timeBlock: selectedBlock,
-        deliveryAddress: deliveryAddress || undefined,
-        notes: notes || undefined,
-        items: items.map((i) => ({
-          productDesignId: i.productDesignId,
+      const response = await api.post<OrderResult>('/public-orders', {
+        clientName: draft.clientName.trim(),
+        // Keep only digits and a leading +, but accept any country's number.
+        clientPhone: draft.clientPhone.replace(/[^\d+]/g, ''),
+        deliveryDate: draft.deliveryDate,
+        notes: draft.notes.trim() || undefined,
+        items: draft.items.map((i) => ({
+          productDesignId: i.designId,
           variantId: i.variantId,
           flavor: i.flavor,
           customText: i.customText,
           customImageUrl: i.customImageUrl,
         })),
       });
+      setConfirmedName(draft.clientName.trim());
+      setConfirmedBreakdown(itemsBreakdown(draft.items));
       setResult(response.data);
-    } catch (error: any) {
-      setErrorMessage(error?.response?.data?.error ?? 'No se pudo enviar el pedido. Intentá de nuevo.');
+      draft.reset();
+    } catch (error) {
+      const message =
+        (error as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        'No se pudo enviar el pedido. Intenta de nuevo.';
+      setErrorMessage(message);
     } finally {
       setSubmitting(false);
     }
   }
 
   if (result) {
-    const message = encodeURIComponent(
-      `Hola! Soy ${clientName}, acabo de agendar el pedido #${result.ticketNumber} por $${Number(
-        result.totalPrice
-      ).toLocaleString('es-CO')}. Te comparto el comprobante del abono.`
+    const waHref = waLink(
+      `Hola, soy ${confirmedName}. Agendé el pedido #${result.ticketNumber}.\n` +
+        `${confirmedBreakdown}\n` +
+        `Total: $${Number(result.totalPrice).toLocaleString('es-CO')}. Te comparto el comprobante del abono.`
     );
     return (
       <div className="booking-page">
-        <div className="confirmation-card">
-          <h1>¡Pedido recibido!</h1>
-          <p>
-            Tu ticket es <strong>#{result.ticketNumber}</strong>.
-          </p>
-          <p>
-            Total: <strong>${Number(result.totalPrice).toLocaleString('es-CO')}</strong>
-          </p>
-          <p>
-            Requiere abono del <strong>{result.requiredPaymentPercent}%</strong>. Mandanos el comprobante por
-            WhatsApp para confirmar tu pedido.
-          </p>
-          <a
-            className="whatsapp-button"
-            href={`https://wa.me/${WHATSAPP_NUMBER}?text=${message}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Confirmar por WhatsApp
-          </a>
-          <Link to="/" className="back-link">
-            Volver al inicio
-          </Link>
-        </div>
+        <AnnouncementBar />
+        <SiteHeader />
+        <main className="booking-main">
+          <div className="confirmation-card">
+            <h1>¡Pedido recibido!</h1>
+            <p>
+              Tu ticket es <strong>#{result.ticketNumber}</strong>.
+            </p>
+            <p>
+              Total: <strong>${Number(result.totalPrice).toLocaleString('es-CO')}</strong>
+            </p>
+            {result.deliveryTimeLabel && (
+              <p>
+                Tu pedido va a estar listo a partir de las{' '}
+                <strong>{result.deliveryTimeLabel}</strong>. Puedes recogerlo a esa hora o más tarde
+                ese mismo día.
+              </p>
+            )}
+            <p>
+              Requiere un abono del <strong>{result.requiredPaymentPercent}%</strong>. Manda el
+              comprobante por WhatsApp para confirmar tu pedido.
+            </p>
+            <p className="booking-ticket-note">
+              Guarda tu número de ticket <strong>#{result.ticketNumber}</strong>. Si nos escribes por
+              cualquier tema de tu pedido, dánoslo siempre: es la forma en que ubicamos tu pedido.
+            </p>
+            <a className="whatsapp-button" href={waHref} target="_blank" rel="noreferrer">
+              Confirmar por WhatsApp
+            </a>
+            <Link to="/" className="booking-back">
+              Volver al inicio
+            </Link>
+          </div>
+        </main>
+        <SiteFooter />
+      </div>
+    );
+  }
+
+  if (!designsLoaded || !design) {
+    return (
+      <div className="booking-page">
+        <AnnouncementBar />
+        <SiteHeader />
+        <main className="booking-main">
+          <p className="muted">Cargando...</p>
+        </main>
       </div>
     );
   }
 
   return (
     <div className="booking-page">
-      <Link to="/" className="back-link">
-        ← Volver
-      </Link>
-      <h1>Agendar pedido</h1>
+      <AnnouncementBar />
+      <SiteHeader />
 
-      <section className="form-section">
-        <h2>1. Elegí tu producto</h2>
+      <main className="booking-main">
+        <Link to="/catalogo" className="booking-back">
+          ← Volver al catálogo
+        </Link>
+        <h1>Arma tu pedido</h1>
 
-        {designs.length === 0 ? (
-          <p className="muted">Cargando catálogo...</p>
-        ) : (
-          <>
-            <label className="field-label">Diseño</label>
-            <select
-              value={selectedDesignId}
-              onChange={(e) => {
-                setSelectedDesignId(e.target.value);
-                setSelectedVariantId('');
-                setSelectedCustomImageUrl('');
-                setImageError('');
-              }}
-            >
-              {designs.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
+        {/* ---------- Configurador del producto actual ---------- */}
+        <section className="booking-block">
+          <div className="config-head">
+            {design.imageUrl ? (
+              <img className="config-photo" src={design.imageUrl} alt={design.name} />
+            ) : (
+              <div className="config-photo config-photo-empty" aria-hidden="true">
+                Sin foto
+              </div>
+            )}
+            <div>
+              <p className="eyebrow">Estás personalizando</p>
+              <h2>{design.name}</h2>
+            </div>
+          </div>
+
+          <label className="field-label">Tamaño</label>
+          <div className="pills">
+            {design.variants.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                className={`pill ${variantId === v.id ? 'pill-active' : ''}`}
+                onClick={() => setVariantId(v.id)}
+              >
+                {v.label} — ${Number(v.price).toLocaleString('es-CO')}
+              </button>
+            ))}
+          </div>
+
+          <label className="field-label">Sabor de la torta</label>
+          <div className="pills">
+            {FLAVORS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                className={`pill ${flavor === f ? 'pill-active' : ''}`}
+                onClick={() => setFlavor(f)}
+              >
+                {flavorLabels[f]}
+              </button>
+            ))}
+          </div>
+
+          {design.allowsCustomText && (
+            <>
+              <label className="field-label">Texto personalizado (opcional)</label>
+              <input
+                type="text"
+                placeholder="Una frase o un número. Ej: Feliz cumple Ana — 30"
+                value={customText}
+                onChange={(e) => setCustomText(e.target.value)}
+              />
+            </>
+          )}
+
+          {design.allowsCustomImage && (
+            <>
+              <label className="field-label">Imagen para imprimir (opcional)</label>
+              <input type="file" accept="image/*" onChange={handleImageChange} disabled={uploadingImage} />
+              {uploadingImage && <p className="muted">Subiendo imagen...</p>}
+              {imageError && <p className="warning">{imageError}</p>}
+              {customImageUrl && (
+                <img className="config-photo" src={customImageUrl} alt="Imagen personalizada" />
+              )}
+            </>
+          )}
+
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleAddItem}
+            disabled={!variant || uploadingImage}
+          >
+            Agregar al pedido
+          </button>
+          {justAdded && <p className="added-flash">Agregado a tu pedido ✓</p>}
+        </section>
+
+        {/* ---------- Carrito ---------- */}
+        {draft.items.length > 0 && (
+          <section className="booking-block">
+            <h2>Tu pedido ({draft.items.length})</h2>
+            <ul className="cart-list">
+              {draft.items.map((i) => (
+                <li key={i.key}>
+                  <span>
+                    {i.designName} · {i.variantLabel} · {flavorLabels[i.flavor]}
+                    {i.customText ? ` · "${i.customText}"` : ''}
+                    {i.customImageUrl ? ' · con imagen' : ''}
+                  </span>
+                  <span className="cart-item-right">
+                    ${i.price.toLocaleString('es-CO')}
+                    <button type="button" aria-label="Quitar del pedido" onClick={() => draft.removeItem(i.key)}>
+                      ✕
+                    </button>
+                  </span>
+                </li>
               ))}
-            </select>
+            </ul>
+            <Link to="/catalogo" className="btn btn-ghost">
+              Agregar otro producto
+            </Link>
+          </section>
+        )}
 
-            {selectedDesign?.imageUrl && (
-              <img className="design-preview" src={selectedDesign.imageUrl} alt={selectedDesign.name} />
+        {/* ---------- Entrega ---------- */}
+        <section className="booking-block">
+          <h2>Fecha de entrega</h2>
+          <input
+            type="date"
+            min={earliestDeliveryDateString()}
+            value={draft.deliveryDate}
+            onChange={(e) => draft.patch({ deliveryDate: e.target.value })}
+          />
+          <p className="field-hint">Necesitamos al menos 48 horas de anticipación.</p>
+
+          {/* Live pickup-time estimate: recalculates whenever the date or the
+              cart changes, so the client sees the hour before adding anything. */}
+          <div className="slot-box">
+            {!draft.deliveryDate && (
+              <p className="slot-hint">Elige una fecha para ver a qué hora estaría listo tu pedido.</p>
             )}
 
-            <label className="field-label">Tamaño</label>
-            <select value={selectedVariantId} onChange={(e) => setSelectedVariantId(e.target.value)}>
-              {selectedDesign?.variants.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.label} — ${Number(v.price).toLocaleString('es-CO')}
-                </option>
-              ))}
-            </select>
+            {draft.deliveryDate && loadingPreview && (
+              <p className="slot-hint">Calculando la hora...</p>
+            )}
 
-            <label className="field-label">Sabor</label>
-            <div className="flavor-options">
-              {(['VAINILLA', 'CHOCOLATE'] as Flavor[]).map((flavor) => (
-                <button
-                  key={flavor}
-                  type="button"
-                  className={`chip ${selectedFlavor === flavor ? 'chip-active' : ''}`}
-                  onClick={() => setSelectedFlavor(flavor)}
-                >
-                  {flavorLabels[flavor]}
-                </button>
-              ))}
-            </div>
+            {draft.deliveryDate && !loadingPreview && previewError && (
+              <p className="warning">
+                No pudimos calcular la hora ahora mismo. Revisa tu conexión y vuelve a intentar en un
+                momento.
+              </p>
+            )}
 
-            <label className="field-label">Texto personalizado (opcional)</label>
-            <input
-              type="text"
-              placeholder="Ej: Feliz cumpleaños Ana"
-              value={selectedCustomText}
-              onChange={(e) => setSelectedCustomText(e.target.value)}
-            />
-
-            {selectedDesign?.allowsCustomImage && (
+            {draft.deliveryDate && !loadingPreview && preview && (
               <>
-                <label className="field-label">Imagen para imprimir (opcional)</label>
-                <input type="file" accept="image/*" onChange={handleImageChange} disabled={uploadingImage} />
-                {uploadingImage && <p className="muted">Subiendo imagen...</p>}
-                {imageError && <p className="warning">{imageError}</p>}
-                {selectedCustomImageUrl && (
-                  <img className="design-preview" src={selectedCustomImageUrl} alt="Imagen personalizada" />
+                {!preview.isBusinessDay && (
+                  <p className="warning">
+                    Ese día no agendamos (domingo o festivo). Elige otra fecha.
+                  </p>
+                )}
+
+                {/* No hay productos aún: mostramos desde qué hora entrega ese día. */}
+                {preview.isBusinessDay && draft.totalMinutes === 0 && (
+                  <>
+                    <p className="slot-label">Ese día entregamos</p>
+                    <p className="slot-time">desde las {preview.deliveryTimeLabel}</p>
+                    <p className="slot-sub">
+                      Agrega productos y te calculamos la hora exacta de recogida de tu pedido.
+                    </p>
+                  </>
+                )}
+
+                {preview.isBusinessDay && draft.totalMinutes > 0 && preview.fits && (
+                  <>
+                    <p className="slot-label">Tu pedido estaría listo</p>
+                    <p className="slot-time">a partir de las {preview.deliveryTimeLabel}</p>
+                    <p className="slot-sub">
+                      Puedes recogerlo a esa hora o más tarde ese mismo día, hasta las{' '}
+                      {preview.closesAtLabel}. Si lo necesitas antes, elige otro día.
+                    </p>
+                  </>
+                )}
+
+                {preview.isBusinessDay && draft.totalMinutes > 0 && !preview.fits && (
+                  <p className="warning">
+                    Ese día ya está lleno (entregamos hasta las {preview.closesAtLabel}). Elige otra
+                    fecha.
+                  </p>
                 )}
               </>
             )}
+          </div>
+        </section>
 
+        {/* ---------- Datos ---------- */}
+        <section className="booking-block">
+          <h2>Tus datos</h2>
+          <label className="field-label">Nombre completo</label>
+          <input
+            type="text"
+            value={draft.clientName}
+            onChange={(e) => draft.patch({ clientName: e.target.value })}
+          />
+
+          <label className="field-label">Teléfono (WhatsApp)</label>
+          <input
+            type="tel"
+            value={draft.clientPhone}
+            onChange={(e) => draft.patch({ clientPhone: e.target.value })}
+          />
+
+          <label className="field-label">Notas (opcional)</label>
+          <textarea value={draft.notes} onChange={(e) => draft.patch({ notes: e.target.value })} />
+
+          <p className="muted">Todos los pedidos son para recoger en el local.</p>
+        </section>
+
+        {/* ---------- Resumen antes de pagar ---------- */}
+        {draft.items.length > 0 &&
+          draft.deliveryDate &&
+          preview?.isBusinessDay &&
+          preview?.fits && (
+            <section className="booking-block booking-recap">
+              <h2>Antes de enviar</h2>
+              <dl className="recap-list">
+                <div>
+                  <dt>Productos</dt>
+                  <dd>{draft.items.length}</dd>
+                </div>
+                <div>
+                  <dt>Entrega</dt>
+                  <dd>{formatDeliveryDate(draft.deliveryDate)}</dd>
+                </div>
+                <div>
+                  <dt>Hora de recogida</dt>
+                  <dd>a partir de las {preview.deliveryTimeLabel}</dd>
+                </div>
+                <div>
+                  <dt>Total</dt>
+                  <dd>${draft.totalPrice.toLocaleString('es-CO')}</dd>
+                </div>
+              </dl>
+            </section>
+          )}
+
+        <div className="checkout-bar">
+          <div className="checkout-bar-inner">
+            <div className="checkout-total">
+              <span className="checkout-total-label">Total</span>
+              <span className="checkout-total-amount">
+                ${draft.totalPrice.toLocaleString('es-CO')}
+              </span>
+            </div>
             <button
               type="button"
-              className="secondary-button"
-              onClick={handleAddItem}
-              disabled={!selectedVariant || uploadingImage}
+              className="btn btn-primary checkout-send"
+              disabled={!canSubmit}
+              onClick={handleSubmit}
             >
-              + Agregar al pedido
+              {submitting ? 'Enviando...' : 'Enviar por WhatsApp'}
             </button>
-          </>
-        )}
-
-        {items.length > 0 && (
-          <ul className="cart-list">
-            {items.map((item) => (
-              <li key={item.key}>
-                <span>
-                  {item.productDesignName} - {item.variantLabel} ({flavorLabels[item.flavor]})
-                </span>
-                <span className="cart-item-right">
-                  ${item.price.toLocaleString('es-CO')}
-                  <button type="button" onClick={() => handleRemoveItem(item.key)}>
-                    ✕
-                  </button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="form-section">
-        <h2>2. Fecha y hora de entrega</h2>
-        <input
-          type="date"
-          min={todayDateString()}
-          value={deliveryDate}
-          onChange={(e) => setDeliveryDate(e.target.value)}
-        />
-
-        {loadingAvailability && <p className="muted">Consultando disponibilidad...</p>}
-
-        {availability && availability.length === 0 && (
-          <p className="warning">Ese día no agendamos (domingo o festivo). Elegí otra fecha.</p>
-        )}
-
-        {availability && availability.length > 0 && (
-          <div className="block-grid">
-            {availability.map((block) => {
-              const fits = block.pointsAvailable >= totalPoints && totalPoints > 0;
-              const disabled = totalPoints === 0 || !fits;
-              return (
-                <button
-                  key={block.block}
-                  type="button"
-                  className={`chip ${selectedBlock === block.block ? 'chip-active' : ''}`}
-                  disabled={disabled}
-                  onClick={() => setSelectedBlock(block.block)}
-                >
-                  {block.label}
-                  {disabled && totalPoints > 0 ? ' (lleno)' : ''}
-                </button>
-              );
-            })}
           </div>
-        )}
-        {totalPoints === 0 && <p className="muted">Agregá al menos un producto para ver los bloques disponibles.</p>}
-      </section>
+          {errorMessage && <p className="warning checkout-error">{errorMessage}</p>}
+        </div>
+      </main>
 
-      <section className="form-section">
-        <h2>3. Tus datos</h2>
-        <label className="field-label">Nombre completo</label>
-        <input type="text" value={clientName} onChange={(e) => setClientName(e.target.value)} />
-
-        <label className="field-label">Teléfono</label>
-        <input type="tel" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} />
-
-        <label className="field-label">Dirección de entrega (opcional)</label>
-        <input type="text" value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} />
-
-        <label className="field-label">Notas (opcional)</label>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </section>
-
-      <div className="summary-bar">
-        <span>Total: ${totalPrice.toLocaleString('es-CO')}</span>
-        {errorMessage && <p className="warning">{errorMessage}</p>}
-        <button type="button" className="cta-button" disabled={!canSubmit} onClick={handleSubmit}>
-          {submitting ? 'Enviando...' : 'Confirmar pedido'}
-        </button>
-      </div>
+      <SiteFooter />
     </div>
   );
 }
