@@ -28,6 +28,8 @@ export async function login(req: Request, res: Response) {
   const token = jwt.sign(
     { userId: user.id, username: user.username },
     process.env.JWT_SECRET as string,
+    // 30d covers the mobile app (daily use). The web enforces its own shorter
+    // 3-day session client-side (see AdminAuth on the web).
     { expiresIn: '30d' }
   );
 

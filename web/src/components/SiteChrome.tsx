@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BUSINESS, SOCIAL, waLink } from '../config';
+import { useAdminAuth } from '../context/AdminAuth';
 import './SiteChrome.css';
 
 // Announcement strip: shows one full message at a time and rotates through them
@@ -85,6 +86,7 @@ export function SiteHeader() {
 
 export function SiteFooter() {
   const year = new Date().getFullYear();
+  const { isAdmin } = useAdminAuth();
 
   return (
     <>
@@ -137,7 +139,17 @@ export function SiteFooter() {
           </div>
         </div>
 
-        <p className="site-footer-legal">© {year} Melosa · Hecho con 🤎 en {BUSINESS.city}</p>
+        <p className="site-footer-legal">
+          © {year} Melosa · Hecho con 🤎 en {BUSINESS.city}
+          {!isAdmin && (
+            <>
+              {' · '}
+              <Link className="footer-admin-link" to="/admin">
+                Administradora
+              </Link>
+            </>
+          )}
+        </p>
       </footer>
     </>
   );

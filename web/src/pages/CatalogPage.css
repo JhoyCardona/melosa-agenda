@@ -2,6 +2,11 @@
   overflow-x: hidden;
 }
 
+.catalog-admin-cta {
+  display: inline-flex;
+  margin-top: var(--space-4);
+}
+
 /* ---------- Price filter tabs ---------- */
 .price-tabs {
   display: flex;

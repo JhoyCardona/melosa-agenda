@@ -190,6 +190,11 @@
   color: color-mix(in srgb, var(--color-bg) 70%, transparent);
 }
 
+.footer-admin-link {
+  color: inherit;
+  text-decoration: underline;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

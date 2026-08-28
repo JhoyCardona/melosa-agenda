@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import type { ProductDesign } from '../types';
+import { useAdminAuth } from '../context/AdminAuth';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import './CatalogPage.css';
 
@@ -30,6 +31,7 @@ const PRICE_BUCKETS = [
 const DEFAULT_BUCKET = '28000';
 
 export default function CatalogPage() {
+  const { isAdmin } = useAdminAuth();
   const [designs, setDesigns] = useState<ProductDesign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -62,6 +64,11 @@ export default function CatalogPage() {
         <div className="section-inner">
           <p className="eyebrow">Catálogo</p>
           <h1>Elige tu diseño</h1>
+          {isAdmin && (
+            <Link to="/admin/catalogo" className="btn btn-ghost catalog-admin-cta">
+              Editar catálogo
+            </Link>
+          )}
           <p className="section-lead">
             Toca un diseño para empezar tu pedido. Cada diseño se hace en minicake de 2 porciones y
             en tamaños de 5, 10, 15 y 20 porciones: el tamaño y el precio los eliges en el siguiente

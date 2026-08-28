@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import type { ItemCategory, ProductDesign } from '../types';
+import { useAdminAuth } from '../context/AdminAuth';
 import PasswordPrompt from '../components/PasswordPrompt';
 import EditDesignRow from '../components/EditDesignRow';
 import './adminLegacy.css';
@@ -36,6 +37,7 @@ function emptyVariant(): VariantDraft {
 
 export default function CatalogAdminPage() {
   const navigate = useNavigate();
+  const { isAdmin, logout } = useAdminAuth();
   const [designs, setDesigns] = useState<ProductDesign[]>([]);
   const [loadingList, setLoadingList] = useState(true);
 
@@ -85,7 +87,7 @@ export default function CatalogAdminPage() {
       .then((res) => setDesigns(res.data))
       .catch((err) => {
         if (err?.response?.status === 401) {
-          localStorage.removeItem('melosa_admin_token');
+          logout();
           navigate('/admin');
         }
       })
@@ -93,13 +95,13 @@ export default function CatalogAdminPage() {
   }
 
   useEffect(() => {
-    if (!localStorage.getItem('melosa_admin_token')) {
-      navigate('/admin');
+    if (!isAdmin) {
+      navigate('/admin', { replace: true });
       return;
     }
     loadDesigns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isAdmin]);
 
   async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -185,7 +187,7 @@ export default function CatalogAdminPage() {
   }
 
   function handleLogout() {
-    localStorage.removeItem('melosa_admin_token');
+    logout();
     navigate('/admin');
   }
 

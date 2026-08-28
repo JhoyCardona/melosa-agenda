@@ -1,14 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
+import { useAdminAuth } from '../context/AdminAuth';
 import './adminLegacy.css';
 
 export default function AdminLoginPage() {
   const navigate = useNavigate();
+  const { isAdmin, login } = useAdminAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Already signed in → skip the form.
+  useEffect(() => {
+    if (isAdmin) navigate('/admin/catalogo', { replace: true });
+  }, [isAdmin, navigate]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -16,9 +23,10 @@ export default function AdminLoginPage() {
     setSubmitting(true);
     try {
       const response = await api.post('/auth/login', { username, password });
-      localStorage.setItem('melosa_admin_token', response.data.token);
+      login(response.data.token);
       navigate('/admin/catalogo');
     } catch (err: any) {
+      // 429 from the login rate-limiter carries its own "espera 15 minutos" text.
       setError(err?.response?.data?.error ?? 'No se pudo iniciar sesión');
     } finally {
       setSubmitting(false);
