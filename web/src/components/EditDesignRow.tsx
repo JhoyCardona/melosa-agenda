@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import api from '../api';
 import type { ItemCategory, ProductDesign, ProductVariant } from '../types';
 
@@ -50,6 +50,21 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
   );
   const [newVariant, setNewVariant] = useState<VariantEdit | null>(null);
   const [error, setError] = useState('');
+
+  // Resync local edit state whenever the design is refetched (after any save,
+  // add or delete). Without this, a newly added variant has no entry in
+  // `variants` and the render crashes on `variants[v.id].label`.
+  useEffect(() => {
+    setName(design.name);
+    setCategory(design.category as ItemCategory);
+    setShape(design.shape ?? '');
+    setImageUrl(design.imageUrl ?? '');
+    setAllowsCustomImage(design.allowsCustomImage);
+    setAllowsCustomText(design.allowsCustomText);
+    setVariants(Object.fromEntries(design.variants.map((v) => [v.id, toVariantEdit(v)])));
+    setNewVariant(null);
+    setError('');
+  }, [design]);
 
   function setVariantField(id: string, patch: Partial<VariantEdit>) {
     setVariants((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
@@ -185,7 +200,9 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
           <p className="edit-hint">label · precio · puntos · minutos de agenda · promo</p>
 
           {design.variants.map((v) => {
-            const e = variants[v.id];
+            // Fallback covers the render right after a refetch, before the
+            // resync effect has repopulated `variants`.
+            const e = variants[v.id] ?? toVariantEdit(v);
             return (
               <div key={v.id} className="edit-variant">
                 <div className="edit-row">

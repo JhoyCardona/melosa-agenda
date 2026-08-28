@@ -32,12 +32,19 @@ async function reEnqueueOrder(tx: Prisma.TransactionClient, orderId: string): Pr
     include: { items: { include: { variant: true } } },
   });
   const rawDurationMin = order.items.reduce((sum, i) => sum + i.variant.prepMinutes, 0);
-  const slot = await reserveDeliverySlot(tx, dateStrOf(order.deliveryDate), rawDurationMin);
+  const dateStr = dateStrOf(order.deliveryDate);
+  const slot = await reserveDeliverySlot(tx, dateStr, rawDurationMin);
   await tx.order.update({
     where: { id: orderId },
     data: {
       deliveryStartMinutes: slot.startMinutes,
       deliveryDurationMin: slot.durationMin,
+      // While the order is still awaiting payment, keep its deadline anchored to
+      // the new pickup time — a reschedule to another day (or an added item)
+      // moves the pickup, so the "pickup - 24h" deadline must move with it.
+      ...(order.status === OrderStatus.AWAITING_PAYMENT && {
+        paymentDueDate: computePaymentDueDate(dateStr, slot.startMinutes + slot.durationMin),
+      }),
     },
   });
 }
