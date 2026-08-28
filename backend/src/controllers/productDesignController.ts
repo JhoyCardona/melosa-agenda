@@ -35,7 +35,7 @@ export async function listAllProductDesigns(req: AuthRequest, res: Response) {
 // list) from the web, behind the same login the mobile app uses — no polished
 // editing yet, just create.
 export async function createProductDesign(req: AuthRequest, res: Response) {
-  const { name, category, shape, imageUrl, allowsCustomImage, allowsCustomText, variants } = req.body;
+  const { name, category, shape, imageUrl, allowsCustomImage, allowsCustomText, requiredPaymentPercent, variants } = req.body;
 
   if (!name || !category) {
     return res.status(400).json({ error: 'name y category son requeridos' });
@@ -43,6 +43,11 @@ export async function createProductDesign(req: AuthRequest, res: Response) {
 
   if (!VALID_CATEGORIES.includes(category)) {
     return res.status(400).json({ error: `category debe ser una de: ${VALID_CATEGORIES.join(', ')}` });
+  }
+
+  if (requiredPaymentPercent !== undefined) {
+    const err = validatePaymentPercent(requiredPaymentPercent);
+    if (err) return res.status(400).json({ error: err });
   }
 
   if (!Array.isArray(variants) || variants.length === 0) {
@@ -70,6 +75,7 @@ export async function createProductDesign(req: AuthRequest, res: Response) {
         imageUrl: imageUrl || null,
         allowsCustomImage: !!allowsCustomImage,
         allowsCustomText: allowsCustomText === undefined ? true : !!allowsCustomText,
+        ...(requiredPaymentPercent !== undefined && { requiredPaymentPercent }),
         variants: {
           create: (variants as VariantInput[]).map((v) => ({
             label: v.label,
@@ -97,16 +103,27 @@ function validatePrepMinutes(value: unknown): string | null {
   return null;
 }
 
+function validatePaymentPercent(value: unknown): string | null {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 100) {
+    return 'requiredPaymentPercent debe ser un entero entre 1 y 100';
+  }
+  return null;
+}
+
 // Fase 6: edit an existing design's own fields (not its variants).
 export async function updateProductDesign(req: AuthRequest, res: Response) {
   const id = req.params.id as string;
-  const { name, category, shape, imageUrl, allowsCustomImage, allowsCustomText } = req.body;
+  const { name, category, shape, imageUrl, allowsCustomImage, allowsCustomText, requiredPaymentPercent } = req.body;
 
   if (category !== undefined && !VALID_CATEGORIES.includes(category)) {
     return res.status(400).json({ error: `category debe ser una de: ${VALID_CATEGORIES.join(', ')}` });
   }
   if (name !== undefined && !String(name).trim()) {
     return res.status(400).json({ error: 'name no puede quedar vacío' });
+  }
+  if (requiredPaymentPercent !== undefined) {
+    const err = validatePaymentPercent(requiredPaymentPercent);
+    if (err) return res.status(400).json({ error: err });
   }
 
   try {
@@ -119,6 +136,7 @@ export async function updateProductDesign(req: AuthRequest, res: Response) {
         ...(imageUrl !== undefined && { imageUrl: imageUrl || null }),
         ...(allowsCustomImage !== undefined && { allowsCustomImage: !!allowsCustomImage }),
         ...(allowsCustomText !== undefined && { allowsCustomText: !!allowsCustomText }),
+        ...(requiredPaymentPercent !== undefined && { requiredPaymentPercent }),
       },
       include: { variants: { orderBy: { points: 'asc' } } },
     });

@@ -18,6 +18,7 @@ export interface ProductDesign {
   imageUrl: string | null;
   allowsCustomImage: boolean;
   allowsCustomText: boolean;
+  requiredPaymentPercent: number;
   variants: ProductVariant[];
 }
 

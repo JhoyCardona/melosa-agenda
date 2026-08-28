@@ -143,6 +143,12 @@ export async function createPublicOrder(req: Request, res: Response) {
       (sum, item) => sum + variantById.get(item.variantId)!.prepMinutes,
       0
     );
+    // The order requires the strictest deposit policy among its designs.
+    const requiredPaymentPercent = Math.max(
+      ...(items as PublicOrderItemInput[]).map(
+        (item) => designById.get(item.productDesignId)?.requiredPaymentPercent ?? 100
+      )
+    );
 
     const order = await prisma.$transaction(async (tx) => {
       // Assigns the pickup slot and advances the day cursor, all-or-nothing with
@@ -166,6 +172,7 @@ export async function createPublicOrder(req: Request, res: Response) {
           source: 'WEB_PUBLIC',
           status: OrderStatus.AWAITING_PAYMENT,
           paymentDueDate: computePaymentDueDate(deliveryDate, pickupMinutes),
+          requiredPaymentPercent,
           totalPrice,
           items: {
             create: (items as PublicOrderItemInput[]).map((item) => {

@@ -43,6 +43,7 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
   const [imageUrl, setImageUrl] = useState(design.imageUrl ?? '');
   const [allowsCustomImage, setAllowsCustomImage] = useState(design.allowsCustomImage);
   const [allowsCustomText, setAllowsCustomText] = useState(design.allowsCustomText);
+  const [requiredPaymentPercent, setRequiredPaymentPercent] = useState(String(design.requiredPaymentPercent));
   const [uploading, setUploading] = useState(false);
 
   const [variants, setVariants] = useState<Record<string, VariantEdit>>(
@@ -61,6 +62,7 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
     setImageUrl(design.imageUrl ?? '');
     setAllowsCustomImage(design.allowsCustomImage);
     setAllowsCustomText(design.allowsCustomText);
+    setRequiredPaymentPercent(String(design.requiredPaymentPercent));
     setVariants(Object.fromEntries(design.variants.map((v) => [v.id, toVariantEdit(v)])));
     setNewVariant(null);
     setError('');
@@ -98,6 +100,7 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
         imageUrl: imageUrl || null,
         allowsCustomImage,
         allowsCustomText,
+        requiredPaymentPercent: Number(requiredPaymentPercent),
       });
       onSaved();
     });
@@ -189,6 +192,15 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
             />
             Admite texto personalizado
           </label>
+
+          <label className="field-label">Abono requerido (%)</label>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={requiredPaymentPercent}
+            onChange={(e) => setRequiredPaymentPercent(e.target.value)}
+          />
 
           <button type="button" className="cta-button" style={{ marginTop: 12 }} onClick={saveDesign}>
             Guardar diseño
