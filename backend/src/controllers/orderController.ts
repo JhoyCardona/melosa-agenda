@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { PrismaClient, Prisma, OrderStatus, Flavor } from '@prisma/client';
+import { PrismaClient, Prisma, OrderStatus, OrderSource, Flavor } from '@prisma/client';
 import archiver from 'archiver';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { computePaymentDueDate } from '../utils/colombiaTime';
@@ -9,15 +9,21 @@ const prisma = new PrismaClient();
 
 const VALID_STATUSES = Object.values(OrderStatus);
 const VALID_FLAVORS = Object.values(Flavor);
+const VALID_SOURCES = Object.values(OrderSource);
 
 function dateStrOf(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+// A line is either a catalog reference (variantId) or a fully custom line
+// (customName + priceAtOrder), entered from the web admin order form.
 interface OrderItemInput {
-  productDesignId: string;
-  variantId: string;
-  flavor: Flavor;
+  productDesignId?: string;
+  variantId?: string;
+  flavor?: Flavor;
+  customName?: string;
+  customFlavor?: string;
+  priceAtOrder?: number;
   customImageUrl?: string;
   customText?: string;
 }
@@ -50,10 +56,14 @@ async function reEnqueueOrder(tx: Prisma.TransactionClient, orderId: string): Pr
   });
 }
 
-// Manual order creation from the mobile app. The whole order (all its items)
-// arrives in one call so its delivery slot can be reserved once, contiguously.
-// `deliveryStartMinutes` is optional: pass it when seeding the backlog of orders
-// Melosa already promised a time for; omit it to append at the end of the day.
+// Manual order creation from the web admin panel (Fase 6b). Two modes:
+//  - `deliveryStartMinutes` present → admin free-form: a fixed pickup clock time
+//    (minutes from midnight), NO timeline cursor, NO date/day/window validation
+//    (trusted channel — personalized orders, family/friends, any date incl. past
+//    or Sundays). deliveryDurationMin stays 0.
+//  - `deliveryStartMinutes` absent → legacy: append to the day's timeline queue.
+// Items can be catalog references (variantId) or fully custom lines (customName +
+// priceAtOrder). `depositPaid > 0` creates the order already DEPOSIT_PAID.
 export async function createOrder(req: AuthRequest, res: Response) {
   const {
     clientName,
@@ -62,6 +72,8 @@ export async function createOrder(req: AuthRequest, res: Response) {
     deliveryAddress,
     notes,
     deliveryStartMinutes,
+    depositPaid,
+    source,
     items,
   } = req.body;
 
@@ -70,75 +82,154 @@ export async function createOrder(req: AuthRequest, res: Response) {
       error: 'clientName, clientPhone y deliveryDate son requeridos',
     });
   }
-
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(deliveryDate)) {
+    return res.status(400).json({ error: 'deliveryDate debe tener el formato YYYY-MM-DD' });
+  }
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'items debe ser un arreglo con al menos un producto' });
   }
 
+  const adminFreeform = deliveryStartMinutes !== undefined;
   if (
-    deliveryStartMinutes !== undefined &&
+    adminFreeform &&
     (typeof deliveryStartMinutes !== 'number' ||
       !Number.isInteger(deliveryStartMinutes) ||
-      deliveryStartMinutes < 0)
+      deliveryStartMinutes < 0 ||
+      deliveryStartMinutes >= 1440)
   ) {
-    return res.status(400).json({ error: 'deliveryStartMinutes debe ser un entero mayor o igual a 0' });
+    return res.status(400).json({ error: 'deliveryStartMinutes debe ser un entero entre 0 y 1439' });
+  }
+  if (
+    depositPaid !== undefined &&
+    (typeof depositPaid !== 'number' || Number.isNaN(depositPaid) || depositPaid < 0)
+  ) {
+    return res.status(400).json({ error: 'depositPaid debe ser un número mayor o igual a 0' });
+  }
+  if (source !== undefined && !VALID_SOURCES.includes(source)) {
+    return res.status(400).json({ error: `source debe ser una de: ${VALID_SOURCES.join(', ')}` });
   }
 
   try {
-    const variantIds = (items as OrderItemInput[]).map((i) => i.variantId);
-    const variants = await prisma.productVariant.findMany({ where: { id: { in: variantIds } } });
+    const wantedVariantIds = (items as OrderItemInput[])
+      .map((i) => i.variantId)
+      .filter((id): id is string => !!id);
+    const variants = await prisma.productVariant.findMany({ where: { id: { in: wantedVariantIds } } });
     const variantById = new Map(variants.map((v) => [v.id, v]));
+    const designs = await prisma.productDesign.findMany({
+      where: { id: { in: variants.map((v) => v.productDesignId) } },
+    });
+    const designById = new Map(designs.map((d) => [d.id, d]));
+
+    interface BuiltLine {
+      productDesignId: string | null;
+      variantId: string | null;
+      priceAtOrder: number;
+      pointsAtOrder: number;
+      prepMinutes: number;
+      flavor: Flavor | null;
+      customName: string | null;
+      customFlavor: string | null;
+      customImageUrl: string | null;
+      customText: string | null;
+      requiredPct: number;
+    }
+    const lines: BuiltLine[] = [];
 
     for (const item of items as OrderItemInput[]) {
-      const variant = variantById.get(item.variantId);
-      if (!variant || variant.productDesignId !== item.productDesignId) {
-        return res.status(404).json({ error: 'Una de las variantes seleccionadas no existe para ese diseño' });
-      }
-      if (!item.flavor || !VALID_FLAVORS.includes(item.flavor)) {
-        return res.status(400).json({ error: `flavor debe ser uno de: ${VALID_FLAVORS.join(', ')}` });
+      if (item.variantId) {
+        const variant = variantById.get(item.variantId);
+        if (!variant || (item.productDesignId && variant.productDesignId !== item.productDesignId)) {
+          return res.status(404).json({ error: 'Una de las variantes seleccionadas no existe' });
+        }
+        if (!item.flavor || !VALID_FLAVORS.includes(item.flavor)) {
+          return res.status(400).json({ error: `flavor debe ser uno de: ${VALID_FLAVORS.join(', ')}` });
+        }
+        lines.push({
+          productDesignId: variant.productDesignId,
+          variantId: variant.id,
+          priceAtOrder: Number(variant.price),
+          pointsAtOrder: variant.points,
+          prepMinutes: variant.prepMinutes,
+          flavor: item.flavor,
+          customName: null,
+          customFlavor: null,
+          customImageUrl: item.customImageUrl || null,
+          customText: item.customText || null,
+          requiredPct: designById.get(variant.productDesignId)?.requiredPaymentPercent ?? 100,
+        });
+      } else {
+        if (!item.customName || !String(item.customName).trim()) {
+          return res.status(400).json({ error: 'Cada línea libre necesita una descripción (customName)' });
+        }
+        if (
+          typeof item.priceAtOrder !== 'number' ||
+          Number.isNaN(item.priceAtOrder) ||
+          item.priceAtOrder < 0
+        ) {
+          return res.status(400).json({ error: 'Cada línea libre necesita un precio (priceAtOrder) >= 0' });
+        }
+        lines.push({
+          productDesignId: null,
+          variantId: null,
+          priceAtOrder: item.priceAtOrder,
+          pointsAtOrder: 0,
+          prepMinutes: 0,
+          flavor: null,
+          customName: String(item.customName).trim(),
+          customFlavor: item.customFlavor?.trim() || null,
+          customImageUrl: item.customImageUrl || null,
+          customText: item.customText || null,
+          requiredPct: 100,
+        });
       }
     }
 
-    const totalPrice = (items as OrderItemInput[]).reduce(
-      (sum, i) => sum + Number(variantById.get(i.variantId)!.price),
-      0
-    );
-    const rawDurationMin = (items as OrderItemInput[]).reduce(
-      (sum, i) => sum + variantById.get(i.variantId)!.prepMinutes,
-      0
-    );
+    const totalPrice = lines.reduce((sum, l) => sum + l.priceAtOrder, 0);
+    const rawDurationMin = lines.reduce((sum, l) => sum + l.prepMinutes, 0);
+    const requiredPaymentPercent = Math.max(...lines.map((l) => l.requiredPct));
+    const hasDeposit = typeof depositPaid === 'number' && depositPaid > 0;
 
     const order = await prisma.$transaction(async (tx) => {
-      const slot = await reserveDeliverySlot(tx, deliveryDate, rawDurationMin, deliveryStartMinutes);
-
-      // Manual orders also start in AWAITING_PAYMENT (schema default) with the
-      // deadline counting from now — pickup time minus 24h.
-      const pickupMinutes = slot.startMinutes + slot.durationMin;
+      let startMinutes: number;
+      let durationMin: number;
+      if (adminFreeform) {
+        // Fixed pickup time — no cursor, no window check, overlaps allowed.
+        startMinutes = deliveryStartMinutes as number;
+        durationMin = 0;
+      } else {
+        const slot = await reserveDeliverySlot(tx, deliveryDate, rawDurationMin);
+        startMinutes = slot.startMinutes;
+        durationMin = slot.durationMin;
+      }
+      const pickupMinutes = startMinutes + durationMin;
 
       return tx.order.create({
         data: {
           clientName,
           clientPhone,
           deliveryDate: new Date(deliveryDate),
-          deliveryStartMinutes: slot.startMinutes,
-          deliveryDurationMin: slot.durationMin,
+          deliveryStartMinutes: startMinutes,
+          deliveryDurationMin: durationMin,
           deliveryAddress: deliveryAddress || null,
           notes: notes || null,
-          paymentDueDate: computePaymentDueDate(deliveryDate, pickupMinutes),
+          source: source ?? OrderSource.MANUAL,
+          requiredPaymentPercent,
           totalPrice,
+          ...(hasDeposit
+            ? { status: OrderStatus.DEPOSIT_PAID, depositPaid }
+            : { paymentDueDate: computePaymentDueDate(deliveryDate, pickupMinutes) }),
           items: {
-            create: (items as OrderItemInput[]).map((item) => {
-              const variant = variantById.get(item.variantId)!;
-              return {
-                productDesignId: item.productDesignId,
-                variantId: item.variantId,
-                priceAtOrder: variant.price,
-                pointsAtOrder: variant.points,
-                flavor: item.flavor,
-                customImageUrl: item.customImageUrl || null,
-                customText: item.customText || null,
-              };
-            }),
+            create: lines.map((l) => ({
+              productDesignId: l.productDesignId,
+              variantId: l.variantId,
+              priceAtOrder: l.priceAtOrder,
+              pointsAtOrder: l.pointsAtOrder,
+              flavor: l.flavor,
+              customName: l.customName,
+              customFlavor: l.customFlavor,
+              customImageUrl: l.customImageUrl,
+              customText: l.customText,
+            })),
           },
         },
         include: { items: { include: { productDesign: true, variant: true } } },
