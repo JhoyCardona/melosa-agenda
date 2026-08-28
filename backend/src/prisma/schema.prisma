@@ -26,7 +26,7 @@ model Order {
   // deliveryDurationMin = how long it occupies (sum of variant prepMinutes,
   // rounded up to 5). The customer-facing pickup time is start + duration.
   deliveryStartMinutes   Int
-  deliveryDurationMin     Int
+  deliveryDurationMin    Int
   deliveryAddress        String?
   totalPrice             Decimal     @default(0)
   depositPaid            Decimal     @default(0)
@@ -43,31 +43,39 @@ model Order {
 }
 
 model OrderItem {
-  id              String   @id @default(uuid())
+  id              String          @id @default(uuid())
   orderId         String
-  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productDesignId String
-  productDesign   ProductDesign  @relation(fields: [productDesignId], references: [id])
-  variantId       String
-  variant         ProductVariant @relation(fields: [variantId], references: [id])
+  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  // Catalog link — null for a fully custom line entered from the admin order
+  // form (personalized cakes not in the catalog). customName/customFlavor carry
+  // the hand-typed values; priceAtOrder still holds the price either way.
+  productDesignId String?
+  productDesign   ProductDesign?  @relation(fields: [productDesignId], references: [id], onDelete: Restrict)
+  variantId       String?
+  variant         ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
   priceAtOrder    Decimal
   pointsAtOrder   Int
-  flavor          Flavor
+  flavor          Flavor?
+  customName      String?
+  customFlavor    String?
   customImageUrl  String?
   customText      String?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime        @default(now())
 }
 
 model ProductDesign {
-  id                String       @id @default(uuid())
-  name              String
-  category          ItemCategory
-  shape             String?
-  imageUrl          String?
-  allowsCustomImage Boolean      @default(false)
-  allowsCustomText  Boolean      @default(true)
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  id                     String       @id @default(uuid())
+  name                   String
+  category               ItemCategory
+  shape                  String?
+  imageUrl               String?
+  allowsCustomImage      Boolean      @default(false)
+  allowsCustomText       Boolean      @default(true)
+  // Deposit policy: percent of the total this design requires up front. An order
+  // snapshots the max across its items into Order.requiredPaymentPercent.
+  requiredPaymentPercent Int          @default(100)
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
 
   variants   ProductVariant[]
   orderItems OrderItem[]
@@ -96,7 +104,7 @@ model ProductVariant {
 // the lock point that serialises concurrent slot reservations for the same day.
 model DaySchedule {
   id            String   @id @default(uuid())
-  date          DateTime @db.Date @unique
+  date          DateTime @unique @db.Date
   // Minutes from midnight; 840 = 2:00pm (opening).
   cursorMinutes Int      @default(840)
 }

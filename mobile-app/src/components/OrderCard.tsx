@@ -6,17 +6,32 @@ interface OrderItem {
   id: string;
   priceAtOrder: string;
   pointsAtOrder: number;
-  flavor: 'VAINILLA' | 'CHOCOLATE';
+  // Catalog fields are null for a custom line entered from the web admin form.
+  flavor: 'VAINILLA' | 'CHOCOLATE' | null;
+  customName: string | null;
+  customFlavor: string | null;
   customImageUrl: string | null;
   customText: string | null;
-  productDesign: { name: string; imageUrl: string | null };
-  variant: { label: string };
+  productDesign: { name: string; imageUrl: string | null } | null;
+  variant: { label: string } | null;
 }
 
 const flavorLabels: Record<string, string> = {
   VAINILLA: 'Vainilla',
   CHOCOLATE: 'Chocolate',
 };
+
+// "Torta Corazón - 10 porciones" from a catalog item, or the hand-typed name
+// for a custom admin line.
+function itemTitle(it: OrderItem): string {
+  const name = it.productDesign?.name ?? it.customName ?? 'Personalizado';
+  return it.variant?.label ? `${name} - ${it.variant.label}` : name;
+}
+
+function itemFlavor(it: OrderItem): string {
+  if (it.flavor) return flavorLabels[it.flavor] ?? it.flavor;
+  return it.customFlavor ?? '—';
+}
 
 interface Order {
   id: string;
@@ -127,7 +142,7 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
           <View style={[styles.paymentDot, { backgroundColor: paymentDotColor(order.status) }]} />
         </View>
         <Text style={styles.category}>
-          {firstItem ? `${firstItem.productDesign.name} - ${firstItem.variant.label}` : ''}
+          {firstItem ? itemTitle(firstItem) : ''}
           {order.items.length > 1 ? ` + ${order.items.length - 1} más` : ''}
         </Text>
         <Text style={styles.price}>Total: ${Number(order.totalPrice).toLocaleString()}</Text>
@@ -162,13 +177,13 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
             {order.items.map((item, index) => {
               // Client's print image if there is one, otherwise the catalog photo
               // of the design (so Melosa always sees what the order looks like).
-              const photoUrl = item.customImageUrl ?? item.productDesign.imageUrl;
+              const photoUrl = item.customImageUrl ?? item.productDesign?.imageUrl ?? null;
               return (
               <View key={item.id} style={styles.itemDetailCard}>
                 <Text style={styles.itemDetailTitle}>
-                  {index + 1}. {item.productDesign.name} - {item.variant.label}
+                  {index + 1}. {itemTitle(item)}
                 </Text>
-                <Text style={styles.detailLine}>Sabor: {flavorLabels[item.flavor] ?? item.flavor}</Text>
+                <Text style={styles.detailLine}>Sabor: {itemFlavor(item)}</Text>
 
                 {photoUrl && (
                   <TouchableOpacity onPress={() => setViewingImage(photoUrl)}>

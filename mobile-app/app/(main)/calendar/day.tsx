@@ -16,7 +16,8 @@ interface Order {
 }
 
 interface FlavorGroup {
-  flavor: 'VAINILLA' | 'CHOCOLATE';
+  // 'VAINILLA' / 'CHOCOLATE' for catalog items; a free string for custom lines.
+  flavor: string;
   quantity: number;
 }
 

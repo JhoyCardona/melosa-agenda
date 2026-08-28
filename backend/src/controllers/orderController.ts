@@ -31,7 +31,8 @@ async function reEnqueueOrder(tx: Prisma.TransactionClient, orderId: string): Pr
     where: { id: orderId },
     include: { items: { include: { variant: true } } },
   });
-  const rawDurationMin = order.items.reduce((sum, i) => sum + i.variant.prepMinutes, 0);
+  // Custom lines (no catalog variant) don't consume timeline minutes.
+  const rawDurationMin = order.items.reduce((sum, i) => sum + (i.variant?.prepMinutes ?? 0), 0);
   const dateStr = dateStrOf(order.deliveryDate);
   const slot = await reserveDeliverySlot(tx, dateStr, rawDurationMin);
   await tx.order.update({
@@ -351,8 +352,9 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
     // 3 levels: size (variant.label, e.g. "Torta 10 porciones") -> shape
     // (productDesign.shape, e.g. "Corazón") -> flavor (vainilla/chocolate).
     // This is the priority view: it tells Melosa exactly how many of each to
-    // bake before she starts decorating pedido por pedido.
-    interface FlavorGroup { flavor: Flavor; quantity: number }
+    // bake before she starts decorating pedido por pedido. Custom admin lines
+    // (no catalog variant/design) fall back to their hand-typed values.
+    interface FlavorGroup { flavor: string; quantity: number }
     interface ShapeGroup { shape: string; quantity: number; flavors: FlavorGroup[] }
     interface SizeGroup { sizeLabel: string; sortKey: number; quantity: number; shapes: Map<string, ShapeGroup> }
 
@@ -360,9 +362,9 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
 
     for (const order of orders) {
       for (const item of order.items) {
-        const sizeLabel = item.variant.label;
-        const shape = item.productDesign.shape ?? 'Sin forma definida';
-        const flavor = item.flavor;
+        const sizeLabel = item.variant?.label ?? item.customName ?? 'Personalizado';
+        const shape = item.productDesign?.shape ?? 'Sin forma definida';
+        const flavor = item.flavor ?? item.customFlavor ?? 'Sin sabor definido';
 
         let sizeGroup = sizeGroups.get(sizeLabel);
         if (!sizeGroup) {
@@ -426,8 +428,8 @@ async function findDayImageItems(date: string) {
         itemId: item.id,
         ticketNumber: order.ticketNumber,
         clientName: order.clientName,
-        productDesignName: item.productDesign.name,
-        variantLabel: item.variant.label,
+        productDesignName: item.productDesign?.name ?? item.customName ?? 'Personalizado',
+        variantLabel: item.variant?.label ?? '',
         imageUrl: item.customImageUrl as string,
       }))
   );
