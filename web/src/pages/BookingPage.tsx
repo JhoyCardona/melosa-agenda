@@ -14,6 +14,8 @@ const FLAVORS: Flavor[] = ['VAINILLA', 'CHOCOLATE'];
 // Mirrors the backend cap (createPublicOrder). Bigger orders go through WhatsApp.
 const MAX_ITEMS = 12;
 const MAX_CUSTOM_TEXT = 200;
+const MAX_CLIENT_NAME = 120;
+const MAX_NOTES = 500;
 // Last confirmation, kept only to survive an accidental page reload (consumed once).
 const CONFIRM_KEY = 'melosa_last_confirmation';
 
@@ -190,7 +192,7 @@ export default function BookingPage() {
 
   function handleAddItem() {
     if (!design || !variant || !relleno || cartFull) return;
-    const surcharge = rellenoSurcharge(relleno, variant.label, variant.enPromocion);
+    const surcharge = rellenoSurcharge(relleno, variant.portions, variant.enPromocion);
     draft.addItem({
       key: newKey(),
       designId: design.id,
@@ -394,7 +396,7 @@ export default function BookingPage() {
           <label className="field-label">Sabor de relleno</label>
           {variant && (
             <RellenoSelect
-              variantLabel={variant.label}
+              portions={variant.portions}
               isPromo={variant.enPromocion}
               value={relleno}
               onChange={setRelleno}
@@ -478,7 +480,7 @@ export default function BookingPage() {
             value={draft.deliveryDate}
             onChange={(e) => draft.patch({ deliveryDate: e.target.value })}
           />
-          <p className="field-hint">Necesitamos al menos 48 horas de anticipación.</p>
+          <p className="field-hint">Necesitamos al menos 2 días de anticipación.</p>
 
           {/* Live pickup-time estimate: recalculates whenever the date or the
               cart changes, so the client sees the hour before adding anything. */}
@@ -545,6 +547,7 @@ export default function BookingPage() {
           <label className="field-label">Nombre completo</label>
           <input
             type="text"
+            maxLength={MAX_CLIENT_NAME}
             value={draft.clientName}
             onChange={(e) => draft.patch({ clientName: e.target.value })}
           />
@@ -557,7 +560,11 @@ export default function BookingPage() {
           />
 
           <label className="field-label">Notas (opcional)</label>
-          <textarea value={draft.notes} onChange={(e) => draft.patch({ notes: e.target.value })} />
+          <textarea
+            maxLength={MAX_NOTES}
+            value={draft.notes}
+            onChange={(e) => draft.patch({ notes: e.target.value })}
+          />
 
           <p className="muted">Todos los pedidos son para recoger en el local.</p>
         </section>

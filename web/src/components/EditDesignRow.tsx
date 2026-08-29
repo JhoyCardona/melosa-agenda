@@ -21,6 +21,7 @@ interface VariantEdit {
   price: string;
   points: string;
   prepMinutes: string;
+  portions: string;
   enPromocion: boolean;
 }
 
@@ -30,6 +31,7 @@ function toVariantEdit(v: ProductVariant): VariantEdit {
     price: String(v.price),
     points: String(v.points),
     prepMinutes: String(v.prepMinutes),
+    portions: v.portions === null ? '' : String(v.portions),
     enPromocion: v.enPromocion,
   };
 }
@@ -115,6 +117,7 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
         price: Number(v.price),
         points: Number(v.points),
         prepMinutes: Number(v.prepMinutes),
+        portions: v.portions === '' ? null : Number(v.portions),
         enPromocion: v.enPromocion,
       });
       onSaved();
@@ -137,9 +140,17 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
         price: Number(v.price),
         points: Number(v.points),
         prepMinutes: Number(v.prepMinutes),
+        ...(v.portions !== '' && { portions: Number(v.portions) }),
         enPromocion: v.enPromocion,
       });
       setNewVariant(null);
+      onSaved();
+    });
+  }
+
+  function deleteDesign() {
+    requestConfirm(`¿Estás seguro de eliminar el producto "${design.name}"? Esta acción no se puede deshacer.`, async () => {
+      await api.delete(`/product-designs/${design.id}`);
       onSaved();
     });
   }
@@ -194,14 +205,19 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
             Admite texto personalizado
           </label>
 
-          <button type="button" className="cta-button" style={{ marginTop: 12 }} onClick={saveDesign}>
-            Guardar diseño
-          </button>
+          <div className="edit-row" style={{ marginTop: 12 }}>
+            <button type="button" className="cta-button" style={{ marginTop: 0, flex: 1 }} onClick={saveDesign}>
+              Guardar diseño
+            </button>
+            <button type="button" className="secondary-button" style={{ marginTop: 0 }} onClick={deleteDesign}>
+              Eliminar producto
+            </button>
+          </div>
 
           <label className="field-label" style={{ marginTop: 20 }}>
             Tamaños
           </label>
-          <p className="edit-hint">label · precio · puntos · minutos de agenda · promo</p>
+          <p className="edit-hint">label · precio · puntos · minutos de agenda · porciones · promo</p>
 
           {design.variants.map((v) => {
             // Fallback covers the render right after a refetch, before the
@@ -229,6 +245,14 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
                     type="number"
                     value={e.prepMinutes}
                     onChange={(ev) => setVariantField(v.id, { prepMinutes: ev.target.value })}
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Porciones"
+                    title="Cantidad de porciones — controla el recargo de relleno premium"
+                    value={e.portions}
+                    onChange={(ev) => setVariantField(v.id, { portions: ev.target.value })}
                   />
                 </div>
                 <div className="edit-row">
@@ -288,6 +312,13 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
                   value={newVariant.prepMinutes}
                   onChange={(e) => setNewVariant({ ...newVariant, prepMinutes: e.target.value })}
                 />
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Porciones"
+                  value={newVariant.portions}
+                  onChange={(e) => setNewVariant({ ...newVariant, portions: e.target.value })}
+                />
               </div>
               <div className="edit-row">
                 <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem' }}>
@@ -316,7 +347,14 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
               type="button"
               className="secondary-button"
               onClick={() =>
-                setNewVariant({ label: '', price: '', points: '', prepMinutes: '20', enPromocion: false })
+                setNewVariant({
+                  label: '',
+                  price: '',
+                  points: '',
+                  prepMinutes: '20',
+                  portions: '',
+                  enPromocion: false,
+                })
               }
             >
               + Agregar tamaño

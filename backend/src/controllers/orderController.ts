@@ -4,7 +4,8 @@ import archiver from 'archiver';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { computePaymentDueDate } from '../utils/colombiaTime';
 import { reserveDeliverySlot, minutesToLabel, isNotEnoughRoomError } from '../services/availability';
-import { rellenoSurcharge, computeRequiredPaymentPercent } from '../services/pricing';
+import { rellenoSurcharge, computeRequiredPaymentPercent, isValidRelleno } from '../services/pricing';
+import { MAX_CLIENT_NAME_LENGTH, MAX_NOTES_LENGTH, MAX_ADDRESS_LENGTH } from '../services/limits';
 
 const prisma = new PrismaClient();
 
@@ -86,6 +87,19 @@ export async function createOrder(req: AuthRequest, res: Response) {
       error: 'clientName, clientPhone y deliveryDate son requeridos',
     });
   }
+  if (String(clientName).trim().length > MAX_CLIENT_NAME_LENGTH) {
+    return res.status(400).json({
+      error: `El nombre no puede pasar de ${MAX_CLIENT_NAME_LENGTH} caracteres.`,
+    });
+  }
+  if (notes && String(notes).trim().length > MAX_NOTES_LENGTH) {
+    return res.status(400).json({ error: `Las notas no pueden pasar de ${MAX_NOTES_LENGTH} caracteres.` });
+  }
+  if (deliveryAddress && String(deliveryAddress).trim().length > MAX_ADDRESS_LENGTH) {
+    return res.status(400).json({
+      error: `La dirección no puede pasar de ${MAX_ADDRESS_LENGTH} caracteres.`,
+    });
+  }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(deliveryDate)) {
     return res.status(400).json({ error: 'deliveryDate debe tener el formato YYYY-MM-DD' });
   }
@@ -156,12 +170,15 @@ export async function createOrder(req: AuthRequest, res: Response) {
         if (!effectiveRelleno) {
           return res.status(400).json({ error: 'relleno es requerido' });
         }
+        if (!isValidRelleno(effectiveRelleno)) {
+          return res.status(400).json({ error: `relleno no reconocido: "${effectiveRelleno}"` });
+        }
         const design = designById.get(variant.productDesignId);
         lines.push({
           productDesignId: variant.productDesignId,
           variantId: variant.id,
           priceAtOrder:
-            Number(variant.price) + rellenoSurcharge(effectiveRelleno, variant.label, variant.enPromocion),
+            Number(variant.price) + rellenoSurcharge(effectiveRelleno, variant.portions, variant.enPromocion),
           pointsAtOrder: variant.points,
           prepMinutes: variant.prepMinutes,
           flavor: item.flavor,
@@ -433,8 +450,11 @@ export async function listOrders(req: AuthRequest, res: Response) {
       const monthNum = parseInt(month as string, 10);
       const yearNum = parseInt(year as string, 10);
 
-      const startDate = new Date(yearNum, monthNum - 1, 1);
-      const endDate = new Date(yearNum, monthNum, 1);
+      // Date.UTC (not the local-timezone Date constructor) so this range doesn't
+      // drift with the server's timezone — deliveryDate values are themselves
+      // stored as UTC-midnight calendar dates.
+      const startDate = new Date(Date.UTC(yearNum, monthNum - 1, 1));
+      const endDate = new Date(Date.UTC(yearNum, monthNum, 1));
 
       where.deliveryDate = {
         gte: startDate,
@@ -685,6 +705,20 @@ export async function updateOrder(req: AuthRequest, res: Response) {
     return res.status(400).json({ error: 'depositPaid debe ser un número mayor o igual a 0' });
   }
 
+  if (clientName !== undefined && String(clientName).trim().length > MAX_CLIENT_NAME_LENGTH) {
+    return res.status(400).json({
+      error: `El nombre no puede pasar de ${MAX_CLIENT_NAME_LENGTH} caracteres.`,
+    });
+  }
+  if (notes && String(notes).trim().length > MAX_NOTES_LENGTH) {
+    return res.status(400).json({ error: `Las notas no pueden pasar de ${MAX_NOTES_LENGTH} caracteres.` });
+  }
+  if (deliveryAddress && String(deliveryAddress).trim().length > MAX_ADDRESS_LENGTH) {
+    return res.status(400).json({
+      error: `La dirección no puede pasar de ${MAX_ADDRESS_LENGTH} caracteres.`,
+    });
+  }
+
   try {
     const existingOrder = await prisma.order.findUnique({
       where: { id: orderId },
@@ -703,6 +737,15 @@ export async function updateOrder(req: AuthRequest, res: Response) {
       (existingOrder.status === OrderStatus.FULLY_PAID || existingOrder.status === OrderStatus.COMPLETED)
     ) {
       return res.status(409).json({ error: 'No se puede cancelar un pedido ya pagado por completo o entregado' });
+    }
+
+    // Terminal ("entregado") only makes sense once the full price is confirmed
+    // paid — Melosa has to explicitly hit "pago completo" first (checking the
+    // ticket herself) before she can close the order out.
+    if (status === OrderStatus.COMPLETED && existingOrder.status !== OrderStatus.FULLY_PAID) {
+      return res.status(409).json({
+        error: 'Antes de dar este pedido por terminado revisa si ya pagó el valor completo.',
+      });
     }
 
     // Entering AWAITING_PAYMENT is when the payment deadline gets set (business rule:
@@ -735,11 +778,11 @@ export async function updateOrder(req: AuthRequest, res: Response) {
       const updated = await tx.order.update({
         where: { id: orderId },
         data: {
-          ...(clientName !== undefined && { clientName }),
+          ...(clientName !== undefined && { clientName: String(clientName).trim() }),
           ...(clientPhone !== undefined && { clientPhone }),
           ...(deliveryDate !== undefined && { deliveryDate: new Date(deliveryDate) }),
-          ...(deliveryAddress !== undefined && { deliveryAddress }),
-          ...(notes !== undefined && { notes }),
+          ...(deliveryAddress !== undefined && { deliveryAddress: deliveryAddress ? String(deliveryAddress).trim() : null }),
+          ...(notes !== undefined && { notes: notes ? String(notes).trim() : null }),
           ...(totalPrice !== undefined && { totalPrice }),
           ...(depositPaid !== undefined && { depositPaid }),
           ...(autoFullDepositPaid !== undefined && { depositPaid: autoFullDepositPaid }),

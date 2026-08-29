@@ -21,6 +21,7 @@ interface VariantDraft {
   price: string;
   points: string;
   prepMinutes: string;
+  portions: string;
   enPromocion: boolean;
 }
 
@@ -31,6 +32,7 @@ function emptyVariant(): VariantDraft {
     price: '',
     points: '',
     prepMinutes: '20',
+    portions: '',
     enPromocion: false,
   };
 }
@@ -177,6 +179,7 @@ export default function CatalogAdminPage() {
           price: Number(v.price),
           points: Number(v.points),
           prepMinutes: Number(v.prepMinutes),
+          ...(v.portions !== '' && { portions: Number(v.portions) }),
           enPromocion: v.enPromocion,
         })),
       });
@@ -262,6 +265,7 @@ export default function CatalogAdminPage() {
             />
             <input
               type="number"
+              min="1"
               placeholder="Precio"
               value={v.price}
               onChange={(e) => updateVariant(v.key, { price: e.target.value })}
@@ -269,6 +273,7 @@ export default function CatalogAdminPage() {
             />
             <input
               type="number"
+              min="1"
               placeholder="Puntos"
               value={v.points}
               onChange={(e) => updateVariant(v.key, { points: e.target.value })}
@@ -276,10 +281,20 @@ export default function CatalogAdminPage() {
             />
             <input
               type="number"
+              min="1"
               placeholder="Minutos de agenda"
               title="Minutos que ocupa en la agenda de entregas"
               value={v.prepMinutes}
               onChange={(e) => updateVariant(v.key, { prepMinutes: e.target.value })}
+              style={{ flex: 1, minWidth: 90 }}
+            />
+            <input
+              type="number"
+              min="1"
+              placeholder="Porciones (si aplica)"
+              title="Cantidad de porciones — controla el recargo de relleno premium"
+              value={v.portions}
+              onChange={(e) => updateVariant(v.key, { portions: e.target.value })}
               style={{ flex: 1, minWidth: 90 }}
             />
             <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem' }}>

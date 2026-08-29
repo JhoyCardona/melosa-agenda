@@ -33,20 +33,16 @@ export const RELLENO_PREMIUM_SURCHARGE_BY_PORTIONS: Record<number, number> = {
   20: 15000,
 };
 
-// Pulls the leading portion count out of a variant label like "Torta 10
-// porciones" -> 10. Catalog labels aren't fully standardized yet, so this is a
-// best-effort parse: no match just means the surcharge preview stays $0 (the
-// backend is the source of truth for the real charged total either way).
-export function extractPortionsFromLabel(label: string): number | null {
-  const match = label.match(/(\d+)\s*porcion/i);
-  if (!match) return null;
-  return Number(match[1]);
-}
-
-export function rellenoSurcharge(relleno: string | null | undefined, variantLabel: string, isPromo: boolean): number {
+// `portions` comes straight from ProductVariant.portions (set explicitly in the
+// admin catalog screen), never parsed from the label text — a mislabeled
+// variant used to silently lose its surcharge.
+export function rellenoSurcharge(
+  relleno: string | null | undefined,
+  portions: number | null,
+  isPromo: boolean
+): number {
   if (isPromo || !relleno) return 0;
   if (!RELLENOS_PREMIUM.includes(relleno)) return 0;
-  const portions = extractPortionsFromLabel(variantLabel);
   if (portions === null) return 0;
   return RELLENO_PREMIUM_SURCHARGE_BY_PORTIONS[portions] ?? 0;
 }

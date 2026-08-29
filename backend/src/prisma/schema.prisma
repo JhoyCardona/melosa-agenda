@@ -78,9 +78,6 @@ model ProductDesign {
   imageUrl               String?
   allowsCustomImage      Boolean      @default(false)
   allowsCustomText       Boolean      @default(true)
-  // Deposit policy: percent of the total this design requires up front. An order
-  // snapshots the max across its items into Order.requiredPaymentPercent.
-  requiredPaymentPercent Int          @default(100)
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
 
@@ -99,6 +96,12 @@ model ProductVariant {
   // from the admin catalog screen. Replaces `points` as the scheduling unit;
   // `points` stays only for historical OrderItem.pointsAtOrder records.
   prepMinutes     Int           @default(20)
+  // Portion count this variant represents (5/10/15/20...), set explicitly from
+  // the admin catalog screen. Drives the premium-relleno surcharge lookup in
+  // pricing.ts — NOT parsed from `label` (that used to break silently whenever a
+  // label didn't literally contain the word "porciones"). Null for a variant
+  // that isn't sold by portions (e.g. a minicake, which is promo-locked anyway).
+  portions        Int?
   enPromocion     Boolean       @default(false)
   createdAt       DateTime      @default(now())
 

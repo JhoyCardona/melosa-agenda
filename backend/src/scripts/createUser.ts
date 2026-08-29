@@ -3,9 +3,18 @@ import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
+// Creates a new user. Never hardcode real credentials here — this file is
+// committed to the repo. Pass them as CLI args instead:
+//
+//   npx ts-node src/scripts/createUser.ts <username> <password>
 async function createUser() {
-  const username = 'gretica'; // cambiá esto por el usuario que quieras
-  const plainPassword ='gretica122497'; // cambiá esto por la contraseña real
+  const [username, plainPassword] = process.argv.slice(2);
+
+  if (!username || !plainPassword) {
+    console.error('Uso: npx ts-node src/scripts/createUser.ts <username> <password>');
+    process.exitCode = 1;
+    return;
+  }
 
   const passwordHash = await bcrypt.hash(plainPassword, 10);
 
@@ -16,7 +25,7 @@ async function createUser() {
     },
   });
 
-  console.log('Usuario creado:', user);
+  console.log('Usuario creado:', { id: user.id, username: user.username });
 }
 
 createUser()

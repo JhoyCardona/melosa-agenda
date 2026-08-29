@@ -32,6 +32,9 @@ interface FreeLine {
 }
 type Line = CatalogLine | FreeLine;
 
+const MAX_CLIENT_NAME = 120;
+const MAX_NOTES = 500;
+
 function newKey(): string {
   return `l-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
@@ -59,6 +62,8 @@ export default function NewOrderPage() {
 
   const [error, setError] = useState('');
   const [pendingConfirm, setPendingConfirm] = useState(false);
+  const [overlapWarning, setOverlapWarning] = useState('');
+  const [checkingOverlap, setCheckingOverlap] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [createdTicket, setCreatedTicket] = useState<number | null>(null);
 
@@ -79,7 +84,7 @@ export default function NewOrderPage() {
       const design = designs.find((d) => d.id === l.designId);
       const variant = design?.variants.find((v) => v.id === l.variantId);
       if (!variant) return sum;
-      return sum + Number(variant.price) + rellenoSurcharge(l.relleno, variant.label, variant.enPromocion);
+      return sum + Number(variant.price) + rellenoSurcharge(l.relleno, variant.portions, variant.enPromocion);
     }, 0);
   }, [lines, designs]);
 
@@ -160,6 +165,49 @@ export default function NewOrderPage() {
           l.relleno.trim()
     ) &&
     !submitting;
+
+  interface ExistingOrder {
+    ticketNumber: number;
+    clientName: string;
+    deliveryDate: string;
+    deliveryStartMinutes: number;
+    deliveryDurationMin: number;
+    status: string;
+  }
+
+  // Soft warning only — the admin freeform channel intentionally allows
+  // overlapping/odd-hour bookings (family orders, custom slots), so this never
+  // blocks submission, it just makes sure Melosa notices before confirming.
+  async function checkOverlapThenConfirm() {
+    if (pickupMinutes === null || !deliveryDate) {
+      setPendingConfirm(true);
+      return;
+    }
+    setCheckingOverlap(true);
+    try {
+      const [year, month] = deliveryDate.split('-').map(Number);
+      const res = await api.get<ExistingOrder[]>('/orders', { params: { month, year } });
+      const clash = res.data.find((o) => {
+        if (o.status === 'CANCELLED') return false;
+        if (o.deliveryDate.slice(0, 10) !== deliveryDate) return false;
+        const start = o.deliveryStartMinutes;
+        const end = start + Math.max(o.deliveryDurationMin, 1);
+        return pickupMinutes >= start && pickupMinutes < end;
+      });
+      if (clash) {
+        setOverlapWarning(
+          `Ese horario ya está ocupado por el pedido de ${clash.clientName} (#${clash.ticketNumber}). ¿Deseas continuar de todas formas?`
+        );
+      } else {
+        setPendingConfirm(true);
+      }
+    } catch {
+      // Can't verify — don't block the admin over it, just proceed normally.
+      setPendingConfirm(true);
+    } finally {
+      setCheckingOverlap(false);
+    }
+  }
 
   async function doCreate() {
     setSubmitting(true);
@@ -246,7 +294,12 @@ export default function NewOrderPage() {
       <div className="form-section">
         <h2>Cliente</h2>
         <label className="field-label">Nombre</label>
-        <input type="text" value={clientName} onChange={(e) => setClientName(e.target.value)} />
+        <input
+          type="text"
+          maxLength={MAX_CLIENT_NAME}
+          value={clientName}
+          onChange={(e) => setClientName(e.target.value)}
+        />
         <label className="field-label">Teléfono</label>
         <input type="text" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} />
       </div>
@@ -325,7 +378,7 @@ export default function NewOrderPage() {
                   const variant = designs.find((d) => d.id === l.designId)?.variants.find((v) => v.id === l.variantId);
                   return variant ? (
                     <RellenoSelect
-                      variantLabel={variant.label}
+                      portions={variant.portions}
                       isPromo={variant.enPromocion}
                       value={l.relleno}
                       onChange={(relleno) => patchLine(l.key, { relleno })}
@@ -407,7 +460,7 @@ export default function NewOrderPage() {
         <label className="field-label">Abono recibido (opcional — si lo pones, el pedido queda ABONADO)</label>
         <input type="number" value={deposit} onChange={(e) => setDeposit(e.target.value)} />
         <label className="field-label">Notas</label>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <textarea maxLength={MAX_NOTES} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>
 
       <p style={{ fontWeight: 700 }}>Total: ${total.toLocaleString('es-CO')}</p>
@@ -416,11 +469,41 @@ export default function NewOrderPage() {
       <button
         type="button"
         className="cta-button"
-        disabled={!canSubmit}
-        onClick={() => setPendingConfirm(true)}
+        disabled={!canSubmit || checkingOverlap}
+        onClick={checkOverlapThenConfirm}
       >
-        {submitting ? 'Creando...' : 'Crear pedido'}
+        {checkingOverlap ? 'Revisando horario...' : submitting ? 'Creando...' : 'Crear pedido'}
       </button>
+
+      {overlapWarning && (
+        <div className="pw-overlay" role="dialog" aria-modal="true">
+          <div className="pw-box">
+            <p className="pw-message">Horario ocupado</p>
+            <p className="pw-sub">{overlapWarning}</p>
+            <div className="pw-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                style={{ marginTop: 0 }}
+                onClick={() => setOverlapWarning('')}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="cta-button"
+                style={{ marginTop: 0 }}
+                onClick={() => {
+                  setOverlapWarning('');
+                  setPendingConfirm(true);
+                }}
+              >
+                Continuar de todas formas
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pendingConfirm && (
         <PasswordPrompt

@@ -112,8 +112,9 @@ export default function DayDetailScreen() {
     try {
       await api.patch(`/orders/${orderId}`, { status: 'COMPLETED' });
       loadData();
-    } catch (error) {
-      Alert.alert('Error', 'No se pudo actualizar el pedido');
+    } catch (error: any) {
+      const message = error?.response?.data?.error ?? 'No se pudo actualizar el pedido';
+      Alert.alert('No se pudo completar', message);
     }
   }
 

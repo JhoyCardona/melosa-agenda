@@ -11,6 +11,7 @@ interface VariantInput {
   price: number;
   points: number;
   prepMinutes?: number;
+  portions?: number;
   enPromocion?: boolean;
 }
 
@@ -35,7 +36,7 @@ export async function listAllProductDesigns(req: AuthRequest, res: Response) {
 // list) from the web, behind the same login the mobile app uses — no polished
 // editing yet, just create.
 export async function createProductDesign(req: AuthRequest, res: Response) {
-  const { name, category, shape, imageUrl, allowsCustomImage, allowsCustomText, requiredPaymentPercent, variants } = req.body;
+  const { name, category, shape, imageUrl, allowsCustomImage, allowsCustomText, variants } = req.body;
 
   if (!name || !category) {
     return res.status(400).json({ error: 'name y category son requeridos' });
@@ -48,11 +49,6 @@ export async function createProductDesign(req: AuthRequest, res: Response) {
     return res.status(400).json({ error: `category debe ser una de: ${VALID_CATEGORIES.join(', ')}` });
   }
 
-  if (requiredPaymentPercent !== undefined) {
-    const err = validatePaymentPercent(requiredPaymentPercent);
-    if (err) return res.status(400).json({ error: err });
-  }
-
   if (!Array.isArray(variants) || variants.length === 0) {
     return res.status(400).json({ error: 'variants debe ser un arreglo con al menos un tamaño' });
   }
@@ -61,11 +57,17 @@ export async function createProductDesign(req: AuthRequest, res: Response) {
     if (!variant.label || variant.price === undefined || variant.points === undefined) {
       return res.status(400).json({ error: 'Cada variante necesita label, price y points' });
     }
-    if (
-      variant.prepMinutes !== undefined &&
-      (typeof variant.prepMinutes !== 'number' || !Number.isInteger(variant.prepMinutes) || variant.prepMinutes <= 0)
-    ) {
-      return res.status(400).json({ error: 'prepMinutes debe ser un entero mayor a 0' });
+    const priceErr = validatePositivePrice(variant.price);
+    if (priceErr) return res.status(400).json({ error: priceErr });
+    const pointsErr = validatePositiveInt(variant.points, 'points');
+    if (pointsErr) return res.status(400).json({ error: pointsErr });
+    if (variant.prepMinutes !== undefined) {
+      const err = validatePrepMinutes(variant.prepMinutes);
+      if (err) return res.status(400).json({ error: err });
+    }
+    if (variant.portions !== undefined) {
+      const err = validatePositiveInt(variant.portions, 'portions');
+      if (err) return res.status(400).json({ error: err });
     }
   }
 
@@ -78,13 +80,13 @@ export async function createProductDesign(req: AuthRequest, res: Response) {
         imageUrl: imageUrl || null,
         allowsCustomImage: !!allowsCustomImage,
         allowsCustomText: allowsCustomText === undefined ? true : !!allowsCustomText,
-        ...(requiredPaymentPercent !== undefined && { requiredPaymentPercent }),
         variants: {
           create: (variants as VariantInput[]).map((v) => ({
             label: v.label,
             price: v.price,
             points: v.points,
             ...(v.prepMinutes !== undefined && { prepMinutes: v.prepMinutes }),
+            ...(v.portions !== undefined && { portions: v.portions }),
             enPromocion: !!v.enPromocion,
           })),
         },
@@ -106,9 +108,16 @@ function validatePrepMinutes(value: unknown): string | null {
   return null;
 }
 
-function validatePaymentPercent(value: unknown): string | null {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 100) {
-    return 'requiredPaymentPercent debe ser un entero entre 1 y 100';
+function validatePositiveInt(value: unknown, field: string): string | null {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    return `${field} debe ser un entero mayor a 0`;
+  }
+  return null;
+}
+
+function validatePositivePrice(value: unknown): string | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return 'price debe ser un número mayor a 0';
   }
   return null;
 }
@@ -116,7 +125,7 @@ function validatePaymentPercent(value: unknown): string | null {
 // Fase 6: edit an existing design's own fields (not its variants).
 export async function updateProductDesign(req: AuthRequest, res: Response) {
   const id = req.params.id as string;
-  const { name, category, shape, imageUrl, allowsCustomImage, allowsCustomText, requiredPaymentPercent } = req.body;
+  const { name, category, shape, imageUrl, allowsCustomImage, allowsCustomText } = req.body;
 
   if (category !== undefined && !VALID_CATEGORIES.includes(category)) {
     return res.status(400).json({ error: `category debe ser una de: ${VALID_CATEGORIES.join(', ')}` });
@@ -126,10 +135,6 @@ export async function updateProductDesign(req: AuthRequest, res: Response) {
   }
   if (shape !== undefined && !String(shape).trim()) {
     return res.status(400).json({ error: 'shape no puede quedar vacío' });
-  }
-  if (requiredPaymentPercent !== undefined) {
-    const err = validatePaymentPercent(requiredPaymentPercent);
-    if (err) return res.status(400).json({ error: err });
   }
 
   try {
@@ -142,7 +147,6 @@ export async function updateProductDesign(req: AuthRequest, res: Response) {
         ...(imageUrl !== undefined && { imageUrl: imageUrl || null }),
         ...(allowsCustomImage !== undefined && { allowsCustomImage: !!allowsCustomImage }),
         ...(allowsCustomText !== undefined && { allowsCustomText: !!allowsCustomText }),
-        ...(requiredPaymentPercent !== undefined && { requiredPaymentPercent }),
       },
       include: { variants: { orderBy: { points: 'asc' } } },
     });
@@ -153,16 +157,50 @@ export async function updateProductDesign(req: AuthRequest, res: Response) {
   }
 }
 
+// Fase 6c: delete a design (and its variants, cascade) — blocked if any order
+// already references one of its variants, so history stays intact.
+export async function deleteProductDesign(req: AuthRequest, res: Response) {
+  const id = req.params.id as string;
+
+  try {
+    const design = await prisma.productDesign.findUnique({
+      where: { id },
+      include: { _count: { select: { orderItems: true } } },
+    });
+    if (!design) return res.status(404).json({ error: 'Diseño no encontrado' });
+
+    if (design._count.orderItems > 0) {
+      return res.status(409).json({
+        error: 'No se puede eliminar: hay pedidos que usan este producto',
+      });
+    }
+
+    await prisma.productDesign.delete({ where: { id } });
+    res.json({ message: 'Producto eliminado' });
+  } catch (error) {
+    console.error('Error eliminando diseño:', error);
+    res.status(500).json({ error: 'Error al eliminar el producto' });
+  }
+}
+
 // Fase 6: add a size/variant to an existing design.
 export async function addProductVariant(req: AuthRequest, res: Response) {
   const designId = req.params.id as string;
-  const { label, price, points, prepMinutes, enPromocion } = req.body;
+  const { label, price, points, prepMinutes, portions, enPromocion } = req.body;
 
   if (!label || price === undefined || points === undefined) {
     return res.status(400).json({ error: 'label, price y points son requeridos' });
   }
+  const priceErr = validatePositivePrice(price);
+  if (priceErr) return res.status(400).json({ error: priceErr });
+  const pointsErr = validatePositiveInt(points, 'points');
+  if (pointsErr) return res.status(400).json({ error: pointsErr });
   if (prepMinutes !== undefined) {
     const err = validatePrepMinutes(prepMinutes);
+    if (err) return res.status(400).json({ error: err });
+  }
+  if (portions !== undefined) {
+    const err = validatePositiveInt(portions, 'portions');
     if (err) return res.status(400).json({ error: err });
   }
 
@@ -177,6 +215,7 @@ export async function addProductVariant(req: AuthRequest, res: Response) {
         price,
         points,
         ...(prepMinutes !== undefined && { prepMinutes }),
+        ...(portions !== undefined && { portions }),
         enPromocion: !!enPromocion,
       },
     });
@@ -190,7 +229,7 @@ export async function addProductVariant(req: AuthRequest, res: Response) {
 // Fase 6: edit an existing variant (price, label, points, minutes, promo flag).
 export async function updateProductVariant(req: AuthRequest, res: Response) {
   const variantId = req.params.variantId as string;
-  const { label, price, points, prepMinutes, enPromocion } = req.body;
+  const { label, price, points, prepMinutes, portions, enPromocion } = req.body;
 
   if (label !== undefined && !String(label).trim()) {
     return res.status(400).json({ error: 'label no puede quedar vacío' });
@@ -199,11 +238,17 @@ export async function updateProductVariant(req: AuthRequest, res: Response) {
     const err = validatePrepMinutes(prepMinutes);
     if (err) return res.status(400).json({ error: err });
   }
-  if (price !== undefined && (typeof price !== 'number' || price < 0)) {
-    return res.status(400).json({ error: 'price debe ser un número mayor o igual a 0' });
+  if (price !== undefined) {
+    const err = validatePositivePrice(price);
+    if (err) return res.status(400).json({ error: err });
   }
-  if (points !== undefined && (typeof points !== 'number' || !Number.isInteger(points) || points < 0)) {
-    return res.status(400).json({ error: 'points debe ser un entero mayor o igual a 0' });
+  if (points !== undefined) {
+    const err = validatePositiveInt(points, 'points');
+    if (err) return res.status(400).json({ error: err });
+  }
+  if (portions !== undefined && portions !== null) {
+    const err = validatePositiveInt(portions, 'portions');
+    if (err) return res.status(400).json({ error: err });
   }
 
   try {
@@ -214,6 +259,7 @@ export async function updateProductVariant(req: AuthRequest, res: Response) {
         ...(price !== undefined && { price }),
         ...(points !== undefined && { points }),
         ...(prepMinutes !== undefined && { prepMinutes }),
+        ...(portions !== undefined && { portions }),
         ...(enPromocion !== undefined && { enPromocion: !!enPromocion }),
       },
     });

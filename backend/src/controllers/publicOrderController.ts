@@ -3,7 +3,8 @@ import { PrismaClient, Flavor, OrderStatus } from '@prisma/client';
 import { isBusinessDay } from '../utils/colombianHolidays';
 import { computePaymentDueDate, earliestPublicDeliveryDate } from '../utils/colombiaTime';
 import { reserveDeliverySlot, minutesToLabel, isNotEnoughRoomError } from '../services/availability';
-import { rellenoSurcharge, computeRequiredPaymentPercent } from '../services/pricing';
+import { rellenoSurcharge, computeRequiredPaymentPercent, isValidRelleno } from '../services/pricing';
+import { MAX_CLIENT_NAME_LENGTH, MAX_NOTES_LENGTH, MAX_ADDRESS_LENGTH } from '../services/limits';
 import cloudinary from '../config/cloudinary';
 
 const prisma = new PrismaClient();
@@ -71,6 +72,20 @@ export async function createPublicOrder(req: Request, res: Response) {
     });
   }
 
+  if (String(clientName).trim().length > MAX_CLIENT_NAME_LENGTH) {
+    return res.status(400).json({
+      error: `El nombre no puede pasar de ${MAX_CLIENT_NAME_LENGTH} caracteres.`,
+    });
+  }
+  if (notes && String(notes).trim().length > MAX_NOTES_LENGTH) {
+    return res.status(400).json({ error: `Las notas no pueden pasar de ${MAX_NOTES_LENGTH} caracteres.` });
+  }
+  if (deliveryAddress && String(deliveryAddress).trim().length > MAX_ADDRESS_LENGTH) {
+    return res.status(400).json({
+      error: `La dirección no puede pasar de ${MAX_ADDRESS_LENGTH} caracteres.`,
+    });
+  }
+
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'items debe ser un arreglo con al menos un producto' });
   }
@@ -100,7 +115,7 @@ export async function createPublicOrder(req: Request, res: Response) {
   const earliest = earliestPublicDeliveryDate();
   if (deliveryDate < earliest) {
     return res.status(400).json({
-      error: `Necesitamos al menos 48 horas de anticipación. Elige una fecha a partir del ${earliest}.`,
+      error: `Necesitamos al menos 2 días de anticipación. Elige una fecha a partir del ${earliest}.`,
     });
   }
 
@@ -146,13 +161,16 @@ export async function createPublicOrder(req: Request, res: Response) {
       if (!effectiveRelleno) {
         return res.status(400).json({ error: 'relleno es requerido' });
       }
+      if (!isValidRelleno(effectiveRelleno)) {
+        return res.status(400).json({ error: `relleno no reconocido: "${effectiveRelleno}"` });
+      }
     }
 
     const totalPrice = resolvedItems.reduce(
       (sum, { variant, effectiveRelleno }) =>
         sum +
         Number(variant!.price) +
-        rellenoSurcharge(effectiveRelleno, variant!.label, variant!.enPromocion),
+        rellenoSurcharge(effectiveRelleno, variant!.portions, variant!.enPromocion),
       0
     );
     const rawDurationMin = resolvedItems.reduce((sum, { variant }) => sum + variant!.prepMinutes, 0);
@@ -173,13 +191,13 @@ export async function createPublicOrder(req: Request, res: Response) {
 
       return tx.order.create({
         data: {
-          clientName,
+          clientName: String(clientName).trim(),
           clientPhone: normalizedPhone,
           deliveryDate: new Date(deliveryDate),
           deliveryStartMinutes: slot.startMinutes,
           deliveryDurationMin: slot.durationMin,
-          deliveryAddress: deliveryAddress || null,
-          notes: notes || null,
+          deliveryAddress: deliveryAddress ? String(deliveryAddress).trim() : null,
+          notes: notes ? String(notes).trim() : null,
           source: 'WEB_PUBLIC',
           status: OrderStatus.AWAITING_PAYMENT,
           paymentDueDate: computePaymentDueDate(deliveryDate, pickupMinutes),
@@ -194,7 +212,7 @@ export async function createPublicOrder(req: Request, res: Response) {
                 variantId: item.variantId,
                 priceAtOrder:
                   Number(variant!.price) +
-                  rellenoSurcharge(effectiveRelleno, variant!.label, variant!.enPromocion),
+                  rellenoSurcharge(effectiveRelleno, variant!.portions, variant!.enPromocion),
                 pointsAtOrder: variant!.points,
                 flavor: item.flavor,
                 shape: design!.shape,

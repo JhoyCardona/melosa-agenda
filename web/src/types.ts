@@ -7,6 +7,10 @@ export interface ProductVariant {
   points: number;
   // Minutes this variant occupies on the delivery-day timeline.
   prepMinutes: number;
+  // Portion count (5/10/15/20...), null when not sold by portions. Drives the
+  // premium-relleno surcharge — set explicitly per variant, never parsed from
+  // `label`.
+  portions: number | null;
   enPromocion: boolean;
 }
 
@@ -18,7 +22,6 @@ export interface ProductDesign {
   imageUrl: string | null;
   allowsCustomImage: boolean;
   allowsCustomText: boolean;
-  requiredPaymentPercent: number;
   variants: ProductVariant[];
 }
 
