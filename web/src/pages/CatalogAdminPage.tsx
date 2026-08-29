@@ -46,7 +46,6 @@ export default function CatalogAdminPage() {
   const [shape, setShape] = useState('');
   const [allowsCustomImage, setAllowsCustomImage] = useState(false);
   const [allowsCustomText, setAllowsCustomText] = useState(true);
-  const [requiredPaymentPercent, setRequiredPaymentPercent] = useState('100');
   const [imageUrl, setImageUrl] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const [variants, setVariants] = useState<VariantDraft[]>([emptyVariant()]);
@@ -142,7 +141,6 @@ export default function CatalogAdminPage() {
     setShape('');
     setAllowsCustomImage(false);
     setAllowsCustomText(true);
-    setRequiredPaymentPercent('100');
     setImageUrl('');
     setVariants([emptyVariant()]);
   }
@@ -156,6 +154,10 @@ export default function CatalogAdminPage() {
       setError('El nombre es requerido');
       return;
     }
+    if (!shape.trim()) {
+      setError('La forma es requerida');
+      return;
+    }
     if (variants.some((v) => !v.label.trim() || v.price === '' || v.points === '' || v.prepMinutes === '')) {
       setError('Completa label, precio, puntos y minutos en todos los tamaños');
       return;
@@ -166,11 +168,10 @@ export default function CatalogAdminPage() {
       await api.post('/product-designs', {
         name,
         category,
-        shape: shape || undefined,
+        shape,
         imageUrl: imageUrl || undefined,
         allowsCustomImage,
         allowsCustomText,
-        requiredPaymentPercent: Number(requiredPaymentPercent),
         variants: variants.map((v) => ({
           label: v.label,
           price: Number(v.price),
@@ -218,8 +219,8 @@ export default function CatalogAdminPage() {
           ))}
         </select>
 
-        <label className="field-label">Forma (opcional, ej: Corazón, Redonda)</label>
-        <input type="text" value={shape} onChange={(e) => setShape(e.target.value)} />
+        <label className="field-label">Forma (ej: Corazón, Redonda)</label>
+        <input type="text" required value={shape} onChange={(e) => setShape(e.target.value)} />
 
         <label className="field-label">Foto</label>
         <input type="file" accept="image/*" onChange={handleImageChange} disabled={uploadingImage} />
@@ -243,15 +244,6 @@ export default function CatalogAdminPage() {
           />
           Admite texto personalizado (frase o número)
         </label>
-
-        <label className="field-label">Abono requerido (%)</label>
-        <input
-          type="number"
-          min={1}
-          max={100}
-          value={requiredPaymentPercent}
-          onChange={(e) => setRequiredPaymentPercent(e.target.value)}
-        />
 
         <label className="field-label" style={{ marginTop: 16 }}>
           Tamaños

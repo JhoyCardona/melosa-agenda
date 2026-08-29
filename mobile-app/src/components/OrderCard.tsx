@@ -12,6 +12,9 @@ interface OrderItem {
   customFlavor: string | null;
   customImageUrl: string | null;
   customText: string | null;
+  shape: string | null;
+  relleno: string | null;
+  customSize: string | null;
   productDesign: { name: string; imageUrl: string | null } | null;
   variant: { label: string } | null;
 }
@@ -25,7 +28,8 @@ const flavorLabels: Record<string, string> = {
 // for a custom admin line.
 function itemTitle(it: OrderItem): string {
   const name = it.productDesign?.name ?? it.customName ?? 'Personalizado';
-  return it.variant?.label ? `${name} - ${it.variant.label}` : name;
+  const size = it.variant?.label ?? it.customSize;
+  return size ? `${name} - ${size}` : name;
 }
 
 function itemFlavor(it: OrderItem): string {
@@ -184,6 +188,8 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
                   {index + 1}. {itemTitle(item)}
                 </Text>
                 <Text style={styles.detailLine}>Sabor: {itemFlavor(item)}</Text>
+                {item.shape ? <Text style={styles.detailLine}>Forma: {item.shape}</Text> : null}
+                {item.relleno ? <Text style={styles.detailLine}>Relleno: {item.relleno}</Text> : null}
 
                 {photoUrl && (
                   <TouchableOpacity onPress={() => setViewingImage(photoUrl)}>
@@ -206,6 +212,7 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
                   <TextInput
                     style={styles.depositInputFull}
                     placeholder="¿Cuánto abonó? Ej: 20000 (vacío = nada)"
+                    placeholderTextColor="rgba(62,39,35,0.4)"
                     keyboardType="numeric"
                     value={depositInput}
                     onChangeText={setDepositInput}

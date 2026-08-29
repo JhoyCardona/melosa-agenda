@@ -45,6 +45,7 @@ export default function AutocompleteInput({
       <TextInput
         style={styles.input}
         placeholder={placeholder}
+        placeholderTextColor="rgba(62,39,35,0.4)"
         value={value}
         onChangeText={(text) => {
           onChangeText(text);

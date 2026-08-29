@@ -3,6 +3,7 @@ import { PrismaClient, Flavor, OrderStatus } from '@prisma/client';
 import { isBusinessDay } from '../utils/colombianHolidays';
 import { computePaymentDueDate, earliestPublicDeliveryDate } from '../utils/colombiaTime';
 import { reserveDeliverySlot, minutesToLabel, isNotEnoughRoomError } from '../services/availability';
+import { rellenoSurcharge, computeRequiredPaymentPercent } from '../services/pricing';
 import cloudinary from '../config/cloudinary';
 
 const prisma = new PrismaClient();
@@ -54,6 +55,7 @@ interface PublicOrderItemInput {
   productDesignId: string;
   variantId: string;
   flavor: Flavor;
+  relleno: string;
   customImageUrl?: string;
   customText?: string;
 }
@@ -125,29 +127,38 @@ export async function createPublicOrder(req: Request, res: Response) {
     const variantById = new Map(variants.map((v) => [v.id, v]));
     const designById = new Map(designs.map((d) => [d.id, d]));
 
-    for (const item of items as PublicOrderItemInput[]) {
+    // effectiveRelleno is decided here, not trusted from the client: a promo
+    // (minicake) variant is always Vainilla regardless of what was posted.
+    const resolvedItems = (items as PublicOrderItemInput[]).map((item) => {
       const variant = variantById.get(item.variantId);
+      const design = variant ? designById.get(item.productDesignId) : undefined;
+      const effectiveRelleno = variant?.enPromocion ? 'Vainilla' : item.relleno?.trim() || '';
+      return { item, variant, design, effectiveRelleno };
+    });
+
+    for (const { item, variant, effectiveRelleno } of resolvedItems) {
       if (!variant || variant.productDesignId !== item.productDesignId) {
         return res.status(404).json({ error: 'Uno de los productos seleccionados no existe' });
       }
       if (!item.flavor || !VALID_FLAVORS.includes(item.flavor)) {
         return res.status(400).json({ error: `flavor debe ser uno de: ${VALID_FLAVORS.join(', ')}` });
       }
+      if (!effectiveRelleno) {
+        return res.status(400).json({ error: 'relleno es requerido' });
+      }
     }
 
-    const totalPrice = (items as PublicOrderItemInput[]).reduce(
-      (sum, item) => sum + Number(variantById.get(item.variantId)!.price),
+    const totalPrice = resolvedItems.reduce(
+      (sum, { variant, effectiveRelleno }) =>
+        sum +
+        Number(variant!.price) +
+        rellenoSurcharge(effectiveRelleno, variant!.label, variant!.enPromocion),
       0
     );
-    const rawDurationMin = (items as PublicOrderItemInput[]).reduce(
-      (sum, item) => sum + variantById.get(item.variantId)!.prepMinutes,
-      0
-    );
-    // The order requires the strictest deposit policy among its designs.
-    const requiredPaymentPercent = Math.max(
-      ...(items as PublicOrderItemInput[]).map(
-        (item) => designById.get(item.productDesignId)?.requiredPaymentPercent ?? 100
-      )
+    const rawDurationMin = resolvedItems.reduce((sum, { variant }) => sum + variant!.prepMinutes, 0);
+    // Exactly one item, a minicake -> 100%; everything else -> 50%.
+    const requiredPaymentPercent = computeRequiredPaymentPercent(
+      resolvedItems.map(({ variant }) => ({ isPromoMinicake: !!variant!.enPromocion }))
     );
 
     const order = await prisma.$transaction(async (tx) => {
@@ -175,19 +186,21 @@ export async function createPublicOrder(req: Request, res: Response) {
           requiredPaymentPercent,
           totalPrice,
           items: {
-            create: (items as PublicOrderItemInput[]).map((item) => {
-              const variant = variantById.get(item.variantId)!;
-              const design = designById.get(item.productDesignId)!;
+            create: resolvedItems.map(({ item, variant, design, effectiveRelleno }) => {
               // Honour the design's flags even if the client posts these fields
               // directly (the form already hides the inputs when not allowed).
               return {
                 productDesignId: item.productDesignId,
                 variantId: item.variantId,
-                priceAtOrder: variant.price,
-                pointsAtOrder: variant.points,
+                priceAtOrder:
+                  Number(variant!.price) +
+                  rellenoSurcharge(effectiveRelleno, variant!.label, variant!.enPromocion),
+                pointsAtOrder: variant!.points,
                 flavor: item.flavor,
-                customImageUrl: design.allowsCustomImage ? item.customImageUrl || null : null,
-                customText: design.allowsCustomText ? item.customText?.trim() || null : null,
+                shape: design!.shape,
+                relleno: effectiveRelleno,
+                customImageUrl: design!.allowsCustomImage ? item.customImageUrl || null : null,
+                customText: design!.allowsCustomText ? item.customText?.trim() || null : null,
               };
             }),
           },

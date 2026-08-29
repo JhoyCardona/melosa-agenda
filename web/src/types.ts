@@ -48,6 +48,7 @@ export interface CartItem {
   points: number;
   prepMinutes: number;
   flavor: Flavor;
+  relleno: string;
   customText?: string;
   customImageUrl?: string;
 }

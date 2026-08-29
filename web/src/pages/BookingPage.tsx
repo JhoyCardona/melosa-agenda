@@ -4,7 +4,8 @@ import api from '../api';
 import type { DeliveryPreview, Flavor, ProductDesign } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
-import { waLink } from '../config';
+import RellenoSelect from '../components/RellenoSelect';
+import { waLink, rellenoSurcharge, PAYMENT, PAYMENT_WARNING } from '../config';
 import './BookingPage.css';
 
 const flavorLabels: Record<Flavor, string> = { VAINILLA: 'Vainilla', CHOCOLATE: 'Chocolate' };
@@ -34,7 +35,7 @@ function itemsBreakdown(items: { designName: string; variantLabel: string }[]): 
   }
   return Array.from(counts.entries())
     .map(([label, n]) => `${label} x${n}`)
-    .join(', ');
+    .join('\n');
 }
 
 // "2026-09-01" -> "martes 1 de septiembre". Noon avoids any timezone day-shift.
@@ -72,6 +73,7 @@ export default function BookingPage() {
   // Per-item configurator (the product currently being built, not yet added).
   const [variantId, setVariantId] = useState('');
   const [flavor, setFlavor] = useState<Flavor>('VAINILLA');
+  const [relleno, setRelleno] = useState('');
   const [customText, setCustomText] = useState('');
   const [customImageUrl, setCustomImageUrl] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -135,6 +137,12 @@ export default function BookingPage() {
     setImageError('');
   }, [design]);
 
+  // A minicake (promo variant) is locked to Vainilla; any other size needs the
+  // client to actually choose, so the field resets whenever the size changes.
+  useEffect(() => {
+    setRelleno(variant?.enPromocion ? 'Vainilla' : '');
+  }, [variant?.id, variant?.enPromocion]);
+
   useEffect(() => {
     if (!draft.deliveryDate) {
       setPreview(null);
@@ -181,7 +189,8 @@ export default function BookingPage() {
   const cartFull = draft.items.length >= MAX_ITEMS;
 
   function handleAddItem() {
-    if (!design || !variant || cartFull) return;
+    if (!design || !variant || !relleno || cartFull) return;
+    const surcharge = rellenoSurcharge(relleno, variant.label, variant.enPromocion);
     draft.addItem({
       key: newKey(),
       designId: design.id,
@@ -189,10 +198,11 @@ export default function BookingPage() {
       designImageUrl: design.imageUrl,
       variantId: variant.id,
       variantLabel: variant.label,
-      price: Number(variant.price),
+      price: Number(variant.price) + surcharge,
       points: variant.points,
       prepMinutes: variant.prepMinutes,
       flavor,
+      relleno,
       customText: customText.trim() || undefined,
       customImageUrl: customImageUrl || undefined,
     });
@@ -226,6 +236,7 @@ export default function BookingPage() {
           productDesignId: i.designId,
           variantId: i.variantId,
           flavor: i.flavor,
+          relleno: i.relleno,
           customText: i.customText,
           customImageUrl: i.customImageUrl,
         })),
@@ -256,9 +267,12 @@ export default function BookingPage() {
 
   if (result) {
     const waHref = waLink(
-      `Hola, soy ${confirmedName}. Agendé el pedido #${result.ticketNumber}.\n` +
+      `${confirmedName}\n` +
+        `Ticket #${result.ticketNumber}\n` +
         `${confirmedBreakdown}\n` +
-        `Total: $${Number(result.totalPrice).toLocaleString('es-CO')}. Te comparto el comprobante del abono.`
+        `Total: $${Number(result.totalPrice).toLocaleString('es-CO')}\n` +
+        `Hora de recogida: ${result.deliveryTimeLabel ?? 'por confirmar'}\n` +
+        `¿Cómo puedo pagar para abonar mi pedido?`
     );
     return (
       <div className="booking-page">
@@ -284,6 +298,14 @@ export default function BookingPage() {
               Requiere un abono del <strong>{result.requiredPaymentPercent}%</strong>. Manda el
               comprobante por WhatsApp para confirmar tu pedido.
             </p>
+            <div className="payment-info">
+              <p className="field-label">Opciones de pago</p>
+              <p>Bancolombia (Ahorros): {PAYMENT.bancolombiaAhorros}</p>
+              <p>Nequi: {PAYMENT.nequi}</p>
+              <p>Llave: {PAYMENT.llave}</p>
+              <p>A nombre de: {PAYMENT.accountHolder}</p>
+              <p className="warning">{PAYMENT_WARNING}</p>
+            </div>
             <p className="booking-ticket-note">
               Guarda tu número de ticket <strong>#{result.ticketNumber}</strong>. Si nos escribes por
               cualquier tema de tu pedido, dánoslo siempre: es la forma en que ubicamos tu pedido.
@@ -337,6 +359,7 @@ export default function BookingPage() {
             <div>
               <p className="eyebrow">Estás personalizando</p>
               <h2>{design.name}</h2>
+              {design.shape && <p className="field-hint">Forma: {design.shape}</p>}
             </div>
           </div>
 
@@ -368,6 +391,16 @@ export default function BookingPage() {
             ))}
           </div>
 
+          <label className="field-label">Sabor de relleno</label>
+          {variant && (
+            <RellenoSelect
+              variantLabel={variant.label}
+              isPromo={variant.enPromocion}
+              value={relleno}
+              onChange={setRelleno}
+            />
+          )}
+
           {design.allowsCustomText && (
             <>
               <label className="field-label">Texto personalizado (opcional)</label>
@@ -397,7 +430,7 @@ export default function BookingPage() {
             type="button"
             className="btn btn-primary"
             onClick={handleAddItem}
-            disabled={!variant || uploadingImage || cartFull}
+            disabled={!variant || !relleno || uploadingImage || cartFull}
           >
             Agregar al pedido
           </button>
@@ -417,7 +450,7 @@ export default function BookingPage() {
               {draft.items.map((i) => (
                 <li key={i.key}>
                   <span>
-                    {i.designName} · {i.variantLabel} · {flavorLabels[i.flavor]}
+                    {i.designName} · {i.variantLabel} · {flavorLabels[i.flavor]} · {i.relleno}
                     {i.customText ? ` · "${i.customText}"` : ''}
                     {i.customImageUrl ? ' · con imagen' : ''}
                   </span>

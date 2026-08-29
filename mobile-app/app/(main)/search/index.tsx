@@ -42,6 +42,7 @@ export default function SearchByTicketScreen() {
         <TextInput
           style={styles.input}
           placeholder="Número de ticket"
+          placeholderTextColor="rgba(62,39,35,0.4)"
           value={ticketInput}
           onChangeText={setTicketInput}
           keyboardType="numeric"

@@ -40,6 +40,9 @@ export async function createProductDesign(req: AuthRequest, res: Response) {
   if (!name || !category) {
     return res.status(400).json({ error: 'name y category son requeridos' });
   }
+  if (!shape || !String(shape).trim()) {
+    return res.status(400).json({ error: 'shape es requerido' });
+  }
 
   if (!VALID_CATEGORIES.includes(category)) {
     return res.status(400).json({ error: `category debe ser una de: ${VALID_CATEGORIES.join(', ')}` });
@@ -71,7 +74,7 @@ export async function createProductDesign(req: AuthRequest, res: Response) {
       data: {
         name,
         category,
-        shape: shape || null,
+        shape: String(shape).trim(),
         imageUrl: imageUrl || null,
         allowsCustomImage: !!allowsCustomImage,
         allowsCustomText: allowsCustomText === undefined ? true : !!allowsCustomText,
@@ -121,6 +124,9 @@ export async function updateProductDesign(req: AuthRequest, res: Response) {
   if (name !== undefined && !String(name).trim()) {
     return res.status(400).json({ error: 'name no puede quedar vacío' });
   }
+  if (shape !== undefined && !String(shape).trim()) {
+    return res.status(400).json({ error: 'shape no puede quedar vacío' });
+  }
   if (requiredPaymentPercent !== undefined) {
     const err = validatePaymentPercent(requiredPaymentPercent);
     if (err) return res.status(400).json({ error: err });
@@ -132,7 +138,7 @@ export async function updateProductDesign(req: AuthRequest, res: Response) {
       data: {
         ...(name !== undefined && { name: String(name).trim() }),
         ...(category !== undefined && { category }),
-        ...(shape !== undefined && { shape: shape || null }),
+        ...(shape !== undefined && { shape: String(shape).trim() }),
         ...(imageUrl !== undefined && { imageUrl: imageUrl || null }),
         ...(allowsCustomImage !== undefined && { allowsCustomImage: !!allowsCustomImage }),
         ...(allowsCustomText !== undefined && { allowsCustomText: !!allowsCustomText }),

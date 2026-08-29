@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
-import type { ProductDesign } from '../types';
+import type { Flavor, ProductDesign } from '../types';
 import { useAdminAuth } from '../context/AdminAuth';
 import PasswordPrompt from '../components/PasswordPrompt';
+import RellenoSelect from '../components/RellenoSelect';
+import { rellenoSurcharge } from '../config';
 import './adminLegacy.css';
-
-type Flavor = 'VAINILLA' | 'CHOCOLATE';
 
 interface CatalogLine {
   kind: 'catalog';
@@ -14,6 +14,7 @@ interface CatalogLine {
   designId: string;
   variantId: string;
   flavor: Flavor;
+  relleno: string;
   customText: string;
   customImageUrl: string;
 }
@@ -22,7 +23,10 @@ interface FreeLine {
   key: string;
   customName: string;
   price: string;
+  customSize: string;
+  shape: string;
   customFlavor: string;
+  relleno: string;
   customText: string;
   customImageUrl: string;
 }
@@ -49,7 +53,6 @@ export default function NewOrderPage() {
   const [deliveryDate, setDeliveryDate] = useState('');
   const [pickupTime, setPickupTime] = useState('');
   const [deposit, setDeposit] = useState('');
-  const [source, setSource] = useState<'MANUAL' | 'WEB_PUBLIC'>('MANUAL');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<Line[]>([]);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
@@ -75,7 +78,8 @@ export default function NewOrderPage() {
       if (l.kind === 'free') return sum + (Number(l.price) || 0);
       const design = designs.find((d) => d.id === l.designId);
       const variant = design?.variants.find((v) => v.id === l.variantId);
-      return sum + (variant ? Number(variant.price) : 0);
+      if (!variant) return sum;
+      return sum + Number(variant.price) + rellenoSurcharge(l.relleno, variant.label, variant.enPromocion);
     }, 0);
   }, [lines, designs]);
 
@@ -87,14 +91,16 @@ export default function NewOrderPage() {
   }
   function addCatalogLine() {
     const first = designs[0];
+    const firstVariant = first?.variants[0];
     setLines((prev) => [
       ...prev,
       {
         kind: 'catalog',
         key: newKey(),
         designId: first?.id ?? '',
-        variantId: first?.variants[0]?.id ?? '',
+        variantId: firstVariant?.id ?? '',
         flavor: 'VAINILLA',
+        relleno: firstVariant?.enPromocion ? 'Vainilla' : '',
         customText: '',
         customImageUrl: '',
       },
@@ -103,7 +109,18 @@ export default function NewOrderPage() {
   function addFreeLine() {
     setLines((prev) => [
       ...prev,
-      { kind: 'free', key: newKey(), customName: '', price: '', customFlavor: '', customText: '', customImageUrl: '' },
+      {
+        kind: 'free',
+        key: newKey(),
+        customName: '',
+        price: '',
+        customSize: '',
+        shape: '',
+        customFlavor: '',
+        relleno: '',
+        customText: '',
+        customImageUrl: '',
+      },
     ]);
   }
 
@@ -133,8 +150,14 @@ export default function NewOrderPage() {
     lines.length > 0 &&
     lines.every((l) =>
       l.kind === 'catalog'
-        ? l.designId && l.variantId
-        : l.customName.trim() && l.price !== '' && Number(l.price) >= 0
+        ? l.designId && l.variantId && l.relleno.trim()
+        : l.customName.trim() &&
+          l.price !== '' &&
+          Number(l.price) >= 0 &&
+          l.customSize.trim() &&
+          l.shape.trim() &&
+          l.customFlavor.trim() &&
+          l.relleno.trim()
     ) &&
     !submitting;
 
@@ -148,7 +171,6 @@ export default function NewOrderPage() {
         deliveryDate,
         deliveryStartMinutes: pickupMinutes,
         depositPaid: deposit ? Number(deposit) : undefined,
-        source,
         notes: notes.trim() || undefined,
         items: lines.map((l) =>
           l.kind === 'catalog'
@@ -156,13 +178,17 @@ export default function NewOrderPage() {
                 productDesignId: l.designId,
                 variantId: l.variantId,
                 flavor: l.flavor,
+                relleno: l.relleno.trim(),
                 customText: l.customText.trim() || undefined,
                 customImageUrl: l.customImageUrl || undefined,
               }
             : {
                 customName: l.customName.trim(),
                 priceAtOrder: Number(l.price),
-                customFlavor: l.customFlavor.trim() || undefined,
+                customSize: l.customSize.trim(),
+                shape: l.shape.trim(),
+                customFlavor: l.customFlavor.trim(),
+                relleno: l.relleno.trim(),
                 customText: l.customText.trim() || undefined,
                 customImageUrl: l.customImageUrl || undefined,
               }
@@ -182,7 +208,6 @@ export default function NewOrderPage() {
     setDeliveryDate('');
     setPickupTime('');
     setDeposit('');
-    setSource('MANUAL');
     setNotes('');
     setLines([]);
     setCreatedTicket(null);
@@ -260,7 +285,12 @@ export default function NewOrderPage() {
                   value={l.designId}
                   onChange={(e) => {
                     const d = designs.find((x) => x.id === e.target.value);
-                    patchLine(l.key, { designId: e.target.value, variantId: d?.variants[0]?.id ?? '' });
+                    const v = d?.variants[0];
+                    patchLine(l.key, {
+                      designId: e.target.value,
+                      variantId: v?.id ?? '',
+                      relleno: v?.enPromocion ? 'Vainilla' : '',
+                    });
                   }}
                 >
                   {designs.map((d) => (
@@ -269,7 +299,13 @@ export default function NewOrderPage() {
                     </option>
                   ))}
                 </select>
-                <select value={l.variantId} onChange={(e) => patchLine(l.key, { variantId: e.target.value })}>
+                <select
+                  value={l.variantId}
+                  onChange={(e) => {
+                    const v = designs.find((d) => d.id === l.designId)?.variants.find((x) => x.id === e.target.value);
+                    patchLine(l.key, { variantId: e.target.value, relleno: v?.enPromocion ? 'Vainilla' : '' });
+                  }}
+                >
                   {designs
                     .find((d) => d.id === l.designId)
                     ?.variants.map((v) => (
@@ -285,6 +321,17 @@ export default function NewOrderPage() {
                   <option value="VAINILLA">Vainilla</option>
                   <option value="CHOCOLATE">Chocolate</option>
                 </select>
+                {(() => {
+                  const variant = designs.find((d) => d.id === l.designId)?.variants.find((v) => v.id === l.variantId);
+                  return variant ? (
+                    <RellenoSelect
+                      variantLabel={variant.label}
+                      isPromo={variant.enPromocion}
+                      value={l.relleno}
+                      onChange={(relleno) => patchLine(l.key, { relleno })}
+                    />
+                  ) : null;
+                })()}
               </>
             ) : (
               <>
@@ -302,9 +349,27 @@ export default function NewOrderPage() {
                 />
                 <input
                   type="text"
-                  placeholder="Sabor (libre, opcional)"
+                  placeholder="Porciones (ej: 20 porciones)"
+                  value={l.customSize}
+                  onChange={(e) => patchLine(l.key, { customSize: e.target.value })}
+                />
+                <input
+                  type="text"
+                  placeholder="Forma (ej: Corazón)"
+                  value={l.shape}
+                  onChange={(e) => patchLine(l.key, { shape: e.target.value })}
+                />
+                <input
+                  type="text"
+                  placeholder="Sabor de torta"
                   value={l.customFlavor}
                   onChange={(e) => patchLine(l.key, { customFlavor: e.target.value })}
+                />
+                <input
+                  type="text"
+                  placeholder="Relleno"
+                  value={l.relleno}
+                  onChange={(e) => patchLine(l.key, { relleno: e.target.value })}
                 />
               </>
             )}
@@ -341,11 +406,6 @@ export default function NewOrderPage() {
         <h2>Pago y origen</h2>
         <label className="field-label">Abono recibido (opcional — si lo pones, el pedido queda ABONADO)</label>
         <input type="number" value={deposit} onChange={(e) => setDeposit(e.target.value)} />
-        <label className="field-label">Origen</label>
-        <select value={source} onChange={(e) => setSource(e.target.value as 'MANUAL' | 'WEB_PUBLIC')}>
-          <option value="MANUAL">Manual</option>
-          <option value="WEB_PUBLIC">Web pública</option>
-        </select>
         <label className="field-label">Notas</label>
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>

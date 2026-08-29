@@ -20,6 +20,49 @@ export const SOCIAL = {
   facebook: 'https://www.facebook.com/profile.php?id=61556591380759',
 };
 
+// Filling list and premium surcharge — kept in sync by hand with the backend's
+// backend/src/services/pricing.ts (no shared package between the two yet).
+// Only used for a torta sold by porciones — a minicake is always locked to
+// Vainilla, no choice shown.
+export const RELLENOS_BASICOS = ['Vainilla', 'Arequipe', 'Chocolate', 'Frutos rojos'];
+export const RELLENOS_PREMIUM = ['Oreo', 'Milo', 'Fresas con crema'];
+export const RELLENO_PREMIUM_SURCHARGE_BY_PORTIONS: Record<number, number> = {
+  5: 5000,
+  10: 10000,
+  15: 12500,
+  20: 15000,
+};
+
+// Pulls the leading portion count out of a variant label like "Torta 10
+// porciones" -> 10. Catalog labels aren't fully standardized yet, so this is a
+// best-effort parse: no match just means the surcharge preview stays $0 (the
+// backend is the source of truth for the real charged total either way).
+export function extractPortionsFromLabel(label: string): number | null {
+  const match = label.match(/(\d+)\s*porcion/i);
+  if (!match) return null;
+  return Number(match[1]);
+}
+
+export function rellenoSurcharge(relleno: string | null | undefined, variantLabel: string, isPromo: boolean): number {
+  if (isPromo || !relleno) return 0;
+  if (!RELLENOS_PREMIUM.includes(relleno)) return 0;
+  const portions = extractPortionsFromLabel(variantLabel);
+  if (portions === null) return 0;
+  return RELLENO_PREMIUM_SURCHARGE_BY_PORTIONS[portions] ?? 0;
+}
+
+// Payment options shown on the booking confirmation screen — the client pays
+// manually (Nequi/Bancolombia/Llave) and sends the proof over WhatsApp; there's
+// no payment gateway integrated yet.
+export const PAYMENT = {
+  bancolombiaAhorros: '91223671581',
+  nequi: '3172932484',
+  llave: '@carolina7118',
+  accountHolder: 'Carolina Restrepo',
+};
+export const PAYMENT_WARNING =
+  'Cuando realices el pago, envíanos el comprobante junto con el NOMBRE DE LA PERSONA QUE TRANSFIERE para confirmar tu reserva.';
+
 export const BUSINESS = {
   addressLine: 'Calle 3 Sur #53-8, Rodeo Sur, Guayabal',
   city: 'Medellín',

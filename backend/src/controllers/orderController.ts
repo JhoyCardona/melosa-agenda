@@ -4,6 +4,7 @@ import archiver from 'archiver';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { computePaymentDueDate } from '../utils/colombiaTime';
 import { reserveDeliverySlot, minutesToLabel, isNotEnoughRoomError } from '../services/availability';
+import { rellenoSurcharge, computeRequiredPaymentPercent } from '../services/pricing';
 
 const prisma = new PrismaClient();
 
@@ -21,8 +22,11 @@ interface OrderItemInput {
   productDesignId?: string;
   variantId?: string;
   flavor?: Flavor;
+  relleno?: string;
   customName?: string;
   customFlavor?: string;
+  customSize?: string;
+  shape?: string;
   priceAtOrder?: number;
   customImageUrl?: string;
   customText?: string;
@@ -129,9 +133,12 @@ export async function createOrder(req: AuthRequest, res: Response) {
       flavor: Flavor | null;
       customName: string | null;
       customFlavor: string | null;
+      customSize: string | null;
+      shape: string | null;
+      relleno: string | null;
       customImageUrl: string | null;
       customText: string | null;
-      requiredPct: number;
+      isPromoMinicake: boolean;
     }
     const lines: BuiltLine[] = [];
 
@@ -144,18 +151,28 @@ export async function createOrder(req: AuthRequest, res: Response) {
         if (!item.flavor || !VALID_FLAVORS.includes(item.flavor)) {
           return res.status(400).json({ error: `flavor debe ser uno de: ${VALID_FLAVORS.join(', ')}` });
         }
+        // A promo (minicake) variant is always Vainilla, regardless of what was posted.
+        const effectiveRelleno = variant.enPromocion ? 'Vainilla' : item.relleno?.trim() || '';
+        if (!effectiveRelleno) {
+          return res.status(400).json({ error: 'relleno es requerido' });
+        }
+        const design = designById.get(variant.productDesignId);
         lines.push({
           productDesignId: variant.productDesignId,
           variantId: variant.id,
-          priceAtOrder: Number(variant.price),
+          priceAtOrder:
+            Number(variant.price) + rellenoSurcharge(effectiveRelleno, variant.label, variant.enPromocion),
           pointsAtOrder: variant.points,
           prepMinutes: variant.prepMinutes,
           flavor: item.flavor,
           customName: null,
           customFlavor: null,
+          customSize: null,
+          shape: design?.shape ?? null,
+          relleno: effectiveRelleno,
           customImageUrl: item.customImageUrl || null,
           customText: item.customText || null,
-          requiredPct: designById.get(variant.productDesignId)?.requiredPaymentPercent ?? 100,
+          isPromoMinicake: !!variant.enPromocion,
         });
       } else {
         if (!item.customName || !String(item.customName).trim()) {
@@ -168,6 +185,18 @@ export async function createOrder(req: AuthRequest, res: Response) {
         ) {
           return res.status(400).json({ error: 'Cada línea libre necesita un precio (priceAtOrder) >= 0' });
         }
+        if (!item.customFlavor || !String(item.customFlavor).trim()) {
+          return res.status(400).json({ error: 'Cada línea libre necesita un sabor de torta (customFlavor)' });
+        }
+        if (!item.customSize || !String(item.customSize).trim()) {
+          return res.status(400).json({ error: 'Cada línea libre necesita las porciones (customSize)' });
+        }
+        if (!item.shape || !String(item.shape).trim()) {
+          return res.status(400).json({ error: 'Cada línea libre necesita una forma (shape)' });
+        }
+        if (!item.relleno || !String(item.relleno).trim()) {
+          return res.status(400).json({ error: 'Cada línea libre necesita un relleno' });
+        }
         lines.push({
           productDesignId: null,
           variantId: null,
@@ -176,17 +205,22 @@ export async function createOrder(req: AuthRequest, res: Response) {
           prepMinutes: 0,
           flavor: null,
           customName: String(item.customName).trim(),
-          customFlavor: item.customFlavor?.trim() || null,
+          customFlavor: String(item.customFlavor).trim(),
+          customSize: String(item.customSize).trim(),
+          shape: String(item.shape).trim(),
+          relleno: String(item.relleno).trim(),
           customImageUrl: item.customImageUrl || null,
           customText: item.customText || null,
-          requiredPct: 100,
+          isPromoMinicake: false,
         });
       }
     }
 
     const totalPrice = lines.reduce((sum, l) => sum + l.priceAtOrder, 0);
     const rawDurationMin = lines.reduce((sum, l) => sum + l.prepMinutes, 0);
-    const requiredPaymentPercent = Math.max(...lines.map((l) => l.requiredPct));
+    const requiredPaymentPercent = computeRequiredPaymentPercent(
+      lines.map((l) => ({ isPromoMinicake: l.isPromoMinicake }))
+    );
     const hasDeposit = typeof depositPaid === 'number' && depositPaid > 0;
 
     const order = await prisma.$transaction(async (tx) => {
@@ -227,6 +261,9 @@ export async function createOrder(req: AuthRequest, res: Response) {
               flavor: l.flavor,
               customName: l.customName,
               customFlavor: l.customFlavor,
+              customSize: l.customSize,
+              shape: l.shape,
+              relleno: l.relleno,
               customImageUrl: l.customImageUrl,
               customText: l.customText,
             })),
@@ -453,8 +490,8 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
 
     for (const order of orders) {
       for (const item of order.items) {
-        const sizeLabel = item.variant?.label ?? item.customName ?? 'Personalizado';
-        const shape = item.productDesign?.shape ?? 'Sin forma definida';
+        const sizeLabel = item.variant?.label ?? item.customSize ?? item.customName ?? 'Personalizado';
+        const shape = item.shape ?? 'Sin forma definida';
         const flavor = item.flavor ?? item.customFlavor ?? 'Sin sabor definido';
 
         let sizeGroup = sizeGroups.get(sizeLabel);
