@@ -210,6 +210,9 @@ export default function NewOrderPage() {
 
   return (
     <div className="booking-page">
+      <Link to="/" className="booking-back">
+        ← Volver al inicio
+      </Link>
       <h1>Crear pedido</h1>
       <p className="edit-hint">
         Canal de administradora: sin validación de fecha ni hora, no ocupa la agenda pública.

@@ -19,6 +19,7 @@ export default function AdminBar() {
     <div className="admin-bar">
       <span className="admin-bar-tag">Modo administradora</span>
       <nav className="admin-bar-nav">
+        <Link to="/">Inicio</Link>
         <Link to="/admin/pedidos/nuevo">Crear pedido</Link>
         <Link to="/admin/catalogo">Catálogo</Link>
         <button type="button" onClick={handleLogout}>

@@ -7,6 +7,17 @@
   padding: 24px 20px 120px;
 }
 
+.booking-back {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: var(--color-primary);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+.booking-back:hover {
+  text-decoration: underline;
+}
+
 .booking-page h1 {
   color: var(--color-primary);
   font-size: 1.6rem;

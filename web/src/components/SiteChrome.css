@@ -14,9 +14,12 @@
   font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: 0.02em;
-  /* Reserve a stable height so rotating between a 1-line and a 2-line message
-     (on very narrow screens) doesn't make the bar jump. */
-  min-height: 1.4em;
+  /* Always exactly one line. Rotating messages must never change the bar's
+     height — that vertical bounce makes the whole page hard to read. Keep the
+     ANNOUNCEMENTS texts short; anything too long just truncates. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   animation: announce-in 400ms ease-out;
 }
 

@@ -8,10 +8,12 @@ import './SiteChrome.css';
 // with a short fade. On a phone a scrolling marquee only ever shows a chopped
 // fragment, so we swap whole lines instead. The fade is dropped under
 // prefers-reduced-motion (handled in CSS); the rotation itself stays.
+// Keep each line short enough to fit on one line on a phone — see the
+// white-space:nowrap rule in SiteChrome.css. Rough limit: ~34 characters.
 const ANNOUNCEMENTS = [
-  '🍰 Minicakes en promoción desde $28.000',
-  '📅 Agenda tu pedido en línea, sin filas ni esperas',
-  '🛍️ Todos los pedidos son para recoger en el local',
+  '🍰 Minicakes en promo desde $28.000',
+  '📅 Agenda tu pedido en línea',
+  '🛍️ Pedidos para recoger en el local',
 ];
 
 const ROTATE_MS = 4000;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAdminAuth } from '../context/AdminAuth';
 import './adminLegacy.css';
@@ -35,6 +35,9 @@ export default function AdminLoginPage() {
 
   return (
     <div className="booking-page">
+      <Link to="/" className="booking-back">
+        ← Volver al inicio
+      </Link>
       <h1>Ingresar</h1>
       <form className="form-section" onSubmit={handleSubmit}>
         <label className="field-label">Usuario</label>
