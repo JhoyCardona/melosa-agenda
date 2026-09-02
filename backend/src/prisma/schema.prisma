@@ -59,6 +59,11 @@ model OrderItem {
   customFlavor    String?
   customImageUrl  String?
   customText      String?
+  // Reference/inspiration photo the client sent by WhatsApp ("quiero algo así").
+  // NOT the same as customImageUrl: that one is edible-print artwork and feeds
+  // the day's print ZIP (findDayImageItems). referenceImageUrl is for the baker's
+  // eyes only and stays out of the print gallery.
+  referenceImageUrl String?
   // Shape snapshot (from ProductDesign.shape, or hand-typed for a free line) and
   // filling, mandatory on every order item going forward. customSize is the
   // free-text portions ("20 porciones") for a free line only — catalog lines get

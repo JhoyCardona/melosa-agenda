@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { PrismaClient, Prisma, OrderStatus, OrderSource, Flavor } from '@prisma/client';
+import { PrismaClient, Prisma, OrderStatus, OrderSource, Flavor, ItemCategory } from '@prisma/client';
 import archiver from 'archiver';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { computePaymentDueDate } from '../utils/colombiaTime';
@@ -31,6 +31,11 @@ interface OrderItemInput {
   priceAtOrder?: number;
   customImageUrl?: string;
   customText?: string;
+  // Client's WhatsApp reference photo. Required for cake lines unless the admin
+  // ticks "no reference photo" (plain cake, "surprise me"), which sends
+  // skipReference: true instead.
+  referenceImageUrl?: string;
+  skipReference?: boolean;
 }
 
 // Re-place an order on its delivery day's timeline: recompute its duration from
@@ -152,9 +157,15 @@ export async function createOrder(req: AuthRequest, res: Response) {
       relleno: string | null;
       customImageUrl: string | null;
       customText: string | null;
+      referenceImageUrl: string | null;
       isPromoMinicake: boolean;
     }
     const lines: BuiltLine[] = [];
+
+    // A cake line must carry the client's reference photo, unless the admin
+    // explicitly waived it (skipReference) for a plain / "surprise me" cake.
+    const missingReference = (item: OrderItemInput): boolean =>
+      !item.referenceImageUrl && !item.skipReference;
 
     for (const item of items as OrderItemInput[]) {
       if (item.variantId) {
@@ -174,6 +185,11 @@ export async function createOrder(req: AuthRequest, res: Response) {
           return res.status(400).json({ error: `relleno no reconocido: "${effectiveRelleno}"` });
         }
         const design = designById.get(variant.productDesignId);
+        if (design?.category === ItemCategory.CAKE && missingReference(item)) {
+          return res.status(400).json({
+            error: 'Falta la foto de referencia de la torta (o marca "sin foto de referencia").',
+          });
+        }
         lines.push({
           productDesignId: variant.productDesignId,
           variantId: variant.id,
@@ -189,6 +205,7 @@ export async function createOrder(req: AuthRequest, res: Response) {
           relleno: effectiveRelleno,
           customImageUrl: item.customImageUrl || null,
           customText: item.customText || null,
+          referenceImageUrl: item.referenceImageUrl || null,
           isPromoMinicake: !!variant.enPromocion,
         });
       } else {
@@ -214,6 +231,12 @@ export async function createOrder(req: AuthRequest, res: Response) {
         if (!item.relleno || !String(item.relleno).trim()) {
           return res.status(400).json({ error: 'Cada línea libre necesita un relleno' });
         }
+        // Free lines are always custom cakes → same reference-photo rule.
+        if (missingReference(item)) {
+          return res.status(400).json({
+            error: 'Falta la foto de referencia de la torta (o marca "sin foto de referencia").',
+          });
+        }
         lines.push({
           productDesignId: null,
           variantId: null,
@@ -228,6 +251,7 @@ export async function createOrder(req: AuthRequest, res: Response) {
           relleno: String(item.relleno).trim(),
           customImageUrl: item.customImageUrl || null,
           customText: item.customText || null,
+          referenceImageUrl: item.referenceImageUrl || null,
           isPromoMinicake: false,
         });
       }
@@ -283,6 +307,7 @@ export async function createOrder(req: AuthRequest, res: Response) {
               relleno: l.relleno,
               customImageUrl: l.customImageUrl,
               customText: l.customText,
+              referenceImageUrl: l.referenceImageUrl,
             })),
           },
         },
@@ -311,7 +336,7 @@ export async function createOrder(req: AuthRequest, res: Response) {
 // up front in createOrder; this is for "the client called back, add one more".
 export async function addOrderItem(req: AuthRequest, res: Response) {
   const orderId = req.params.orderId as string;
-  const { productDesignId, variantId, flavor, customImageUrl, customText } = req.body;
+  const { productDesignId, variantId, flavor, customImageUrl, customText, referenceImageUrl } = req.body;
 
   if (!productDesignId || !variantId || !flavor) {
     return res.status(400).json({ error: 'productDesignId, variantId y flavor son requeridos' });
@@ -343,6 +368,7 @@ export async function addOrderItem(req: AuthRequest, res: Response) {
           flavor,
           customImageUrl: customImageUrl || null,
           customText: customText || null,
+          referenceImageUrl: referenceImageUrl || null,
         },
       });
 
@@ -835,7 +861,7 @@ export async function updateOrder(req: AuthRequest, res: Response) {
 
 export async function updateOrderItem(req: AuthRequest, res: Response) {
   const itemId = req.params.itemId as string;
-  const { customImageUrl, customText } = req.body;
+  const { customImageUrl, customText, referenceImageUrl } = req.body;
 
   try {
     const existingItem = await prisma.orderItem.findUnique({ where: { id: itemId } });
@@ -849,6 +875,7 @@ export async function updateOrderItem(req: AuthRequest, res: Response) {
       data: {
         ...(customImageUrl !== undefined && { customImageUrl }),
         ...(customText !== undefined && { customText }),
+        ...(referenceImageUrl !== undefined && { referenceImageUrl }),
       },
     });
 

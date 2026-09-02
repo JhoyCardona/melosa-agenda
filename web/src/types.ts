@@ -55,4 +55,7 @@ export interface CartItem {
   relleno: string;
   customText?: string;
   customImageUrl?: string;
+  // Client's WhatsApp reference photo ("quiero algo así"). Separate from
+  // customImageUrl, which is edible-print artwork.
+  referenceImageUrl?: string;
 }

@@ -11,6 +11,9 @@ interface OrderItem {
   customName: string | null;
   customFlavor: string | null;
   customImageUrl: string | null;
+  // Client's WhatsApp reference photo ("quiero algo así"). Not the same as
+  // customImageUrl (edible-print artwork) — shown as its own block.
+  referenceImageUrl: string | null;
   customText: string | null;
   shape: string | null;
   relleno: string | null;
@@ -179,9 +182,10 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
             <Text style={styles.blockLabel}>Productos ({order.items.length})</Text>
 
             {order.items.map((item, index) => {
-              // Client's print image if there is one, otherwise the catalog photo
-              // of the design (so Melosa always sees what the order looks like).
-              const photoUrl = item.customImageUrl ?? item.productDesign?.imageUrl ?? null;
+              // What the cake should look like: the client's WhatsApp reference
+              // photo first, then an edible-print image, then the catalog photo.
+              const photoUrl =
+                item.referenceImageUrl ?? item.customImageUrl ?? item.productDesign?.imageUrl ?? null;
               return (
               <View key={item.id} style={styles.itemDetailCard}>
                 <Text style={styles.itemDetailTitle}>
@@ -195,6 +199,15 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
                   <TouchableOpacity onPress={() => setViewingImage(photoUrl)}>
                     <Image source={{ uri: photoUrl }} style={styles.itemImage} />
                   </TouchableOpacity>
+                )}
+
+                {item.customImageUrl && item.customImageUrl !== photoUrl && (
+                  <>
+                    <Text style={styles.detailLine}>Imagen para imprimir:</Text>
+                    <TouchableOpacity onPress={() => setViewingImage(item.customImageUrl!)}>
+                      <Image source={{ uri: item.customImageUrl }} style={styles.itemImage} />
+                    </TouchableOpacity>
+                  </>
                 )}
 
                 {item.customText ? (

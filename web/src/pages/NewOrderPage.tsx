@@ -17,6 +17,10 @@ interface CatalogLine {
   relleno: string;
   customText: string;
   customImageUrl: string;
+  // Client's WhatsApp reference photo. skipReference lets the admin waive it for
+  // a plain / "surprise me" cake.
+  referenceImageUrl: string;
+  skipReference: boolean;
 }
 interface FreeLine {
   kind: 'free';
@@ -29,6 +33,8 @@ interface FreeLine {
   relleno: string;
   customText: string;
   customImageUrl: string;
+  referenceImageUrl: string;
+  skipReference: boolean;
 }
 type Line = CatalogLine | FreeLine;
 
@@ -58,7 +64,8 @@ export default function NewOrderPage() {
   const [deposit, setDeposit] = useState('');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<Line[]>([]);
-  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  // "<lineKey>|<field>" while that specific file input is uploading, else null.
+  const [uploadingSlot, setUploadingSlot] = useState<string | null>(null);
 
   const [error, setError] = useState('');
   const [pendingConfirm, setPendingConfirm] = useState(false);
@@ -108,6 +115,8 @@ export default function NewOrderPage() {
         relleno: firstVariant?.enPromocion ? 'Vainilla' : '',
         customText: '',
         customImageUrl: '',
+        referenceImageUrl: '',
+        skipReference: false,
       },
     ]);
   }
@@ -125,12 +134,14 @@ export default function NewOrderPage() {
         relleno: '',
         customText: '',
         customImageUrl: '',
+        referenceImageUrl: '',
+        skipReference: false,
       },
     ]);
   }
 
-  async function uploadPhoto(key: string, file: File) {
-    setUploadingKey(key);
+  async function uploadPhoto(key: string, file: File, field: 'customImageUrl' | 'referenceImageUrl') {
+    setUploadingSlot(`${key}|${field}`);
     setError('');
     try {
       const fd = new FormData();
@@ -138,12 +149,23 @@ export default function NewOrderPage() {
       const res = await api.post<{ imageUrl: string }>('/upload', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      patchLine(key, { customImageUrl: res.data.imageUrl });
+      patchLine(key, { [field]: res.data.imageUrl });
     } catch {
       setError('No se pudo subir la foto');
     } finally {
-      setUploadingKey(null);
+      setUploadingSlot(null);
     }
+  }
+
+  // A cake line needs the client's reference photo. Catalog lines only when the
+  // design is a CAKE (desserts / alfajores don't); free lines always (they're
+  // custom cakes). "Sin foto de referencia" (skipReference) waives it.
+  function lineNeedsReference(l: Line): boolean {
+    if (l.kind === 'free') return true;
+    return designs.find((d) => d.id === l.designId)?.category === 'CAKE';
+  }
+  function lineReferenceOk(l: Line): boolean {
+    return !lineNeedsReference(l) || !!l.referenceImageUrl || l.skipReference;
   }
 
   const pickupMinutes = timeToMinutes(pickupTime);
@@ -153,16 +175,18 @@ export default function NewOrderPage() {
     !!deliveryDate &&
     pickupMinutes !== null &&
     lines.length > 0 &&
-    lines.every((l) =>
-      l.kind === 'catalog'
-        ? l.designId && l.variantId && l.relleno.trim()
-        : l.customName.trim() &&
-          l.price !== '' &&
-          Number(l.price) >= 0 &&
-          l.customSize.trim() &&
-          l.shape.trim() &&
-          l.customFlavor.trim() &&
-          l.relleno.trim()
+    lines.every(
+      (l) =>
+        lineReferenceOk(l) &&
+        (l.kind === 'catalog'
+          ? l.designId && l.variantId && l.relleno.trim()
+          : l.customName.trim() &&
+            l.price !== '' &&
+            Number(l.price) >= 0 &&
+            l.customSize.trim() &&
+            l.shape.trim() &&
+            l.customFlavor.trim() &&
+            l.relleno.trim())
     ) &&
     !submitting;
 
@@ -229,6 +253,8 @@ export default function NewOrderPage() {
                 relleno: l.relleno.trim(),
                 customText: l.customText.trim() || undefined,
                 customImageUrl: l.customImageUrl || undefined,
+                referenceImageUrl: l.referenceImageUrl || undefined,
+                skipReference: l.skipReference || undefined,
               }
             : {
                 customName: l.customName.trim(),
@@ -239,6 +265,8 @@ export default function NewOrderPage() {
                 relleno: l.relleno.trim(),
                 customText: l.customText.trim() || undefined,
                 customImageUrl: l.customImageUrl || undefined,
+                referenceImageUrl: l.referenceImageUrl || undefined,
+                skipReference: l.skipReference || undefined,
               }
         ),
       });
@@ -331,6 +359,32 @@ export default function NewOrderPage() {
                 ✕
               </button>
             </div>
+
+            <label className="field-label">
+              Foto de referencia de la torta {lineNeedsReference(l) ? '(obligatoria)' : '(opcional)'}
+            </label>
+            <p className="muted">Lo que mandó el cliente por WhatsApp: "quiero algo así". Es la foto que se ve en el pedido.</p>
+            <input
+              type="file"
+              accept="image/*"
+              disabled={uploadingSlot === `${l.key}|referenceImageUrl`}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadPhoto(l.key, f, 'referenceImageUrl');
+              }}
+            />
+            {uploadingSlot === `${l.key}|referenceImageUrl` && <p className="muted">Subiendo...</p>}
+            {l.referenceImageUrl && <img className="design-preview" src={l.referenceImageUrl} alt="" />}
+            {lineNeedsReference(l) && (
+              <label style={{ display: 'block', marginTop: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={l.skipReference}
+                  onChange={(e) => patchLine(l.key, { skipReference: e.target.checked })}
+                />{' '}
+                Sin foto de referencia (torta lisa / "sorpréndeme")
+              </label>
+            )}
 
             {l.kind === 'catalog' ? (
               <>
@@ -433,16 +487,17 @@ export default function NewOrderPage() {
               value={l.customText}
               onChange={(e) => patchLine(l.key, { customText: e.target.value })}
             />
+            <label className="field-label">Imagen para imprimir en papel comestible (opcional)</label>
             <input
               type="file"
               accept="image/*"
-              disabled={uploadingKey === l.key}
+              disabled={uploadingSlot === `${l.key}|customImageUrl`}
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) uploadPhoto(l.key, f);
+                if (f) uploadPhoto(l.key, f, 'customImageUrl');
               }}
             />
-            {uploadingKey === l.key && <p className="muted">Subiendo...</p>}
+            {uploadingSlot === `${l.key}|customImageUrl` && <p className="muted">Subiendo...</p>}
             {l.customImageUrl && <img className="design-preview" src={l.customImageUrl} alt="" />}
           </div>
         ))}
