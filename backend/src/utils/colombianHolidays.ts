@@ -125,6 +125,8 @@ export function isColombianHoliday(dateStr: string): boolean {
 
 export function isBusinessDay(dateStr: string): boolean {
   const [year, month, day] = dateStr.split('-').map(Number);
-  const isSunday = dayOfWeek({ year, month, day }) === 0;
-  return !isSunday && !isColombianHoliday(dateStr);
+  const weekday = dayOfWeek({ year, month, day });
+  const isSunday = weekday === 0;
+  const isMonday = weekday === 1;
+  return !isSunday && !isMonday && !isColombianHoliday(dateStr);
 }

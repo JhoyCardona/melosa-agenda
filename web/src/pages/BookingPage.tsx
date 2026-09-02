@@ -219,6 +219,7 @@ export default function BookingPage() {
     draft.items.length > 0 &&
     !!draft.deliveryDate &&
     !!preview?.isBusinessDay &&
+    !preview?.isBlocked &&
     !!preview?.fits &&
     !!draft.clientName.trim() &&
     !!draft.clientPhone.trim() &&
@@ -504,12 +505,16 @@ export default function BookingPage() {
               <>
                 {!preview.isBusinessDay && (
                   <p className="warning">
-                    Ese día no agendamos (domingo o festivo). Elige otra fecha.
+                    Ese día no agendamos (domingo, lunes o festivo). Elige otra fecha.
                   </p>
                 )}
 
+                {preview.isBusinessDay && preview.isBlocked && (
+                  <p className="warning">Ese día no está disponible. Elige otra fecha.</p>
+                )}
+
                 {/* No hay productos aún: mostramos desde qué hora entrega ese día. */}
-                {preview.isBusinessDay && draft.totalMinutes === 0 && (
+                {preview.isBusinessDay && !preview.isBlocked && draft.totalMinutes === 0 && (
                   <>
                     <p className="slot-label">Ese día entregamos</p>
                     <p className="slot-time">desde las {preview.deliveryTimeLabel}</p>
@@ -519,7 +524,7 @@ export default function BookingPage() {
                   </>
                 )}
 
-                {preview.isBusinessDay && draft.totalMinutes > 0 && preview.fits && (
+                {preview.isBusinessDay && !preview.isBlocked && draft.totalMinutes > 0 && preview.fits && (
                   <>
                     <p className="slot-label">Tu pedido estaría listo</p>
                     <p className="slot-time">a partir de las {preview.deliveryTimeLabel}</p>
@@ -530,7 +535,7 @@ export default function BookingPage() {
                   </>
                 )}
 
-                {preview.isBusinessDay && draft.totalMinutes > 0 && !preview.fits && (
+                {preview.isBusinessDay && !preview.isBlocked && draft.totalMinutes > 0 && !preview.fits && (
                   <p className="warning">
                     Ese día ya está lleno (entregamos hasta las {preview.closesAtLabel}). Elige otra
                     fecha.

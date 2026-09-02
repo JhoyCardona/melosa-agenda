@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { PrismaClient, Flavor, OrderStatus } from '@prisma/client';
 import { isBusinessDay } from '../utils/colombianHolidays';
 import { computePaymentDueDate, earliestPublicDeliveryDate } from '../utils/colombiaTime';
-import { reserveDeliverySlot, minutesToLabel, isNotEnoughRoomError } from '../services/availability';
+import { reserveDeliverySlot, minutesToLabel, isNotEnoughRoomError, isDateBlocked } from '../services/availability';
 import { rellenoSurcharge, computeRequiredPaymentPercent, isValidRelleno } from '../services/pricing';
 import { MAX_CLIENT_NAME_LENGTH, MAX_NOTES_LENGTH, MAX_ADDRESS_LENGTH } from '../services/limits';
 import cloudinary from '../config/cloudinary';
@@ -120,7 +120,11 @@ export async function createPublicOrder(req: Request, res: Response) {
   }
 
   if (!isBusinessDay(deliveryDate)) {
-    return res.status(400).json({ error: 'No se agenda ese día (domingo o festivo)' });
+    return res.status(400).json({ error: 'No se agenda ese día (domingo, lunes o festivo)' });
+  }
+
+  if (await isDateBlocked(deliveryDate)) {
+    return res.status(400).json({ error: 'Ese día no está disponible. Elige otra fecha.' });
   }
 
   // Accept any international number — clients on holiday book from foreign lines.

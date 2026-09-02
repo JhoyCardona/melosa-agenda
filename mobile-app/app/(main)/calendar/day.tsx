@@ -19,17 +19,20 @@ interface FlavorGroup {
   // 'VAINILLA' / 'CHOCOLATE' for catalog items; a free string for custom lines.
   flavor: string;
   quantity: number;
+  unpaidQuantity: number;
 }
 
 interface ShapeGroup {
   shape: string;
   quantity: number;
+  unpaidQuantity: number;
   flavors: FlavorGroup[];
 }
 
 interface SizeGroup {
   sizeLabel: string;
   quantity: number;
+  unpaidQuantity: number;
   shapes: ShapeGroup[];
 }
 
@@ -187,13 +190,19 @@ export default function DayDetailScreen() {
         ) : (
           summary.map((size) => (
             <View key={size.sizeLabel} style={styles.summaryCard}>
-              <Text style={styles.summarySize}>{size.sizeLabel} x{size.quantity}</Text>
+              <Text style={styles.summarySize}>
+                {size.sizeLabel} x{size.quantity}
+                {size.unpaidQuantity > 0 ? ` (${size.unpaidQuantity} sin pagar)` : ''}
+              </Text>
               {size.shapes.map((shape) => (
                 <Text key={shape.shape} style={styles.summaryShapeLine}>
                   {shape.shape} x{shape.quantity}
                   {'  '}
                   {shape.flavors
-                    .map((f) => `${flavorLabels[f.flavor] ?? f.flavor} x${f.quantity}`)
+                    .map((f) => {
+                      const label = `${flavorLabels[f.flavor] ?? f.flavor} x${f.quantity}`;
+                      return f.unpaidQuantity > 0 ? `${label} (${f.unpaidQuantity} sin pagar)` : label;
+                    })
                     .join('  ')}
                 </Text>
               ))}

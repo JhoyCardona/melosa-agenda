@@ -10,6 +10,11 @@ interface OrderSummary {
   status: string;
 }
 
+interface BlockedDay {
+  date: string; // YYYY-MM-DD
+  type: 'VACATION' | 'MANUAL_BLOCK';
+}
+
 const months = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
@@ -21,18 +26,25 @@ export default function CalendarScreen() {
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [orders, setOrders] = useState<OrderSummary[]>([]);
+  const [blockedByDay, setBlockedByDay] = useState<Record<number, BlockedDay['type']>>({});
   const [loading, setLoading] = useState(true);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await api.get('/orders', {
-        params: { month: currentMonth + 1, year: currentYear },
-      });
-      const pending = response.data.filter(
+      const [ordersRes, blockedRes] = await Promise.all([
+        api.get('/orders', { params: { month: currentMonth + 1, year: currentYear } }),
+        api.get<BlockedDay[]>('/blocked-days', { params: { month: currentMonth + 1, year: currentYear } }),
+      ]);
+      const pending = ordersRes.data.filter(
         (o: OrderSummary) => o.status !== 'CANCELLED' && o.status !== 'COMPLETED'
       );
       setOrders(pending);
+      const byDay: Record<number, BlockedDay['type']> = {};
+      blockedRes.data.forEach((b) => {
+        byDay[Number(b.date.slice(8, 10))] = b.type;
+      });
+      setBlockedByDay(byDay);
     } catch (error) {
       console.error('Error cargando pedidos:', error);
     } finally {
@@ -106,16 +118,22 @@ export default function CalendarScreen() {
         <View style={styles.grid}>
           {cells.map((day, index) => {
             const count = day ? ordersCountByDay[day] : undefined;
+            const blockedType = day ? blockedByDay[day] : undefined;
             return (
               <TouchableOpacity
                 key={index}
-                style={[styles.cell, count ? styles.cellWithOrders : null]}
+                style={[
+                  styles.cell,
+                  count ? styles.cellWithOrders : null,
+                  blockedType === 'VACATION' && styles.cellVacation,
+                  blockedType === 'MANUAL_BLOCK' && styles.cellManualBlock,
+                ]}
                 disabled={!day}
                 onPress={() => day && handleDayPress(day)}
               >
                 {day && (
                   <>
-                    <Text style={styles.cellDay}>{day}</Text>
+                    <Text style={[styles.cellDay, blockedType && styles.cellDayLight]}>{day}</Text>
                     {count ? <Text style={styles.cellCount}>{count}</Text> : null}
                   </>
                 )}
@@ -150,6 +168,9 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   cellWithOrders: { backgroundColor: '#F4DCD6', borderColor: '#C82333' },
+  cellVacation: { backgroundColor: '#2E7D32', borderColor: '#2E7D32' },
+  cellManualBlock: { backgroundColor: '#C82333', borderColor: '#C82333' },
   cellDay: { fontSize: 13, color: '#3E2723' },
+  cellDayLight: { color: '#fff', fontWeight: '700' },
   cellCount: { fontSize: 9, backgroundColor: '#C82333', color: '#fff', borderRadius: 6, paddingHorizontal: 4, marginTop: 2 },
 });

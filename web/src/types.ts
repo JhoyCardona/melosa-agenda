@@ -28,6 +28,7 @@ export interface ProductDesign {
 // Response of GET /public-orders/availability?date=&minutes=
 export interface DeliveryPreview {
   isBusinessDay: boolean;
+  isBlocked?: boolean;
   deliveryStartMinutes?: number;
   deliveryDurationMin?: number;
   deliveryEndMinutes?: number;

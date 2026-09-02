@@ -31,7 +31,7 @@ router.post('/upload-image', uploadLimiter, upload.single('image'), uploadPublic
 
 // Preview for the booking form: given the delivery date and how many minutes the
 // cart needs (sum of variant prepMinutes), returns the pickup time it would get
-// and whether it still fits before 7:00pm.
+// and whether it still fits before 8:30pm.
 router.get('/availability', async (req, res) => {
   const date = req.query.date as string;
   if (!date) {

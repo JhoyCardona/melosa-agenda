@@ -20,8 +20,8 @@ model Order {
   clientName             String
   clientPhone            String
   deliveryDate           DateTime    @db.Date
-  // Delivery is scheduled on a continuous per-day timeline, 2:00pm-7:00pm
-  // (minutes 0-300). deliveryStartMinutes = where this order starts,
+  // Delivery is scheduled on a continuous per-day timeline, 2:00pm-8:30pm
+  // (minutes 0-450). deliveryStartMinutes = where this order starts,
   // deliveryDurationMin = how long it occupies (sum of variant prepMinutes,
   // rounded up to 5). The customer-facing pickup time is start + duration.
   deliveryStartMinutes   Int
@@ -116,6 +116,21 @@ model DaySchedule {
   date          DateTime @unique @db.Date
   // Minutes from midnight; 840 = 2:00pm (opening).
   cursorMinutes Int      @default(840)
+}
+
+// A day Melosa manually closed from the app (vacation or one-off block). Only
+// stops the public web booking flow — manual order creation from the app is
+// unaffected, so she always retains override control.
+model BlockedDay {
+  id        String    @id @default(uuid())
+  date      DateTime  @unique @db.Date
+  type      BlockType
+  createdAt DateTime  @default(now())
+}
+
+enum BlockType {
+  VACATION
+  MANUAL_BLOCK
 }
 
 enum OrderStatus {

@@ -486,29 +486,39 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
   try {
     await markExpiredOrders();
 
-    // Only orders with a confirmed payment reach the bake summary — Melosa must
-    // never bake something that hasn't been paid. Unpaid orders still show in the
-    // per-order detail (with a "NO PAGÓ" badge), just not here.
+    // Every non-cancelled order counts, paid or not — Melosa wants to see the
+    // full baking load for any future day, not just what's already confirmed.
+    // Each group also carries unpaidQuantity so the app can flag what's still
+    // waiting on payment (full per-order detail still shows "NO PAGÓ" too).
     const orders = await prisma.order.findMany({
       where: {
         deliveryDate: new Date(`${date}T00:00:00.000Z`),
-        status: { in: [OrderStatus.DEPOSIT_PAID, OrderStatus.FULLY_PAID, OrderStatus.COMPLETED] },
+        status: { not: OrderStatus.CANCELLED },
       },
       include: { items: { include: { productDesign: true, variant: true } } },
     });
+
+    const PAID_STATUSES = new Set<OrderStatus>([OrderStatus.DEPOSIT_PAID, OrderStatus.FULLY_PAID, OrderStatus.COMPLETED]);
 
     // 3 levels: size (variant.label, e.g. "Torta 10 porciones") -> shape
     // (productDesign.shape, e.g. "Corazón") -> flavor (vainilla/chocolate).
     // This is the priority view: it tells Melosa exactly how many of each to
     // bake before she starts decorating pedido por pedido. Custom admin lines
     // (no catalog variant/design) fall back to their hand-typed values.
-    interface FlavorGroup { flavor: string; quantity: number }
-    interface ShapeGroup { shape: string; quantity: number; flavors: FlavorGroup[] }
-    interface SizeGroup { sizeLabel: string; sortKey: number; quantity: number; shapes: Map<string, ShapeGroup> }
+    interface FlavorGroup { flavor: string; quantity: number; unpaidQuantity: number }
+    interface ShapeGroup { shape: string; quantity: number; unpaidQuantity: number; flavors: FlavorGroup[] }
+    interface SizeGroup {
+      sizeLabel: string;
+      sortKey: number;
+      quantity: number;
+      unpaidQuantity: number;
+      shapes: Map<string, ShapeGroup>;
+    }
 
     const sizeGroups = new Map<string, SizeGroup>();
 
     for (const order of orders) {
+      const isUnpaid = !PAID_STATUSES.has(order.status);
       for (const item of order.items) {
         const sizeLabel = item.variant?.label ?? item.customSize ?? item.customName ?? 'Personalizado';
         const shape = item.shape ?? 'Sin forma definida';
@@ -516,23 +526,26 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
 
         let sizeGroup = sizeGroups.get(sizeLabel);
         if (!sizeGroup) {
-          sizeGroup = { sizeLabel, sortKey: item.pointsAtOrder, quantity: 0, shapes: new Map() };
+          sizeGroup = { sizeLabel, sortKey: item.pointsAtOrder, quantity: 0, unpaidQuantity: 0, shapes: new Map() };
           sizeGroups.set(sizeLabel, sizeGroup);
         }
         sizeGroup.quantity += 1;
+        if (isUnpaid) sizeGroup.unpaidQuantity += 1;
 
         let shapeGroup = sizeGroup.shapes.get(shape);
         if (!shapeGroup) {
-          shapeGroup = { shape, quantity: 0, flavors: [] };
+          shapeGroup = { shape, quantity: 0, unpaidQuantity: 0, flavors: [] };
           sizeGroup.shapes.set(shape, shapeGroup);
         }
         shapeGroup.quantity += 1;
+        if (isUnpaid) shapeGroup.unpaidQuantity += 1;
 
         const flavorGroup = shapeGroup.flavors.find((f) => f.flavor === flavor);
         if (flavorGroup) {
           flavorGroup.quantity += 1;
+          if (isUnpaid) flavorGroup.unpaidQuantity += 1;
         } else {
-          shapeGroup.flavors.push({ flavor, quantity: 1 });
+          shapeGroup.flavors.push({ flavor, quantity: 1, unpaidQuantity: isUnpaid ? 1 : 0 });
         }
       }
     }
@@ -542,6 +555,7 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
       .map((size) => ({
         sizeLabel: size.sizeLabel,
         quantity: size.quantity,
+        unpaidQuantity: size.unpaidQuantity,
         shapes: Array.from(size.shapes.values()).sort((a, b) => b.quantity - a.quantity),
       }));
 

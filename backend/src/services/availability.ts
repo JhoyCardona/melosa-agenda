@@ -5,10 +5,10 @@ import { isBusinessDay } from '../utils/colombianHolidays';
 
 const prisma = new PrismaClient();
 
-// Delivery window: 2:00pm-7:00pm, expressed as minutes from MIDNIGHT (so admin
+// Delivery window: 2:00pm-8:30pm, expressed as minutes from MIDNIGHT (so admin
 // orders can use any clock time without negative offsets).
 export const OPEN_MINUTE = 840; // 2:00 p.m.
-export const CLOSE_MINUTE = 1140; // 7:00 p.m.
+export const CLOSE_MINUTE = 1290; // 8:30 p.m.
 // Assigned pickup times are rounded up to the next multiple of this, so times
 // stay clean (2:20, 3:40 — never 3:17).
 export const ROUND_TO_MINUTES = 5;
@@ -35,9 +35,18 @@ function dayDateValue(dateStr: string): Date {
   return new Date(`${dateStr}T00:00:00.000Z`);
 }
 
+// Manual closures (vacations or one-off blocks) set from the app. Independent
+// from isBusinessDay: a blocked date is still a normal weekday, just closed by
+// Melosa's own choice, so callers can tell the two reasons apart.
+export async function isDateBlocked(dateStr: string): Promise<boolean> {
+  const blocked = await prisma.blockedDay.findUnique({ where: { date: dayDateValue(dateStr) } });
+  return !!blocked;
+}
+
 export interface DeliveryPreview {
   isBusinessDay: boolean;
-  // Present only when isBusinessDay is true:
+  isBlocked?: boolean;
+  // Present only when isBusinessDay is true and isBlocked is false:
   deliveryStartMinutes?: number;
   deliveryDurationMin?: number;
   deliveryEndMinutes?: number;
@@ -55,6 +64,7 @@ export async function getDeliveryPreview(
   durationMin: number
 ): Promise<DeliveryPreview> {
   if (!isBusinessDay(dateStr)) return { isBusinessDay: false };
+  if (await isDateBlocked(dateStr)) return { isBusinessDay: true, isBlocked: true };
 
   const day = await prisma.daySchedule.findUnique({ where: { date: dayDateValue(dateStr) } });
   const cursor = day?.cursorMinutes ?? OPEN_MINUTE;
@@ -65,6 +75,7 @@ export async function getDeliveryPreview(
 
   return {
     isBusinessDay: true,
+    isBlocked: false,
     deliveryStartMinutes: start,
     deliveryDurationMin: rounded,
     deliveryEndMinutes: end,

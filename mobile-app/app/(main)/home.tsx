@@ -15,6 +15,13 @@ export default function HomeScreen() {
 
       <TouchableOpacity
         style={styles.button}
+        onPress={() => router.push('/(main)/block-days')}
+      >
+        <Text style={styles.buttonText}>Bloquear días</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.button}
         onPress={() => router.push('/(main)/finished')}
       >
         <Text style={styles.buttonText}>Pedidos terminados</Text>
