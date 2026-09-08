@@ -162,6 +162,18 @@ html {
   font-weight: 600;
 }
 
+/* Inline "link" that is really a <button> (retry actions, etc.). */
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--color-primary);
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .btn {
   display: inline-block;
   padding: var(--space-3) var(--space-6);

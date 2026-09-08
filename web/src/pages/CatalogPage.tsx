@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import api from '../api';
+import { getWithRetry } from '../api';
 import type { ProductDesign } from '../types';
 import { useAdminAuth } from '../context/AdminAuth';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
@@ -34,9 +34,26 @@ export default function CatalogPage() {
   const [searchParams] = useSearchParams();
   const [designs, setDesigns] = useState<ProductDesign[]>([]);
   const [loading, setLoading] = useState(true);
+  const [slow, setSlow] = useState(false);
   const [error, setError] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [bucketId, setBucketId] = useState(DEFAULT_BUCKET);
+
+  const loadCatalog = useCallback(() => {
+    setLoading(true);
+    setSlow(false);
+    setError(false);
+    getWithRetry<ProductDesign[]>('/product-designs', { onSlow: () => setSlow(true) })
+      .then((data) => setDesigns(data))
+      .catch((err) => {
+        console.error('Error cargando catálogo:', err);
+        setError(true);
+      })
+      .finally(() => {
+        setLoading(false);
+        setSlow(false);
+      });
+  }, []);
 
   // Same catalog, two entry points. From "Ver minicakes" (no param) the price
   // tabs show and filter by the minicake price. From "Ver el catálogo de tortas"
@@ -53,15 +70,8 @@ export default function CatalogPage() {
       });
 
   useEffect(() => {
-    api
-      .get<ProductDesign[]>('/product-designs')
-      .then((res) => setDesigns(res.data))
-      .catch((err) => {
-        console.error('Error cargando catálogo:', err);
-        setError(true);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+    loadCatalog();
+  }, [loadCatalog]);
 
   return (
     <div className="catalog-page">
@@ -102,9 +112,20 @@ export default function CatalogPage() {
             </div>
           )}
 
-          {loading && <p className="muted">Cargando catálogo...</p>}
+          {loading && (
+            <p className="muted">
+              {slow
+                ? 'Estamos despertando el servidor, la primera carga del día puede tardar unos segundos...'
+                : 'Cargando catálogo...'}
+            </p>
+          )}
           {error && !loading && (
-            <p className="warning">No se pudo cargar el catálogo. Recarga la página en un momento.</p>
+            <p className="warning">
+              No se pudo cargar el catálogo.{' '}
+              <button type="button" className="link-button" onClick={loadCatalog}>
+                Reintentar
+              </button>
+            </p>
           )}
           {!loading && !error && designs.length === 0 && (
             <p className="muted">Pronto vamos a subir nuestros diseños acá.</p>

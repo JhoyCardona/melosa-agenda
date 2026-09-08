@@ -1,0 +1,36 @@
+name: Keep backend warm
+
+# Render's free tier spins the backend down after ~15 min idle; the next request
+# then cold-boots for 30-60s. This pings it every ~10 min so the first buyer of
+# the day hits a warm server. The web app also retries on its own (getWithRetry),
+# so a missed ping (GitHub cron is best-effort) isn't fatal.
+#
+# Cost: ~144 runs/day * ~15s ≈ 10 min/day of Actions time, well within the free
+# private-repo allowance. If it ever needs to be tighter, narrow the schedule to
+# business hours.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+# A slow run must never pile up onto the next tick.
+concurrency:
+  group: keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend until it answers 200
+        run: |
+          URL="https://melosa-agenda-backend.onrender.com/"
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 "$URL" || echo 000)
+            echo "attempt $i -> HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          echo "backend did not return 200 after 6 attempts"
+          exit 1

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import api from '../api';
+import api, { getWithRetry } from '../api';
 import type { DeliveryPreview, Flavor, ProductDesign } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
@@ -84,6 +84,7 @@ export default function BookingPage() {
 
   const [designs, setDesigns] = useState<ProductDesign[]>([]);
   const [designsLoaded, setDesignsLoaded] = useState(false);
+  const [catalogSlow, setCatalogSlow] = useState(false);
   // Set when the stored cart had lines that no longer match the live catalog
   // (design deleted, variant gone, or price changed) and we dropped them.
   const [cartWasStale, setCartWasStale] = useState(false);
@@ -112,14 +113,13 @@ export default function BookingPage() {
   const variant = design?.variants.find((v) => v.id === variantId);
 
   useEffect(() => {
-    api
-      .get<ProductDesign[]>('/product-designs')
-      .then((res) => {
-        setDesigns(res.data);
+    getWithRetry<ProductDesign[]>('/product-designs', { onSlow: () => setCatalogSlow(true) })
+      .then((data) => {
+        setDesigns(data);
         // Reconcile the stored cart against the fresh catalog, once. A line whose
         // design or variant is gone, or whose price changed, would otherwise
         // fail on submit with an unhelpful error — drop it and warn instead.
-        const byId = new Map(res.data.map((d) => [d.id, d]));
+        const byId = new Map(data.map((d) => [d.id, d]));
         const kept = draft.items.filter((i) => {
           const d = byId.get(i.designId);
           const v = d?.variants.find((x) => x.id === i.variantId);
@@ -133,7 +133,10 @@ export default function BookingPage() {
         }
       })
       .catch((err) => console.error('Error cargando catálogo:', err))
-      .finally(() => setDesignsLoaded(true));
+      .finally(() => {
+        setDesignsLoaded(true);
+        setCatalogSlow(false);
+      });
     // Runs once on mount; the cart snapshot it validates is the one loaded from
     // storage, which is exactly what we want to check.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -379,7 +382,11 @@ export default function BookingPage() {
         <AnnouncementBar />
         <SiteHeader />
         <main className="booking-main">
-          <p className="muted">Cargando...</p>
+          <p className="muted">
+            {catalogSlow
+              ? 'Estamos despertando el servidor, esto puede tardar unos segundos la primera vez...'
+              : 'Cargando...'}
+          </p>
         </main>
       </div>
     );
