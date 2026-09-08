@@ -68,6 +68,32 @@
   font-size: var(--text-sm);
 }
 
+/* When the real photo is in, it replaces the dashed placeholder box. */
+img.feature-photo {
+  width: 100%;
+  height: auto;
+  border: none;
+  object-fit: cover;
+}
+
+.feature-notes {
+  max-width: 520px;
+  margin-bottom: var(--space-8);
+}
+
+.feature-notes-title {
+  font-weight: 700;
+  margin: 0 0 var(--space-2);
+}
+
+.feature-notes ol {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-text);
+}
+
 .feature-body {
   margin-top: var(--space-3);
 }
