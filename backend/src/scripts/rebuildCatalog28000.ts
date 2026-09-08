@@ -41,10 +41,10 @@ const FOLDER_RULES: FolderRule[] = [
 // /admin/catalogo.
 const VARIANT_TEMPLATE = [
   { label: 'Minicake (2 porciones)', price: 28000, points: 4, prepMinutes: 20, portions: null, enPromocion: true },
-  { label: 'Torta 5 porciones', price: 60000, points: 6, prepMinutes: 20, portions: 5, enPromocion: false },
-  { label: 'Torta 10 porciones', price: 90000, points: 8, prepMinutes: 20, portions: 10, enPromocion: false },
-  { label: 'Torta 15 porciones', price: 120000, points: 10, prepMinutes: 20, portions: 15, enPromocion: false },
-  { label: 'Torta 20 porciones', price: 150000, points: 12, prepMinutes: 20, portions: 20, enPromocion: false },
+  { label: '5 porciones', price: 60000, points: 6, prepMinutes: 20, portions: 5, enPromocion: false },
+  { label: '10 porciones', price: 90000, points: 8, prepMinutes: 20, portions: 10, enPromocion: false },
+  { label: '15 porciones', price: 120000, points: 10, prepMinutes: 20, portions: 15, enPromocion: false },
+  { label: '20 porciones', price: 150000, points: 12, prepMinutes: 20, portions: 20, enPromocion: false },
 ];
 
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png']);

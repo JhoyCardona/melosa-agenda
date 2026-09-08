@@ -12,6 +12,7 @@ import heroVerdeMariposas from '../assets/hero/hero-5-verde-mariposas.jpeg';
 import heroNaranjaFlores from '../assets/hero/hero-6-naranja-flores.jpeg';
 import heroDegradadoAzul from '../assets/hero/hero-7-degradado-azul.jpeg';
 import promoMinicake from '../assets/promo/minicake-blanca-verde.jpeg';
+import localMelosa from '../assets/local-melosa.jpeg';
 
 const HERO_SLIDES: HeroSlide[] = [
   { src: heroCorazonAmarillo, alt: 'Torta corazón amarilla con crema batida y florecitas rosadas' },
@@ -32,7 +33,6 @@ const STEPS = [
 
 // The landing only teases one photo per section — the full range lives in the
 // catalog, so more images here would just be noise.
-const CAKE_FEATURE = { name: 'Torta de 5 porciones', price: 70000 };
 
 export default function Landing() {
   return (
@@ -131,16 +131,6 @@ export default function Landing() {
               mismo catálogo.
             </p>
 
-            <div className="feature">
-              <div className="feature-photo" aria-hidden="true">
-                Foto próximamente
-              </div>
-              <div className="feature-body">
-                <h3>{CAKE_FEATURE.name}</h3>
-                <p className="price">${CAKE_FEATURE.price.toLocaleString('es-CO')}</p>
-              </div>
-            </div>
-
             <Link to="/catalogo" className="btn btn-primary">
               Ver el catálogo de tortas
             </Link>
@@ -178,12 +168,12 @@ export default function Landing() {
                   Abrir en Google Maps
                 </a>
               </div>
-              {/* TODO: foto del local cuando el cliente la envíe. */}
-              <div className="location-photo-placeholder" aria-hidden="true">
-                Foto del local
-                <br />
-                (próximamente)
-              </div>
+              <img
+                className="location-photo"
+                src={localMelosa}
+                alt="Fachada de Melosa Bakery en el barrio Guayabal, Medellín"
+                loading="lazy"
+              />
             </div>
           </div>
         </section>

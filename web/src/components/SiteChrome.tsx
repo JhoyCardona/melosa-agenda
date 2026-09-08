@@ -1,40 +1,40 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BUSINESS, SOCIAL, waLink } from '../config';
 import { useAdminAuth } from '../context/AdminAuth';
 import './SiteChrome.css';
 
-// Announcement strip: shows one full message at a time and rotates through them
-// with a short fade. On a phone a scrolling marquee only ever shows a chopped
-// fragment, so we swap whole lines instead. The fade is dropped under
-// prefers-reduced-motion (handled in CSS); the rotation itself stays.
-// Keep each line short enough to fit on one line on a phone — see the
-// white-space:nowrap rule in SiteChrome.css. Rough limit: ~34 characters.
+// Announcement strip: a continuous right-to-left marquee (Levain style). The
+// message list is rendered twice back-to-back inside the track so the CSS
+// animation (translateX 0 -> -50%) loops seamlessly. Pauses on hover; falls
+// back to a static strip under prefers-reduced-motion (handled in CSS).
 const ANNOUNCEMENTS = [
   '🍰 Minicakes en promo desde $28.000',
   '📅 Agenda tu pedido en línea',
   '🛍️ Pedidos para recoger en el local',
 ];
 
-const ROTATE_MS = 4000;
+function AnnounceGroup() {
+  return (
+    <div className="announce-group">
+      {ANNOUNCEMENTS.map((msg, i) => (
+        <span key={i} className="announce-item">
+          {msg}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 export function AnnouncementBar() {
-  const [index, setIndex] = useState(0);
-
-  useEffect(() => {
-    if (ANNOUNCEMENTS.length <= 1) return;
-    const id = window.setInterval(() => {
-      setIndex((i) => (i + 1) % ANNOUNCEMENTS.length);
-    }, ROTATE_MS);
-    return () => window.clearInterval(id);
-  }, []);
-
   return (
     <div className="announce dot-edges" role="region" aria-label="Anuncios de Melosa">
-      {/* key forces a remount so the fade-in animation replays on every change. */}
-      <p key={index} className="announce-msg" aria-live="polite">
-        {ANNOUNCEMENTS[index]}
-      </p>
+      <div className="announce-track" aria-hidden="true">
+        <AnnounceGroup />
+        <AnnounceGroup />
+      </div>
+      {/* One clean copy for screen readers — the visual track is duplicated. */}
+      <p className="sr-only">{ANNOUNCEMENTS.join('. ')}</p>
     </div>
   );
 }

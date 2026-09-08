@@ -50,30 +50,18 @@
   }
 }
 
-/* ---------- Featured item (one photo per section) ---------- */
+/* ---------- Featured photo (the promo minicake) ---------- */
 .feature {
   max-width: 320px;
   margin-bottom: var(--space-8);
 }
 
 .feature-photo {
-  aspect-ratio: 3 / 4;
-  border: 2px dashed var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  display: grid;
-  place-items: center;
-  text-align: center;
-  color: var(--color-muted);
-  font-size: var(--text-sm);
-}
-
-/* When the real photo is in, it replaces the dashed placeholder box. */
-img.feature-photo {
+  display: block;
   width: 100%;
   height: auto;
-  border: none;
-  object-fit: cover;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
 }
 
 .feature-notes {
@@ -99,23 +87,6 @@ img.feature-photo {
 .feature-notes ol li::marker {
   color: var(--color-primary);
   font-weight: 700;
-}
-
-.feature-body {
-  margin-top: var(--space-3);
-}
-
-.feature-body h3 {
-  font-family: var(--font-body);
-  font-size: var(--text-base);
-  font-weight: 700;
-  margin: 0 0 var(--space-1);
-}
-
-.feature-body .price {
-  color: var(--color-primary);
-  font-weight: 700;
-  margin: 0;
 }
 
 /* ---------- Steps ---------- */
@@ -181,15 +152,12 @@ img.feature-photo {
   margin-top: var(--space-4);
 }
 
-.location-photo-placeholder {
-  aspect-ratio: 4 / 3;
-  border: 2px dashed var(--color-border);
+.location-photo {
+  display: block;
+  width: 100%;
+  height: auto;
   border-radius: var(--radius-md);
-  display: grid;
-  place-items: center;
-  text-align: center;
-  color: var(--color-muted);
-  font-size: var(--text-sm);
+  box-shadow: var(--shadow-sm);
 }
 
 @media (max-width: 720px) {

@@ -4,38 +4,53 @@
   background: var(--color-primary);
   color: var(--color-on-primary);
   overflow: hidden;
-  padding-block: 6px;
-  text-align: center;
+  padding-block: 8px;
 }
 
-.announce-msg {
-  margin: 0;
-  padding: var(--space-3) var(--space-4);
+/* Two identical groups sit side by side; the track is twice the content width,
+   so animating it to -50% scrolls exactly one group and loops seamlessly. */
+.announce-track {
+  display: flex;
+  width: max-content;
+  animation: announce-marquee 26s linear infinite;
+}
+
+.announce:hover .announce-track,
+.announce:focus-within .announce-track {
+  animation-play-state: paused;
+}
+
+.announce-group {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.announce-item {
   font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: 0.02em;
-  /* Always exactly one line. Rotating messages must never change the bar's
-     height — that vertical bounce makes the whole page hard to read. Keep the
-     ANNOUNCEMENTS texts short; anything too long just truncates. */
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  animation: announce-in 400ms ease-out;
+  padding-inline: var(--space-4);
 }
 
-@keyframes announce-in {
+/* Dot between messages, including across the seam back to the first group. */
+.announce-item::after {
+  content: '•';
+  margin-left: calc(var(--space-4) * 2);
+  opacity: 0.6;
+}
+
+@keyframes announce-marquee {
   from {
-    opacity: 0;
-    transform: translateY(4px);
+    transform: translateX(0);
   }
   to {
-    opacity: 1;
-    transform: translateY(0);
+    transform: translateX(-50%);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .announce-msg {
+  .announce-track {
     animation: none;
   }
 }
