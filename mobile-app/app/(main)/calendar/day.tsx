@@ -1,10 +1,11 @@
 import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, TouchableOpacity, Image, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, TouchableOpacity, Image, Linking, RefreshControl } from 'react-native';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import api from '../../../src/config/api';
 import OrderCard from '../../../src/components/OrderCard';
 import ImageViewerModal from '../../../src/components/ImageViewerModal';
+import ErrorRetry from '../../../src/components/ErrorRetry';
 
 const API_URL = 'https://melosa-agenda-backend.onrender.com/api';
 
@@ -59,32 +60,47 @@ export default function DayDetailScreen() {
   const [summary, setSummary] = useState<SizeGroup[]>([]);
   const [gallery, setGallery] = useState<GalleryImage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(false);
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [viewerImageUrl, setViewerImageUrl] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
+  // allSettled, not all: a failing gallery call must not also blank out the bake
+  // summary and the per-order detail. Only flag a hard error when the two that
+  // matter (summary + order list) both fail.
+  const loadData = useCallback(
+    async (mode: 'initial' | 'refresh' = 'initial') => {
+      if (mode === 'refresh') setRefreshing(true);
+      else setLoading(true);
+      setError(false);
       const [year, month] = date.split('-').map(Number);
-      const [summaryRes, listRes, galleryRes] = await Promise.all([
+      const [summaryRes, listRes, galleryRes] = await Promise.allSettled([
         api.get('/orders/day-summary', { params: { date } }),
         api.get('/orders', { params: { month, year } }),
         api.get('/orders/day-gallery', { params: { date } }),
       ]);
-      setSummary(summaryRes.data.sizes);
-      const filtered = listRes.data
-        .filter((o: Order) => o.deliveryDate.slice(0, 10) === date && o.status !== 'CANCELLED')
-        .sort(
-          (a: Order, b: Order) => (a.deliveryStartMinutes ?? 0) - (b.deliveryStartMinutes ?? 0)
-        );
-      setOrders(filtered);
-      setGallery(galleryRes.data);
-    } catch (error) {
-      console.error('Error cargando datos del día:', error);
-    } finally {
+
+      if (summaryRes.status === 'fulfilled') setSummary(summaryRes.value.data.sizes);
+      if (listRes.status === 'fulfilled') {
+        const filtered = listRes.value.data
+          .filter((o: Order) => o.deliveryDate.slice(0, 10) === date && o.status !== 'CANCELLED')
+          .sort(
+            (a: Order, b: Order) => (a.deliveryStartMinutes ?? 0) - (b.deliveryStartMinutes ?? 0)
+          );
+        setOrders(filtered);
+      }
+      if (galleryRes.status === 'fulfilled') setGallery(galleryRes.value.data);
+
+      if (summaryRes.status === 'rejected' && listRes.status === 'rejected') {
+        console.error('Error cargando datos del día:', summaryRes.reason);
+        setError(true);
+      }
+
       setLoading(false);
-    }
-  }, [date]);
+      setRefreshing(false);
+    },
+    [date]
+  );
 
   // Opens the ZIP in the system browser/downloader instead of fetching it in-app —
   // simplest way to hand Melosa a real file in her phone's Downloads (or, once she
@@ -114,7 +130,7 @@ export default function DayDetailScreen() {
   async function handleMarkCompleted(orderId: string) {
     try {
       await api.patch(`/orders/${orderId}`, { status: 'COMPLETED' });
-      loadData();
+      await loadData('refresh');
     } catch (error: any) {
       const message = error?.response?.data?.error ?? 'No se pudo actualizar el pedido';
       Alert.alert('No se pudo completar', message);
@@ -124,7 +140,7 @@ export default function DayDetailScreen() {
   async function handlePaymentUpdate(orderId: string, status: 'DEPOSIT_PAID' | 'FULLY_PAID', depositAmount?: number) {
     try {
       await api.patch(`/orders/${orderId}`, { status, ...(depositAmount !== undefined && { depositPaid: depositAmount }) });
-      loadData();
+      await loadData('refresh');
     } catch (error) {
       Alert.alert('Error', 'No se pudo actualizar el pago');
     }
@@ -133,7 +149,7 @@ export default function DayDetailScreen() {
   async function handleCancel(orderId: string) {
     try {
       await api.patch(`/orders/${orderId}`, { status: 'CANCELLED' });
-      loadData();
+      await loadData('refresh');
     } catch (error) {
       Alert.alert('Error', 'No se pudo cancelar el pedido');
     }
@@ -148,7 +164,7 @@ export default function DayDetailScreen() {
         onPress: async () => {
           try {
             await api.delete(`/orders/${orderId}`);
-            loadData();
+            await loadData('refresh');
           } catch (error) {
             Alert.alert('Error', 'No se pudo eliminar el pedido');
           }
@@ -163,7 +179,13 @@ export default function DayDetailScreen() {
   const completedOrders = orders.filter((o) => o.status === 'COMPLETED');
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={() => loadData('refresh')} tintColor="#C82333" />
+      }
+    >
       <Text style={styles.title}>{formatDisplayDate()} · {orders.length} pedido{orders.length !== 1 ? 's' : ''}</Text>
 
       <View style={styles.tabs}>
@@ -189,6 +211,8 @@ export default function DayDetailScreen() {
 
       {loading ? (
         <ActivityIndicator color="#C82333" style={{ marginTop: 30 }} />
+      ) : error ? (
+        <ErrorRetry onRetry={() => loadData()} message="No se pudo cargar la información de este día." />
       ) : tab === 'resumen' ? (
         summary.length === 0 ? (
           <Text style={styles.emptyText}>No hay productos agendados este día</Text>

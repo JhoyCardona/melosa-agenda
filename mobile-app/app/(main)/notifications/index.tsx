@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import api from '../../../src/config/api';
 import OrderCard from '../../../src/components/OrderCard';
+import ErrorRetry from '../../../src/components/ErrorRetry';
 
 interface Order {
   id: string;
@@ -25,17 +26,23 @@ export default function NotificationsScreen() {
   const [porVencer, setPorVencer] = useState<Order[]>([]);
   const [vencidos, setVencidos] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
+    if (mode === 'refresh') setRefreshing(true);
+    else setLoading(true);
+    setError(false);
     try {
       const response = await api.get('/orders/notifications');
       setPorVencer(response.data.porVencer);
       setVencidos(response.data.vencidos);
-    } catch (error) {
-      console.error('Error cargando notificaciones:', error);
+    } catch (err) {
+      console.error('Error cargando notificaciones:', err);
+      setError(true);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -44,7 +51,7 @@ export default function NotificationsScreen() {
   async function handlePaymentUpdate(orderId: string, status: 'DEPOSIT_PAID' | 'FULLY_PAID', depositAmount?: number) {
     try {
       await api.patch(`/orders/${orderId}`, { status, ...(depositAmount !== undefined && { depositPaid: depositAmount }) });
-      load();
+      await load('refresh');
     } catch (error) {
       Alert.alert('Error', 'No se pudo actualizar el pago');
     }
@@ -53,7 +60,7 @@ export default function NotificationsScreen() {
   async function handleCancelWithAmount(orderId: string, depositAmount: number) {
     try {
       await api.patch(`/orders/${orderId}`, { status: 'CANCELLED', depositPaid: depositAmount });
-      load();
+      await load('refresh');
     } catch (error) {
       Alert.alert('Error', 'No se pudo cancelar el pedido');
     }
@@ -62,7 +69,13 @@ export default function NotificationsScreen() {
   const activeOrders = tab === 'porVencer' ? porVencer : vencidos;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={() => load('refresh')} tintColor="#C82333" />
+      }
+    >
       <Text style={styles.title}>Notificaciones</Text>
 
       <View style={styles.tabs}>
@@ -86,6 +99,8 @@ export default function NotificationsScreen() {
 
       {loading ? (
         <ActivityIndicator color="#C82333" style={{ marginTop: 30 }} />
+      ) : error ? (
+        <ErrorRetry onRetry={() => load()} message="No se pudieron cargar las notificaciones." />
       ) : activeOrders.length === 0 ? (
         <Text style={styles.emptyText}>
           {tab === 'porVencer' ? 'No hay pedidos por revisar o con pago próximo a vencer' : 'No hay pedidos vencidos sin pago'}

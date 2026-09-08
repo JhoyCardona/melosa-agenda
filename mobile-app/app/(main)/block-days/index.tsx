@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import api from '../../../src/config/api';
+import ErrorRetry from '../../../src/components/ErrorRetry';
 
 interface BlockedDay {
   date: string; // YYYY-MM-DD
@@ -22,9 +23,11 @@ export default function BlockDaysScreen() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(false);
 
   const loadBlockedDays = useCallback(async () => {
     setLoading(true);
+    setError(false);
     try {
       const response = await api.get<BlockedDay[]>('/blocked-days', {
         params: { month: currentMonth + 1, year: currentYear },
@@ -35,8 +38,9 @@ export default function BlockDaysScreen() {
         byDay[day] = b.type;
       });
       setBlockedByDay(byDay);
-    } catch (error) {
-      console.error('Error cargando días bloqueados:', error);
+    } catch (err) {
+      console.error('Error cargando días bloqueados:', err);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -153,6 +157,8 @@ export default function BlockDaysScreen() {
 
       {loading ? (
         <ActivityIndicator color="#C82333" style={{ marginTop: 40 }} />
+      ) : error ? (
+        <ErrorRetry onRetry={loadBlockedDays} message="No se pudieron cargar los días bloqueados." />
       ) : (
         <View style={styles.grid}>
           {cells.map((day, index) => {

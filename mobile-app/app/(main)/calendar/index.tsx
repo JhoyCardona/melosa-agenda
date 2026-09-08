@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import api from '../../../src/config/api';
+import ErrorRetry from '../../../src/components/ErrorRetry';
 
 interface OrderSummary {
   id: string;
@@ -28,9 +29,11 @@ export default function CalendarScreen() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [blockedByDay, setBlockedByDay] = useState<Record<number, BlockedDay['type']>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
+    setError(false);
     try {
       const [ordersRes, blockedRes] = await Promise.all([
         api.get('/orders', { params: { month: currentMonth + 1, year: currentYear } }),
@@ -45,8 +48,9 @@ export default function CalendarScreen() {
         byDay[Number(b.date.slice(8, 10))] = b.type;
       });
       setBlockedByDay(byDay);
-    } catch (error) {
-      console.error('Error cargando pedidos:', error);
+    } catch (err) {
+      console.error('Error cargando pedidos:', err);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -114,6 +118,8 @@ export default function CalendarScreen() {
 
       {loading ? (
         <ActivityIndicator color="#C82333" style={{ marginTop: 40 }} />
+      ) : error ? (
+        <ErrorRetry onRetry={loadOrders} message="No se pudieron cargar los pedidos del mes." />
       ) : (
         <View style={styles.grid}>
           {cells.map((day, index) => {

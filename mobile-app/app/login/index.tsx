@@ -24,8 +24,15 @@ export default function LoginScreen() {
       await SecureStore.setItemAsync('authToken', token);
 
       router.replace('/(main)/home');
-    } catch (error) {
-      Alert.alert('Error', 'Contraseña incorrecta');
+    } catch (error: any) {
+      if (error?.response?.status === 401) {
+        Alert.alert('Contraseña incorrecta', 'Revisá la contraseña e intentá de nuevo.');
+      } else {
+        Alert.alert(
+          'No se pudo conectar',
+          'Revisá tu internet e intentá de nuevo. Si acabás de abrir la app, puede tardar unos segundos.'
+        );
+      }
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,14 @@
-import { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, TextInput } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Image, TextInput, Alert, ActivityIndicator } from 'react-native';
 import ImageViewerModal from './ImageViewerModal';
+
+// Colombians type amounts as "20.000" or "20,000" for twenty thousand. Plain
+// Number() turns "20.000" into 20 and "20,000" into NaN, so a $20.000 deposit
+// gets recorded as $20 (or silently not at all). Strip everything but digits.
+function parseAmount(raw: string): number {
+  const digits = raw.replace(/\D/g, '');
+  return digits ? Number(digits) : 0;
+}
 
 interface OrderItem {
   id: string;
@@ -67,12 +75,12 @@ function paymentDotColor(status: string): string {
 
 interface OrderCardProps {
   order: Order;
-  actions?: { label: string; onPress: () => void; destructive?: boolean }[];
-  onPaymentUpdate?: (status: 'DEPOSIT_PAID' | 'FULLY_PAID', depositAmount?: number) => void;
+  actions?: { label: string; onPress: () => void | Promise<void>; destructive?: boolean }[];
+  onPaymentUpdate?: (status: 'DEPOSIT_PAID' | 'FULLY_PAID', depositAmount?: number) => void | Promise<void>;
   // For orders past their payment deadline (vencidos): cancels the order but keeps
   // whatever amount the client actually transferred, since Melosa doesn't refund
   // partial payments (e.g. a minicake needs 100% but she got 20%, keeps it anyway).
-  onCancelWithAmount?: (depositAmount: number) => void;
+  onCancelWithAmount?: (depositAmount: number) => void | Promise<void>;
 }
 
 function formatDeliveryDateTime(isoString: string): string {
@@ -112,20 +120,43 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
   const [expanded, setExpanded] = useState(false);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [depositInput, setDepositInput] = useState('');
+  const [busy, setBusy] = useState(false);
   const firstItem = order.items[0];
 
+  // A payment/cancel/delete round-trips to the API and then the parent reloads
+  // (often unmounting this card). Block re-taps while it's in flight and don't
+  // touch state after unmount.
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
+  async function runAction(fn: () => void | Promise<void>) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      if (mountedRef.current) setBusy(false);
+    }
+  }
+
   function handleConfirmDeposit() {
-    const amount = Number(depositInput);
-    if (!depositInput || Number.isNaN(amount) || amount <= 0) return;
-    onPaymentUpdate!('DEPOSIT_PAID', amount);
-    setDepositInput('');
+    const amount = parseAmount(depositInput);
+    if (amount <= 0) {
+      Alert.alert('Monto inválido', 'Escribí cuánto abonó en números. Ej: 20000');
+      return;
+    }
+    runAction(async () => {
+      await onPaymentUpdate!('DEPOSIT_PAID', amount);
+      if (mountedRef.current) setDepositInput('');
+    });
   }
 
   function handleCancelWithAmount() {
-    const amount = depositInput ? Number(depositInput) : 0;
-    if (Number.isNaN(amount) || amount < 0) return;
-    onCancelWithAmount!(amount);
-    setDepositInput('');
+    const amount = parseAmount(depositInput);
+    runAction(async () => {
+      await onCancelWithAmount!(amount);
+      if (mountedRef.current) setDepositInput('');
+    });
   }
 
   const showMarkDeposit = onPaymentUpdate && order.status !== 'DEPOSIT_PAID' && order.status !== 'FULLY_PAID' && order.status !== 'COMPLETED' && order.status !== 'CANCELLED';
@@ -233,28 +264,39 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
                     keyboardType="numeric"
                     value={depositInput}
                     onChangeText={setDepositInput}
+                    editable={!busy}
                   />
                 )}
                 <View style={styles.actionsRow}>
                   {showMarkDeposit && (
                     <TouchableOpacity
-                      style={[styles.depositButton, !depositInput && styles.buttonDisabled]}
+                      style={[styles.depositButton, (!depositInput || busy) && styles.buttonDisabled]}
                       onPress={handleConfirmDeposit}
-                      disabled={!depositInput}
+                      disabled={!depositInput || busy}
                     >
                       <Text style={styles.fullPaidText}>Marcar abono pagado</Text>
                     </TouchableOpacity>
                   )}
                   {showMarkFull && (
-                    <TouchableOpacity style={styles.fullPaidButton} onPress={() => onPaymentUpdate!('FULLY_PAID')}>
+                    <TouchableOpacity
+                      style={[styles.fullPaidButton, busy && styles.buttonDisabled]}
+                      onPress={() => runAction(() => onPaymentUpdate!('FULLY_PAID'))}
+                      disabled={busy}
+                    >
                       <Text style={styles.fullPaidText}>Marcar pago completo</Text>
                     </TouchableOpacity>
                   )}
                 </View>
                 {showCancelWithAmount && (
-                  <TouchableOpacity style={styles.deleteButton} onPress={handleCancelWithAmount}>
+                  <TouchableOpacity
+                    style={[styles.deleteButton, busy && styles.buttonDisabled]}
+                    onPress={handleCancelWithAmount}
+                    disabled={busy}
+                  >
                     <Text style={styles.deleteText}>
-                      {depositInput ? `Cancelar (se queda con $${Number(depositInput).toLocaleString()})` : 'Cancelar (no pagó nada)'}
+                      {depositInput
+                        ? `Cancelar (se queda con $${parseAmount(depositInput).toLocaleString('es-CO')})`
+                        : 'Cancelar (no pagó nada)'}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -266,8 +308,12 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
                 {actions.map((action, index) => (
                   <TouchableOpacity
                     key={index}
-                    style={action.destructive ? styles.deleteButton : styles.actionButton}
-                    onPress={action.onPress}
+                    style={[
+                      action.destructive ? styles.deleteButton : styles.actionButton,
+                      busy && styles.buttonDisabled,
+                    ]}
+                    onPress={() => runAction(action.onPress)}
+                    disabled={busy}
                   >
                     <Text style={action.destructive ? styles.deleteText : styles.actionText}>
                       {action.label}
@@ -276,6 +322,8 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
                 ))}
               </View>
             )}
+
+            {busy && <ActivityIndicator color="#C82333" style={{ marginTop: 10 }} />}
           </View>
         )}
       </TouchableOpacity>

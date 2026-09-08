@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import api from '../../../src/config/api';
 import OrderCard from '../../../src/components/OrderCard';
+import ErrorRetry from '../../../src/components/ErrorRetry';
 
 // EXPIRED orders live only in Notificaciones → "Vencidos" (that's where the
 // "cancel keeping the partial deposit" action is). This screen is just the
@@ -18,16 +19,22 @@ export default function FinishedScreen() {
   const [activeTab, setActiveTab] = useState<TabStatus>('COMPLETED');
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(false);
 
-  const loadOrders = useCallback(async () => {
-    setLoading(true);
+  const loadOrders = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
+    if (mode === 'refresh') setRefreshing(true);
+    else setLoading(true);
+    setError(false);
     try {
       const response = await api.get('/orders', { params: { status: activeTab } });
       setOrders(response.data);
-    } catch (error) {
-      console.error('Error cargando pedidos:', error);
+    } catch (err) {
+      console.error('Error cargando pedidos:', err);
+      setError(true);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [activeTab]);
 
@@ -42,7 +49,7 @@ export default function FinishedScreen() {
         onPress: async () => {
           try {
             await api.delete(`/orders/${orderId}`);
-            loadOrders();
+            await loadOrders('refresh');
           } catch (error) {
             Alert.alert('Error', 'No se pudo eliminar el pedido');
           }
@@ -74,9 +81,16 @@ export default function FinishedScreen() {
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => loadOrders('refresh')} tintColor="#C82333" />
+        }
+      >
         {loading ? (
           <ActivityIndicator color="#C82333" style={{ marginTop: 30 }} />
+        ) : error ? (
+          <ErrorRetry onRetry={() => loadOrders()} message="No se pudieron cargar los pedidos." />
         ) : orders.length === 0 ? (
           <Text style={styles.emptyText}>No hay pedidos en esta categoría</Text>
         ) : (

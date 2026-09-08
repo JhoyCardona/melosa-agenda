@@ -8,17 +8,24 @@ export default function SearchByTicketScreen() {
   const [order, setOrder] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   async function handleSearch() {
     if (!ticketInput.trim()) return;
     setLoading(true);
     setNotFound(false);
+    setLoadError(false);
     setOrder(null);
     try {
       const response = await api.get(`/orders/ticket/${ticketInput.trim()}`);
       setOrder(response.data);
-    } catch (error) {
-      setNotFound(true);
+    } catch (error: any) {
+      // 400/404 = ese ticket no existe; cualquier otra cosa = fallo de conexión.
+      if (error?.response?.status === 404 || error?.response?.status === 400) {
+        setNotFound(true);
+      } else {
+        setLoadError(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -28,7 +35,7 @@ export default function SearchByTicketScreen() {
     if (!order) return;
     try {
       await api.patch(`/orders/${order.id}`, { status, ...(depositAmount !== undefined && { depositPaid: depositAmount }) });
-      handleSearch();
+      await handleSearch();
     } catch (error) {
       Alert.alert('Error', 'No se pudo actualizar el pago');
     }
@@ -57,6 +64,18 @@ export default function SearchByTicketScreen() {
 
       {notFound && !loading && (
         <Text style={styles.emptyText}>No existe un pedido con el ticket #{ticketInput}</Text>
+      )}
+
+      {loadError && !loading && (
+        <View style={{ alignItems: 'center', marginTop: 30 }}>
+          <Text style={styles.emptyText}>No se pudo conectar. Revisá tu internet.</Text>
+          <TouchableOpacity
+            style={[styles.searchButton, { paddingVertical: 10, marginTop: 12 }]}
+            onPress={handleSearch}
+          >
+            <Text style={styles.searchButtonText}>Reintentar</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       {order && !loading && (
