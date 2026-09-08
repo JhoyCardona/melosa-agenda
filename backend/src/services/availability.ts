@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
 // Delivery window: 2:00pm-8:30pm, expressed as minutes from MIDNIGHT (so admin
 // orders can use any clock time without negative offsets).
 export const OPEN_MINUTE = 840; // 2:00 p.m.
-export const CLOSE_MINUTE = 1290; // 8:30 p.m.
+export const CLOSE_MINUTE = 1230; // 8:30 p.m.
 // Assigned pickup times are rounded up to the next multiple of this, so times
 // stay clean (2:20, 3:40 — never 3:17).
 export const ROUND_TO_MINUTES = 5;

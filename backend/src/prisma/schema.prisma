@@ -21,7 +21,7 @@ model Order {
   clientPhone            String
   deliveryDate           DateTime    @db.Date
   // Delivery is scheduled on a continuous per-day timeline, 2:00pm-8:30pm
-  // (minutes 0-450). deliveryStartMinutes = where this order starts,
+  // (minutes-from-midnight 840-1230). deliveryStartMinutes = where this order starts,
   // deliveryDurationMin = how long it occupies (sum of variant prepMinutes,
   // rounded up to 5). The customer-facing pickup time is start + duration.
   deliveryStartMinutes   Int
@@ -113,7 +113,7 @@ model ProductVariant {
 }
 
 // One row per delivery day. cursorMinutes is the end of that day's booking
-// queue (0 = 2:00pm). It only ever moves forward: a cancelled order leaves its
+// queue (minutes from midnight; 840 = 2:00pm). It only ever moves forward: a cancelled order leaves its
 // slot as a gap (rest time) and never pulls the cursor back. This row is also
 // the lock point that serialises concurrent slot reservations for the same day.
 model DaySchedule {
