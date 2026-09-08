@@ -125,16 +125,20 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
 
   // A payment/cancel/delete round-trips to the API and then the parent reloads
   // (often unmounting this card). Block re-taps while it's in flight and don't
-  // touch state after unmount.
+  // touch state after unmount. busyRef is the synchronous guard (state lags a
+  // render, so two taps in the same frame would both pass a `busy` check).
   const mountedRef = useRef(true);
+  const busyRef = useRef(false);
   useEffect(() => () => { mountedRef.current = false; }, []);
 
   async function runAction(fn: () => void | Promise<void>) {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
       await fn();
     } finally {
+      busyRef.current = false;
       if (mountedRef.current) setBusy(false);
     }
   }
@@ -295,7 +299,7 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
                   >
                     <Text style={styles.deleteText}>
                       {depositInput
-                        ? `Cancelar (se queda con $${parseAmount(depositInput).toLocaleString('es-CO')})`
+                        ? `Cancelar (se queda con $${parseAmount(depositInput).toLocaleString()})`
                         : 'Cancelar (no pagó nada)'}
                     </Text>
                   </TouchableOpacity>
