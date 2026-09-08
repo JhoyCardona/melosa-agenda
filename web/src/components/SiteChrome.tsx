@@ -5,9 +5,12 @@ import { useAdminAuth } from '../context/AdminAuth';
 import './SiteChrome.css';
 
 // Announcement strip: a continuous right-to-left marquee (Levain style). The
-// message list is rendered twice back-to-back inside the track so the CSS
-// animation (translateX 0 -> -50%) loops seamlessly. Pauses on hover; falls
-// back to a static strip under prefers-reduced-motion (handled in CSS).
+// message list is repeated MARQUEE_COPIES times back-to-back inside the track;
+// the CSS animation slides it by exactly one copy (translateX 0 -> -1/COPIES),
+// so it loops seamlessly. 4 copies keep the strip full even on wide desktops
+// (2 copies leave a visible gap when one copy is narrower than the viewport).
+// Pauses on hover; static under prefers-reduced-motion (handled in CSS).
+const MARQUEE_COPIES = 4;
 const ANNOUNCEMENTS = [
   '🍰 Minicakes en promo desde $28.000',
   '📅 Agenda tu pedido en línea',
@@ -30,10 +33,11 @@ export function AnnouncementBar() {
   return (
     <div className="announce dot-edges" role="region" aria-label="Anuncios de Melosa">
       <div className="announce-track" aria-hidden="true">
-        <AnnounceGroup />
-        <AnnounceGroup />
+        {Array.from({ length: MARQUEE_COPIES }, (_, i) => (
+          <AnnounceGroup key={i} />
+        ))}
       </div>
-      {/* One clean copy for screen readers — the visual track is duplicated. */}
+      {/* One clean copy for screen readers — the visual track is repeated. */}
       <p className="sr-only">{ANNOUNCEMENTS.join('. ')}</p>
     </div>
   );

@@ -1,6 +1,19 @@
 // Colombia is UTC-5 year-round (no daylight saving), so the offset is a constant.
 const COLOMBIA_UTC_OFFSET_HOURS = 5;
 
+// True only for a real 'YYYY-MM-DD' calendar date. Catches both the wrong shape
+// ('foo', '2026-9-1') and impossible dates ('2026-13-40', '2026-02-30') — the
+// latter matter because `new Date('2026-13-40T00:00:00Z')` is an Invalid Date
+// that makes Prisma throw and leak its raw error to the client.
+export function isValidIsoDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return (
+    d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day
+  );
+}
+
 // dateStr must be 'YYYY-MM-DD'. Subtracts `days` calendar days (no timezone math needed
 // since we only shift the date part, before reinterpreting it in Colombia time).
 export function subtractDays(dateStr: string, days: number): string {

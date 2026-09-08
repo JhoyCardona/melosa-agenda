@@ -7,8 +7,9 @@
   padding-block: 8px;
 }
 
-/* Two identical groups sit side by side; the track is twice the content width,
-   so animating it to -50% scrolls exactly one group and loops seamlessly. */
+/* MARQUEE_COPIES identical groups sit side by side (see SiteChrome.tsx); the
+   track is that many times the content width, so sliding it by one group
+   (-25% for 4 copies) scrolls exactly one group and loops seamlessly. */
 .announce-track {
   display: flex;
   width: max-content;
@@ -45,7 +46,8 @@
     transform: translateX(0);
   }
   to {
-    transform: translateX(-50%);
+    /* one group out of MARQUEE_COPIES (4) */
+    transform: translateX(-25%);
   }
 }
 

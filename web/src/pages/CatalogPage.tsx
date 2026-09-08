@@ -148,7 +148,10 @@ export default function CatalogPage() {
                       {design.name && <h3>{design.name}</h3>}
 
                       {isSelected && (
-                        <Link to={`/agendar/${design.id}`} className="btn btn-primary catalog-card-cta">
+                        <Link
+                          to={`/agendar/${design.id}${grandes ? '?ver=tortas' : ''}`}
+                          className="btn btn-primary catalog-card-cta"
+                        >
                           Quiero esta
                         </Link>
                       )}

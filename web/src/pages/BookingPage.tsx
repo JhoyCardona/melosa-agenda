@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import type { DeliveryPreview, Flavor, ProductDesign } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
@@ -73,10 +73,20 @@ interface OrderResult {
 export default function BookingPage() {
   const { designId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const draft = useOrderDraft();
+
+  // Entered from "Ver el catálogo de tortas" → default the size to a real torta,
+  // not the promo minicake, and keep "volver al catálogo" pointing at that view.
+  const grandes = searchParams.get('ver') === 'tortas';
+  const catalogHref = grandes ? '/catalogo?ver=tortas' : '/catalogo';
+  const earliestDate = earliestDeliveryDateString();
 
   const [designs, setDesigns] = useState<ProductDesign[]>([]);
   const [designsLoaded, setDesignsLoaded] = useState(false);
+  // Set when the stored cart had lines that no longer match the live catalog
+  // (design deleted, variant gone, or price changed) and we dropped them.
+  const [cartWasStale, setCartWasStale] = useState(false);
 
   // Per-item configurator (the product currently being built, not yet added).
   const [variantId, setVariantId] = useState('');
@@ -104,15 +114,35 @@ export default function BookingPage() {
   useEffect(() => {
     api
       .get<ProductDesign[]>('/product-designs')
-      .then((res) => setDesigns(res.data))
+      .then((res) => {
+        setDesigns(res.data);
+        // Reconcile the stored cart against the fresh catalog, once. A line whose
+        // design or variant is gone, or whose price changed, would otherwise
+        // fail on submit with an unhelpful error — drop it and warn instead.
+        const byId = new Map(res.data.map((d) => [d.id, d]));
+        const kept = draft.items.filter((i) => {
+          const d = byId.get(i.designId);
+          const v = d?.variants.find((x) => x.id === i.variantId);
+          if (!d || !v) return false;
+          const expected = Number(v.price) + rellenoSurcharge(i.relleno, v.portions, v.enPromocion);
+          return Math.round(expected) === Math.round(i.price);
+        });
+        if (kept.length !== draft.items.length) {
+          draft.patch({ items: kept });
+          setCartWasStale(true);
+        }
+      })
       .catch((err) => console.error('Error cargando catálogo:', err))
       .finally(() => setDesignsLoaded(true));
+    // Runs once on mount; the cart snapshot it validates is the one loaded from
+    // storage, which is exactly what we want to check.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Bad or missing design id → back to the catalog to pick one.
   useEffect(() => {
-    if (designsLoaded && !design) navigate('/catalogo', { replace: true });
-  }, [designsLoaded, design, navigate]);
+    if (designsLoaded && !design) navigate(catalogHref, { replace: true });
+  }, [designsLoaded, design, navigate, catalogHref]);
 
   // On mount: always consume any stored confirmation, but only re-show it when
   // this was an actual page reload — so an accidental F5 on "¡Pedido recibido!"
@@ -136,14 +166,18 @@ export default function BookingPage() {
     }
   }, []);
 
-  // Reset the configurator whenever the design changes.
+  // Reset the configurator whenever the design changes. From the "tortas" view we
+  // preselect the first non-promo size so a buyer who came for a 10-porciones
+  // cake doesn't silently end up ordering a minicake.
   useEffect(() => {
-    setVariantId(design && design.variants.length > 0 ? design.variants[0].id : '');
+    const variants = design?.variants ?? [];
+    const preferred = grandes ? variants.find((v) => !v.enPromocion) ?? variants[0] : variants[0];
+    setVariantId(preferred ? preferred.id : '');
     setFlavor('VAINILLA');
     setCustomText('');
     setCustomImageUrl('');
     setImageError('');
-  }, [design]);
+  }, [design, grandes]);
 
   // A minicake (promo variant) is locked to Arequipe; any other size needs the
   // client to actually choose, so the field resets whenever the size changes.
@@ -221,9 +255,16 @@ export default function BookingPage() {
     window.setTimeout(() => setJustAdded(false), 2500);
   }
 
+  // The date picker's `min` is only a soft hint (typable on desktop, and it goes
+  // stale if the page sits open past midnight), so re-check the 48h floor here —
+  // the backend rejects it anyway, this just stops a confusing "preview says OK,
+  // submit says no".
+  const dateTooSoon = !!draft.deliveryDate && draft.deliveryDate < earliestDate;
+
   const canSubmit =
     draft.items.length > 0 &&
     !!draft.deliveryDate &&
+    !dateTooSoon &&
     !!preview?.isBusinessDay &&
     !preview?.isBlocked &&
     !!preview?.fits &&
@@ -350,10 +391,17 @@ export default function BookingPage() {
       <SiteHeader />
 
       <main className="booking-main">
-        <Link to="/catalogo" className="booking-back">
+        <Link to={catalogHref} className="booking-back">
           ← Volver al catálogo
         </Link>
         <h1>Arma tu pedido</h1>
+
+        {cartWasStale && (
+          <p className="warning">
+            Quitamos uno o más productos de tu pedido porque el catálogo cambió. Revísalo y vuelve a
+            agregarlos si los necesitas.
+          </p>
+        )}
 
         {/* ---------- Configurador del producto actual ---------- */}
         <section className="booking-block">
@@ -477,7 +525,7 @@ export default function BookingPage() {
                 </li>
               ))}
             </ul>
-            <Link to="/catalogo" className="btn btn-ghost">
+            <Link to={catalogHref} className="btn btn-ghost">
               Agregar otro producto
             </Link>
           </section>
@@ -488,11 +536,16 @@ export default function BookingPage() {
           <h2>Fecha de entrega</h2>
           <input
             type="date"
-            min={earliestDeliveryDateString()}
+            min={earliestDate}
             value={draft.deliveryDate}
             onChange={(e) => draft.patch({ deliveryDate: e.target.value })}
           />
           <p className="field-hint">Necesitamos al menos 2 días de anticipación.</p>
+          {dateTooSoon && (
+            <p className="warning">
+              Esa fecha es muy pronto. Elige una a partir del {formatDeliveryDate(earliestDate)}.
+            </p>
+          )}
 
           {/* Live pickup-time estimate: recalculates whenever the date or the
               cart changes, so the client sees the hour before adding anything. */}

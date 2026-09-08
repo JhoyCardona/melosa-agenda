@@ -2,6 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { createPublicOrder, uploadPublicImage } from '../controllers/publicOrderController';
 import { getDeliveryPreview } from '../services/availability';
+import { isValidIsoDate } from '../utils/colombiaTime';
 import upload from '../config/multer';
 
 const router = Router();
@@ -37,14 +38,22 @@ router.get('/availability', async (req, res) => {
   if (!date) {
     return res.status(400).json({ error: 'date es requerido (formato YYYY-MM-DD)' });
   }
+  if (!isValidIsoDate(date)) {
+    return res.status(400).json({ error: 'date debe ser una fecha válida con formato YYYY-MM-DD' });
+  }
 
   const minutes = Number(req.query.minutes ?? 0);
   if (!Number.isFinite(minutes) || minutes < 0) {
     return res.status(400).json({ error: 'minutes debe ser un número mayor o igual a 0' });
   }
 
-  const preview = await getDeliveryPreview(date, minutes);
-  res.json(preview);
+  try {
+    const preview = await getDeliveryPreview(date, minutes);
+    res.json(preview);
+  } catch (error) {
+    console.error('Error calculando disponibilidad:', error);
+    res.status(500).json({ error: 'No se pudo calcular la disponibilidad. Intenta de nuevo.' });
+  }
 });
 
 export default router;

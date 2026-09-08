@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient, Flavor, OrderStatus } from '@prisma/client';
 import { isBusinessDay } from '../utils/colombianHolidays';
-import { computePaymentDueDate, earliestPublicDeliveryDate } from '../utils/colombiaTime';
+import { computePaymentDueDate, earliestPublicDeliveryDate, isValidIsoDate } from '../utils/colombiaTime';
 import { reserveDeliverySlot, minutesToLabel, isNotEnoughRoomError, isDateBlocked } from '../services/availability';
 import { rellenoSurcharge, computeRequiredPaymentPercent, isValidRelleno } from '../services/pricing';
 import { MAX_CLIENT_NAME_LENGTH, MAX_NOTES_LENGTH, MAX_ADDRESS_LENGTH } from '../services/limits';
@@ -108,8 +108,8 @@ export async function createPublicOrder(req: Request, res: Response) {
     });
   }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(deliveryDate)) {
-    return res.status(400).json({ error: 'deliveryDate debe tener el formato YYYY-MM-DD' });
+  if (!isValidIsoDate(deliveryDate)) {
+    return res.status(400).json({ error: 'deliveryDate debe ser una fecha válida con formato YYYY-MM-DD' });
   }
 
   // 48h booking cutoff (also enforced by the form's date picker; re-checked here
