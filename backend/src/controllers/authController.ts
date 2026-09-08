@@ -9,11 +9,16 @@ const prisma = new PrismaClient();
 export async function login(req: Request, res: Response) {
   const { username, password } = req.body;
 
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Usuario y contraseña son requeridos' });
+  if (!password) {
+    return res.status(400).json({ error: 'La contraseña es requerida' });
   }
 
-  const user = await prisma.user.findUnique({ where: { username } });
+  // The web login still sends a username; the mobile app only asks for the
+  // password. Since this is a single-user system, "no username" resolves to the
+  // one account that exists.
+  const user = username
+    ? await prisma.user.findUnique({ where: { username } })
+    : await prisma.user.findFirst();
 
   if (!user) {
     return res.status(401).json({ error: 'Credenciales inválidas' });

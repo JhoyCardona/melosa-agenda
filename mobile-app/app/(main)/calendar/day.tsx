@@ -157,6 +157,11 @@ export default function DayDetailScreen() {
     ]);
   }
 
+  // "Detalle por pedido" splits the day in two: what's still open on top, what's
+  // already handed over (COMPLETED) collected below with a green check.
+  const pendingOrders = orders.filter((o) => o.status !== 'COMPLETED');
+  const completedOrders = orders.filter((o) => o.status === 'COMPLETED');
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>{formatDisplayDate()} · {orders.length} pedido{orders.length !== 1 ? 's' : ''}</Text>
@@ -213,18 +218,44 @@ export default function DayDetailScreen() {
         orders.length === 0 ? (
           <Text style={styles.emptyText}>No hay pedidos este día</Text>
         ) : (
-          orders.map((order) => (
-            <OrderCard
-              key={order.id}
-              order={order as any}
-              onPaymentUpdate={(status, depositAmount) => handlePaymentUpdate(order.id, status, depositAmount)}
-              actions={[
-                { label: 'Completar', onPress: () => handleMarkCompleted(order.id) },
-                { label: 'Cancelar', onPress: () => handleCancel(order.id) },
-                { label: 'Eliminar', onPress: () => handleDelete(order.id), destructive: true },
-              ]}
-            />
-          ))
+          <>
+            <Text style={styles.sectionHeading}>
+              Pendientes por terminar ({pendingOrders.length})
+            </Text>
+            {pendingOrders.length === 0 ? (
+              <Text style={styles.emptyText}>Todos los pedidos del día están terminados</Text>
+            ) : (
+              pendingOrders.map((order) => (
+                <OrderCard
+                  key={order.id}
+                  order={order as any}
+                  onPaymentUpdate={(status, depositAmount) => handlePaymentUpdate(order.id, status, depositAmount)}
+                  actions={[
+                    { label: 'Completar', onPress: () => handleMarkCompleted(order.id) },
+                    { label: 'Cancelar', onPress: () => handleCancel(order.id) },
+                    { label: 'Eliminar', onPress: () => handleDelete(order.id), destructive: true },
+                  ]}
+                />
+              ))
+            )}
+
+            {completedOrders.length > 0 && (
+              <>
+                <Text style={[styles.sectionHeading, styles.sectionHeadingDone]}>
+                  Pedidos terminados ({completedOrders.length})
+                </Text>
+                {completedOrders.map((order) => (
+                  <OrderCard
+                    key={order.id}
+                    order={order as any}
+                    actions={[
+                      { label: 'Eliminar', onPress: () => handleDelete(order.id), destructive: true },
+                    ]}
+                  />
+                ))}
+              </>
+            )}
+          </>
         )
       ) : gallery.length === 0 ? (
         <Text style={styles.emptyText}>No hay imágenes personalizadas este día</Text>
@@ -270,6 +301,15 @@ const styles = StyleSheet.create({
   content: { padding: 20 },
   title: { fontSize: 16, fontWeight: '600', color: '#3E2723', textTransform: 'capitalize', marginBottom: 16 },
   emptyText: { color: '#999', textAlign: 'center', marginTop: 30 },
+  sectionHeading: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#3E2723',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  sectionHeadingDone: { color: '#2E7D32', marginTop: 24 },
   tabs: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   tabButton: { flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: '#F4DCD6', alignItems: 'center' },
   tabButtonActive: { backgroundColor: '#C82333' },

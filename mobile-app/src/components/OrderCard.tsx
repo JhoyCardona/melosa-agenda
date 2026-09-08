@@ -146,7 +146,11 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
               <Text style={styles.unpaidBadgeText}>NO PAGÓ</Text>
             </View>
           )}
-          <View style={[styles.paymentDot, { backgroundColor: paymentDotColor(order.status) }]} />
+          {order.status === 'COMPLETED' ? (
+            <Text style={styles.completedCheck}>✓</Text>
+          ) : (
+            <View style={[styles.paymentDot, { backgroundColor: paymentDotColor(order.status) }]} />
+          )}
         </View>
         <Text style={styles.category}>
           {firstItem ? itemTitle(firstItem) : ''}
@@ -296,6 +300,7 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   clientName: { fontSize: 15, fontWeight: '600', color: '#3E2723', flex: 1 },
   paymentDot: { width: 12, height: 12, borderRadius: 6, marginLeft: 8 },
+  completedCheck: { color: '#2E7D32', fontSize: 18, fontWeight: '800', marginLeft: 8 },
   unpaidBadge: { backgroundColor: '#C82333', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 8 },
   unpaidBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
   category: { fontSize: 13, color: '#C82333', marginTop: 2 },

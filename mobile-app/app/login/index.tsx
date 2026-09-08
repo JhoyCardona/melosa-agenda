@@ -5,27 +5,27 @@ import * as SecureStore from 'expo-secure-store';
 import api from '../../src/config/api';
 
 export default function LoginScreen() {
-  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function handleLogin() {
-    if (!username || !password) {
-      Alert.alert('Faltan datos', 'Ingresá tu usuario y contraseña');
+    if (!password) {
+      Alert.alert('Falta la contraseña', 'Ingresá la contraseña de la agenda');
       return;
     }
 
     setLoading(true);
 
     try {
-      const response = await api.post('/auth/login', { username, password });
+      // Single-user system: the mobile app authenticates with the password only.
+      const response = await api.post('/auth/login', { password });
       const { token } = response.data;
 
       await SecureStore.setItemAsync('authToken', token);
 
       router.replace('/(main)/home');
     } catch (error) {
-      Alert.alert('Error', 'Usuario o contraseña incorrectos');
+      Alert.alert('Error', 'Contraseña incorrecta');
     } finally {
       setLoading(false);
     }
@@ -37,20 +37,12 @@ export default function LoginScreen() {
 
       <TextInput
         style={styles.input}
-        placeholder="Usuario"
-        placeholderTextColor="rgba(62,39,35,0.4)"
-        value={username}
-        onChangeText={setUsername}
-        autoCapitalize="none"
-      />
-
-      <TextInput
-        style={styles.input}
         placeholder="Contraseña"
         placeholderTextColor="rgba(62,39,35,0.4)"
         value={password}
         onChangeText={setPassword}
         secureTextEntry
+        autoCapitalize="none"
       />
 
       <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
