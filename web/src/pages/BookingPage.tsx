@@ -27,12 +27,16 @@ function earliestDeliveryDateString(): string {
   return colombiaNow.toISOString().slice(0, 10);
 }
 
-// "Minicake Blanca y Rosada (2 porciones) x2, Torta 5 porciones x1" — the compact
-// breakdown that goes into the WhatsApp confirmation message.
+// Catalog designs have no name (the photo is the identity), so fall back to a
+// generic label wherever a non-empty string is structurally needed.
+const DESIGN_FALLBACK = 'Minicake';
+
+// "Minicake (2 porciones) x2, Torta 5 porciones x1" — the compact breakdown that
+// goes into the WhatsApp confirmation message.
 function itemsBreakdown(items: { designName: string; variantLabel: string }[]): string {
   const counts = new Map<string, number>();
   for (const i of items) {
-    const key = `${i.designName} (${i.variantLabel})`;
+    const key = i.designName ? `${i.designName} (${i.variantLabel})` : i.variantLabel;
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return Array.from(counts.entries())
@@ -139,10 +143,10 @@ export default function BookingPage() {
     setImageError('');
   }, [design]);
 
-  // A minicake (promo variant) is locked to Vainilla; any other size needs the
+  // A minicake (promo variant) is locked to Arequipe; any other size needs the
   // client to actually choose, so the field resets whenever the size changes.
   useEffect(() => {
-    setRelleno(variant?.enPromocion ? 'Vainilla' : '');
+    setRelleno(variant?.enPromocion ? 'Arequipe' : '');
   }, [variant?.id, variant?.enPromocion]);
 
   useEffect(() => {
@@ -196,7 +200,7 @@ export default function BookingPage() {
     draft.addItem({
       key: newKey(),
       designId: design.id,
-      designName: design.name,
+      designName: design.name || DESIGN_FALLBACK,
       designImageUrl: design.imageUrl,
       variantId: variant.id,
       variantLabel: variant.label,
@@ -353,7 +357,7 @@ export default function BookingPage() {
         <section className="booking-block">
           <div className="config-head">
             {design.imageUrl ? (
-              <img className="config-photo" src={design.imageUrl} alt={design.name} />
+              <img className="config-photo" src={design.imageUrl} alt={design.name || DESIGN_FALLBACK} />
             ) : (
               <div className="config-photo config-photo-empty" aria-hidden="true">
                 Sin foto
@@ -361,7 +365,7 @@ export default function BookingPage() {
             )}
             <div>
               <p className="eyebrow">Estás personalizando</p>
-              <h2>{design.name}</h2>
+              <h2>{design.name || DESIGN_FALLBACK}</h2>
               {design.shape && <p className="field-hint">Forma: {design.shape}</p>}
             </div>
           </div>
@@ -453,7 +457,9 @@ export default function BookingPage() {
               {draft.items.map((i) => (
                 <li key={i.key}>
                   <span>
-                    {i.designName} · {i.variantLabel} · {flavorLabels[i.flavor]} · {i.relleno}
+                    {[i.designName, i.variantLabel, flavorLabels[i.flavor], i.relleno]
+                      .filter(Boolean)
+                      .join(' · ')}
                     {i.customText ? ` · "${i.customText}"` : ''}
                     {i.customImageUrl ? ' · con imagen' : ''}
                   </span>

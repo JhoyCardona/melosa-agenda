@@ -119,7 +119,11 @@ export default function CatalogPage() {
                       onClick={() => setSelectedId(isSelected ? null : design.id)}
                     >
                       {design.imageUrl ? (
-                        <img src={design.imageUrl} alt={design.name} loading="lazy" />
+                        <img
+                          src={design.imageUrl}
+                          alt={design.name || 'Diseño de minicake'}
+                          loading="lazy"
+                        />
                       ) : (
                         <span className="catalog-card-noimg" aria-hidden="true">
                           Sin foto
@@ -128,7 +132,9 @@ export default function CatalogPage() {
                     </button>
 
                     <div className="catalog-card-body">
-                      <h3>{design.name}</h3>
+                      {/* Designs have no name — the photo is the identity. Only render
+                          a title if one was actually set (e.g. a legacy design). */}
+                      {design.name && <h3>{design.name}</h3>}
                       {price !== null && (
                         <p className="price">desde ${price.toLocaleString('es-CO')}</p>
                       )}

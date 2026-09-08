@@ -147,11 +147,11 @@ export async function createPublicOrder(req: Request, res: Response) {
     const designById = new Map(designs.map((d) => [d.id, d]));
 
     // effectiveRelleno is decided here, not trusted from the client: a promo
-    // (minicake) variant is always Vainilla regardless of what was posted.
+    // (minicake) variant is always Arequipe regardless of what was posted.
     const resolvedItems = (items as PublicOrderItemInput[]).map((item) => {
       const variant = variantById.get(item.variantId);
       const design = variant ? designById.get(item.productDesignId) : undefined;
-      const effectiveRelleno = variant?.enPromocion ? 'Vainilla' : item.relleno?.trim() || '';
+      const effectiveRelleno = variant?.enPromocion ? 'Arequipe' : item.relleno?.trim() || '';
       return { item, variant, design, effectiveRelleno };
     });
 

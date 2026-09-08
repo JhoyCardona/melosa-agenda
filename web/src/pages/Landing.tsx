@@ -78,8 +78,8 @@ export default function Landing() {
               <p className="feature-notes-title">Tener en cuenta que:</p>
               <ol>
                 <li>
-                  Puedes elegir el sabor del bizcocho: Vainilla o Chocolate. El relleno siempre
-                  será de vainilla (nuevos sabores estarán disponibles pronto).
+                  Puedes elegir el sabor del bizcocho: Vainilla o Chocolate. El relleno siempre es
+                  de arequipe (nuevos sabores estarán disponibles pronto).
                 </li>
                 <li>Puedes modificar el texto o la imagen que lleva el diseño de ejemplo.</li>
                 <li>

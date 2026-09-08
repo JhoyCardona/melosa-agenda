@@ -7,7 +7,7 @@ export const RELLENOS_BASICOS = ['Vainilla', 'Arequipe', 'Chocolate', 'Frutos ro
 export const RELLENOS_PREMIUM = ['Oreo', 'Milo', 'Fresas con crema'];
 
 // Extra charge for a premium filling, keyed by portion count. Only applies to
-// tortas sold by porciones (not minicakes, which are locked to Vainilla).
+// tortas sold by porciones (not minicakes, which are locked to Arequipe).
 export const RELLENO_PREMIUM_SURCHARGE_BY_PORTIONS: Record<number, number> = {
   5: 5000,
   10: 10000,

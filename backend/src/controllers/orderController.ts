@@ -176,8 +176,8 @@ export async function createOrder(req: AuthRequest, res: Response) {
         if (!item.flavor || !VALID_FLAVORS.includes(item.flavor)) {
           return res.status(400).json({ error: `flavor debe ser uno de: ${VALID_FLAVORS.join(', ')}` });
         }
-        // A promo (minicake) variant is always Vainilla, regardless of what was posted.
-        const effectiveRelleno = variant.enPromocion ? 'Vainilla' : item.relleno?.trim() || '';
+        // A promo (minicake) variant is always Arequipe, regardless of what was posted.
+        const effectiveRelleno = variant.enPromocion ? 'Arequipe' : item.relleno?.trim() || '';
         if (!effectiveRelleno) {
           return res.status(400).json({ error: 'relleno es requerido' });
         }

@@ -11,7 +11,7 @@ interface RellenoSelectProps {
   onChange: (relleno: string) => void;
 }
 
-// A minicake (promo variant) is always Vainilla, no choice — locked in the UI so
+// A minicake (promo variant) is always Arequipe, no choice — locked in the UI so
 // nobody accidentally picks a paid filling on a product that doesn't offer it.
 // A torta por porciones gets a real choice, split into "sin costo" and "premium"
 // (the premium surcharge depends on the size/portions currently selected).
@@ -19,7 +19,7 @@ export default function RellenoSelect({ portions, isPromo, value, onChange }: Re
   if (isPromo) {
     return (
       <p className="field-hint">
-        Relleno: <strong>Vainilla</strong>
+        Relleno: <strong>Arequipe</strong>
       </p>
     );
   }
