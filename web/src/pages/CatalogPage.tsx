@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import type { ProductDesign } from '../types';
 import { useAdminAuth } from '../context/AdminAuth';
@@ -31,17 +31,26 @@ const DEFAULT_BUCKET = '28000';
 
 export default function CatalogPage() {
   const { isAdmin } = useAdminAuth();
+  const [searchParams] = useSearchParams();
   const [designs, setDesigns] = useState<ProductDesign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [bucketId, setBucketId] = useState(DEFAULT_BUCKET);
 
+  // Same catalog, two entry points. From "Ver minicakes" (no param) the price
+  // tabs show and filter by the minicake price. From "Ver el catálogo de tortas"
+  // (?ver=tortas) the tabs are hidden — those prices are minicake prices, they
+  // don't mean anything for a 5+ porciones order — and every design is listed.
+  const grandes = searchParams.get('ver') === 'tortas';
+
   const activeBucket = PRICE_BUCKETS.find((b) => b.id === bucketId) ?? PRICE_BUCKETS[0];
-  const visibleDesigns = designs.filter((d) => {
-    const price = minicakePrice(d);
-    return price !== null && activeBucket.test(price);
-  });
+  const visibleDesigns = grandes
+    ? designs
+    : designs.filter((d) => {
+        const price = minicakePrice(d);
+        return price !== null && activeBucket.test(price);
+      });
 
   useEffect(() => {
     api
@@ -61,7 +70,7 @@ export default function CatalogPage() {
 
       <main className="section">
         <div className="section-inner">
-          <p className="eyebrow">Catálogo</p>
+          <p className="eyebrow">{grandes ? 'Tortas de 5 porciones o más' : 'Catálogo'}</p>
           <h1>Elige tu diseño</h1>
           {isAdmin && (
             <Link to="/admin/catalogo" className="btn btn-ghost catalog-admin-cta">
@@ -74,7 +83,7 @@ export default function CatalogPage() {
             paso.
           </p>
 
-          {!loading && !error && designs.length > 0 && (
+          {!loading && !error && designs.length > 0 && !grandes && (
             <div className="price-tabs" role="group" aria-label="Filtrar minicakes por precio">
               {PRICE_BUCKETS.map((b) => (
                 <button
@@ -100,8 +109,11 @@ export default function CatalogPage() {
           {!loading && !error && designs.length === 0 && (
             <p className="muted">Pronto vamos a subir nuestros diseños acá.</p>
           )}
-          {!loading && !error && designs.length > 0 && visibleDesigns.length === 0 && (
+          {!loading && !error && designs.length > 0 && visibleDesigns.length === 0 && !grandes && (
             <p className="muted">No hay diseños en {activeBucket.label} por ahora. Prueba otro precio.</p>
+          )}
+          {!loading && !error && designs.length > 0 && visibleDesigns.length === 0 && grandes && (
+            <p className="muted">Pronto vamos a subir más diseños acá.</p>
           )}
 
           {visibleDesigns.length > 0 && (

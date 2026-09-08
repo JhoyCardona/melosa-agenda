@@ -131,7 +131,7 @@ export default function Landing() {
               mismo catálogo.
             </p>
 
-            <Link to="/catalogo" className="btn btn-primary">
+            <Link to="/catalogo?ver=tortas" className="btn btn-primary">
               Ver el catálogo de tortas
             </Link>
           </div>
