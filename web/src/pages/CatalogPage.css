@@ -90,15 +90,15 @@
   flex: 1;
 }
 
+/* Nameless design, not selected → nothing to show under the photo. Collapse the
+   strip so the card is just the image. */
+.catalog-card-body:empty {
+  display: none;
+}
+
 .catalog-card-body h3 {
   font-family: var(--font-body);
   font-size: var(--text-sm);
-  font-weight: 700;
-  margin: 0;
-}
-
-.catalog-card-body .price {
-  color: var(--color-primary);
   font-weight: 700;
   margin: 0;
 }

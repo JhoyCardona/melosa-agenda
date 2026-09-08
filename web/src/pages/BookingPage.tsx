@@ -13,7 +13,9 @@ const FLAVORS: Flavor[] = ['VAINILLA', 'CHOCOLATE'];
 
 // Mirrors the backend cap (createPublicOrder). Bigger orders go through WhatsApp.
 const MAX_ITEMS = 12;
-const MAX_CUSTOM_TEXT = 200;
+// Hard 20-character limit on the personalised phrase/number (matches the
+// `maximo_20_letras` catalog folder). Enforced again by the backend.
+const MAX_CUSTOM_TEXT = 20;
 const MAX_CLIENT_NAME = 120;
 const MAX_NOTES = 500;
 // Last confirmation, kept only to survive an accidental page reload (consumed once).
@@ -414,10 +416,13 @@ export default function BookingPage() {
               <input
                 type="text"
                 maxLength={MAX_CUSTOM_TEXT}
-                placeholder="Una frase o un número. Ej: Feliz cumple Ana — 30"
+                placeholder="Ej: Feliz cumple Ana"
                 value={customText}
-                onChange={(e) => setCustomText(e.target.value)}
+                onChange={(e) => setCustomText(e.target.value.slice(0, MAX_CUSTOM_TEXT))}
               />
+              <p className="field-hint">
+                Máximo {MAX_CUSTOM_TEXT} letras ({customText.length}/{MAX_CUSTOM_TEXT}).
+              </p>
             </>
           )}
 

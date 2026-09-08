@@ -20,13 +20,12 @@ function minicakePrice(design: ProductDesign): number | null {
   return minVariantPrice(design);
 }
 
-// Minicake price tiers. "$32.000+" catches 32.000 and anything above it.
+// Minicake price tiers. Only two for now: $28.000 exactly, and "$29.000+" for
+// everything above it. The tabs are the only place the price is shown — the
+// cards don't repeat it.
 const PRICE_BUCKETS = [
   { id: '28000', label: '$28.000', test: (p: number) => p === 28000 },
-  { id: '29000', label: '$29.000', test: (p: number) => p === 29000 },
-  { id: '30000', label: '$30.000', test: (p: number) => p === 30000 },
-  { id: '31000', label: '$31.000', test: (p: number) => p === 31000 },
-  { id: '32000plus', label: '$32.000+', test: (p: number) => p >= 32000 },
+  { id: '29000plus', label: '$29.000+', test: (p: number) => p >= 29000 },
 ];
 const DEFAULT_BUCKET = '28000';
 
@@ -108,7 +107,6 @@ export default function CatalogPage() {
           {visibleDesigns.length > 0 && (
             <ul className="catalog-grid">
               {visibleDesigns.map((design) => {
-                const price = minicakePrice(design);
                 const isSelected = selectedId === design.id;
                 return (
                   <li key={design.id} className={`catalog-card ${isSelected ? 'is-selected' : ''}`}>
@@ -132,12 +130,10 @@ export default function CatalogPage() {
                     </button>
 
                     <div className="catalog-card-body">
-                      {/* Designs have no name — the photo is the identity. Only render
-                          a title if one was actually set (e.g. a legacy design). */}
+                      {/* Designs have no name and no price on the card — the photo is
+                          the identity, and the price tabs above already say the price.
+                          A title only shows if one was set (e.g. a legacy design). */}
                       {design.name && <h3>{design.name}</h3>}
-                      {price !== null && (
-                        <p className="price">desde ${price.toLocaleString('es-CO')}</p>
-                      )}
 
                       {isSelected && (
                         <Link to={`/agendar/${design.id}`} className="btn btn-primary catalog-card-cta">

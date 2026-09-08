@@ -50,7 +50,10 @@ const VALID_FLAVORS = Object.values(Flavor);
 // A self-service web order bigger than this should go through WhatsApp / the admin
 // panel instead — also caps spam and "one order eats half the day" cases.
 const MAX_ITEMS_PER_PUBLIC_ORDER = 12;
-const MAX_CUSTOM_TEXT_LENGTH = 200;
+// Hard cap on the personalised phrase/number a client can add to a design that
+// allows it (matches the `maximo_20_letras` catalog folder). The web form caps
+// the input too; this is the server-side guard.
+const MAX_CUSTOM_TEXT_LENGTH = 20;
 
 interface PublicOrderItemInput {
   productDesignId: string;
@@ -101,7 +104,7 @@ export async function createPublicOrder(req: Request, res: Response) {
   );
   if (overLongText) {
     return res.status(400).json({
-      error: `El texto personalizado no puede pasar de ${MAX_CUSTOM_TEXT_LENGTH} caracteres.`,
+      error: `El texto personalizado no puede pasar de ${MAX_CUSTOM_TEXT_LENGTH} letras.`,
     });
   }
 
