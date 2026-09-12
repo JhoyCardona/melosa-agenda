@@ -9,7 +9,7 @@ import AdminBar from './components/AdminBar'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter basename="/melosa-agenda">
+    <BrowserRouter>
       <AdminAuthProvider>
         <OrderDraftProvider>
           <AdminBar />
