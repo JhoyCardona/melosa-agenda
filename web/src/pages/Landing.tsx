@@ -120,7 +120,12 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* ---------- Tortas 5+ ---------- */}
+        {/* ---------- Tortas 5+ ----------
+            Deshabilitada temporalmente: todavía no hay precios reales definidos
+            para tamaños de 5+ porciones (quedaron con precio placeholder desde
+            rebuildCatalog28000.ts). Mientras tanto la web solo ofrece minicakes.
+            Ver CLAUDE.md / memoria del proyecto. Para reactivar: descomentar este
+            bloque y el equivalente en CatalogPage.tsx y BookingPage.tsx.
         <section className="section section-soft" id="tortas">
           <div className="section-inner">
             <p className="eyebrow">¿Algo más grande?</p>
@@ -136,6 +141,7 @@ export default function Landing() {
             </Link>
           </div>
         </section>
+        ---------- */}
 
         {/* ---------- Solo para recoger ---------- */}
         <section className="section pickup dot-edges" id="recoger">

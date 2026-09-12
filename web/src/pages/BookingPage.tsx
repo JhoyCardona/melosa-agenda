@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams /*, useSearchParams */ } from 'react-router-dom';
 import api, { getWithRetry } from '../api';
 import type { DeliveryPreview, Flavor, ProductDesign } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
@@ -32,6 +32,15 @@ function earliestDeliveryDateString(): string {
 // Catalog designs have no name (the photo is the identity), so fall back to a
 // generic label wherever a non-empty string is structurally needed.
 const DESIGN_FALLBACK = 'Minicake';
+
+// Tortas 5+ deshabilitadas temporalmente (sin precios reales todavía, ver
+// CLAUDE.md / Landing.tsx): cada diseño en catálogo ya trae variantes de 5, 10,
+// 15 y 20 porciones con precio placeholder (rebuildCatalog28000.ts), así que hay
+// que filtrarlas explícitamente para que no aparezcan como opción de Tamaño.
+// Para reactivar: volver a usar `design?.variants ?? []` directamente.
+function bookableVariants(design: ProductDesign | undefined): ProductDesign['variants'] {
+  return design?.variants.filter((v) => v.enPromocion) ?? [];
+}
 
 // "Minicake (2 porciones) x2, Torta 5 porciones x1" — the compact breakdown that
 // goes into the WhatsApp confirmation message.
@@ -73,13 +82,19 @@ interface OrderResult {
 export default function BookingPage() {
   const { designId } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  // const [searchParams] = useSearchParams();
   const draft = useOrderDraft();
 
   // Entered from "Ver el catálogo de tortas" → default the size to a real torta,
   // not the promo minicake, and keep "volver al catálogo" pointing at that view.
-  const grandes = searchParams.get('ver') === 'tortas';
-  const catalogHref = grandes ? '/catalogo?ver=tortas' : '/catalogo';
+  //
+  // Tortas 5+ deshabilitadas temporalmente (sin precios reales todavía, ver
+  // CLAUDE.md / Landing.tsx). Para reactivar: descomentar estas dos líneas y el
+  // import/hook de useSearchParams arriba.
+  // const grandes = searchParams.get('ver') === 'tortas';
+  // const catalogHref = grandes ? '/catalogo?ver=tortas' : '/catalogo';
+  const grandes = false;
+  const catalogHref = '/catalogo';
   const earliestDate = earliestDeliveryDateString();
 
   const [designs, setDesigns] = useState<ProductDesign[]>([]);
@@ -172,9 +187,14 @@ export default function BookingPage() {
   // Reset the configurator whenever the design changes. From the "tortas" view we
   // preselect the first non-promo size so a buyer who came for a 10-porciones
   // cake doesn't silently end up ordering a minicake.
+  //
+  // Tortas 5+ deshabilitadas temporalmente: solo se ofrece la variante minicake
+  // (enPromocion), sin importar `grandes`. Original para reactivar:
+  // const variants = design?.variants ?? [];
+  // const preferred = grandes ? variants.find((v) => !v.enPromocion) ?? variants[0] : variants[0];
   useEffect(() => {
-    const variants = design?.variants ?? [];
-    const preferred = grandes ? variants.find((v) => !v.enPromocion) ?? variants[0] : variants[0];
+    const variants = bookableVariants(design);
+    const preferred = variants[0];
     setVariantId(preferred ? preferred.id : '');
     setFlavor('VAINILLA');
     setCustomText('');
@@ -429,7 +449,8 @@ export default function BookingPage() {
 
           <label className="field-label">Tamaño</label>
           <div className="pills">
-            {design.variants.map((v) => (
+            {/* Original (para cuando se reactiven tortas 5+): design.variants.map(...) */}
+            {bookableVariants(design).map((v) => (
               <button
                 key={v.id}
                 type="button"

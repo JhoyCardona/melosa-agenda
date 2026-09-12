@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link /*, useSearchParams */ } from 'react-router-dom';
 import { getWithRetry } from '../api';
 import type { ProductDesign } from '../types';
 import { useAdminAuth } from '../context/AdminAuth';
@@ -31,7 +31,7 @@ const DEFAULT_BUCKET = '28000';
 
 export default function CatalogPage() {
   const { isAdmin } = useAdminAuth();
-  const [searchParams] = useSearchParams();
+  // const [searchParams] = useSearchParams();
   const [designs, setDesigns] = useState<ProductDesign[]>([]);
   const [loading, setLoading] = useState(true);
   const [slow, setSlow] = useState(false);
@@ -59,7 +59,12 @@ export default function CatalogPage() {
   // tabs show and filter by the minicake price. From "Ver el catálogo de tortas"
   // (?ver=tortas) the tabs are hidden — those prices are minicake prices, they
   // don't mean anything for a 5+ porciones order — and every design is listed.
-  const grandes = searchParams.get('ver') === 'tortas';
+  //
+  // Tortas 5+ deshabilitadas temporalmente (sin precios reales todavía, ver
+  // CLAUDE.md / Landing.tsx). Para reactivar: descomentar la línea de abajo y el
+  // import/hook de useSearchParams arriba.
+  // const grandes = searchParams.get('ver') === 'tortas';
+  const grandes = false;
 
   const activeBucket = PRICE_BUCKETS.find((b) => b.id === bucketId) ?? PRICE_BUCKETS[0];
   const visibleDesigns = grandes
@@ -87,10 +92,16 @@ export default function CatalogPage() {
               Editar catálogo
             </Link>
           )}
+          {/* Texto original (para cuando se reactiven tortas de 5+ porciones):
           <p className="section-lead">
             Toca un diseño para empezar tu pedido. Cada diseño se hace en minicake de 2 porciones y
             en tamaños de 5, 10, 15 y 20 porciones: el tamaño y el precio los eliges en el siguiente
             paso.
+          </p>
+          */}
+          <p className="section-lead">
+            Toca un diseño para empezar tu pedido. Por ahora agendamos solo en minicake de 2
+            porciones.
           </p>
 
           {!loading && !error && designs.length > 0 && !grandes && (
