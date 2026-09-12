@@ -246,6 +246,20 @@ html {
   animation: dot-edges-blink 900ms step-end infinite;
 }
 
+/* Franja de festón (medias lunas), estilo faldón de carpa de circo / borde de
+   manga pastelera. Es un elemento normal (no pseudo-elemento, para no pelear
+   con .dot-edges::after) que se coloca justo después de lo que se quiera
+   "coronar" — ver AnnouncementBar en SiteChrome.tsx. Los huecos entre medias
+   lunas dejan ver el fondo de la página (--color-bg), que es lo que crea el
+   recorte. Prueba visual: aquí en rojo primario, se puede ajustar tamaño/color. */
+.scallop-strip {
+  height: 14px;
+  background-image: radial-gradient(circle at 14px 0, var(--color-primary) 14px, transparent 14.5px);
+  background-size: 28px 14px;
+  background-repeat: repeat-x;
+  background-position: center top;
+}
+
 .dot-edges::before {
   top: 0;
 }

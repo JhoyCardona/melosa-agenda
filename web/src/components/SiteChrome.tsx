@@ -31,15 +31,19 @@ function AnnounceGroup() {
 
 export function AnnouncementBar() {
   return (
-    <div className="announce dot-edges" role="region" aria-label="Anuncios de Melosa">
-      <div className="announce-track" aria-hidden="true">
-        {Array.from({ length: MARQUEE_COPIES }, (_, i) => (
-          <AnnounceGroup key={i} />
-        ))}
+    <>
+      <div className="announce dot-edges" role="region" aria-label="Anuncios de Melosa">
+        <div className="announce-track" aria-hidden="true">
+          {Array.from({ length: MARQUEE_COPIES }, (_, i) => (
+            <AnnounceGroup key={i} />
+          ))}
+        </div>
+        {/* One clean copy for screen readers — the visual track is repeated. */}
+        <p className="sr-only">{ANNOUNCEMENTS.join('. ')}</p>
       </div>
-      {/* One clean copy for screen readers — the visual track is repeated. */}
-      <p className="sr-only">{ANNOUNCEMENTS.join('. ')}</p>
-    </div>
+      {/* Prueba visual: faldón de festón bajo la barra de anuncios. */}
+      <div className="scallop-strip" aria-hidden="true" />
+    </>
   );
 }
 
