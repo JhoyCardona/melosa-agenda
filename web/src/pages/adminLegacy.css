@@ -267,3 +267,19 @@
   color: var(--color-muted);
   text-align: center;
 }
+
+/* Tells the admin exactly why "Crear pedido" is disabled instead of leaving a
+   silently-inert button. */
+.missing-list {
+  margin: 10px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--color-primary);
+  font-size: 0.85rem;
+}
+
+.missing-list li {
+  margin: 2px 0;
+}

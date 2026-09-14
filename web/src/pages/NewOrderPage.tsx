@@ -169,26 +169,42 @@ export default function NewOrderPage() {
   }
 
   const pickupMinutes = timeToMinutes(pickupTime);
-  const canSubmit =
-    !!clientName.trim() &&
-    !!clientPhone.trim() &&
-    !!deliveryDate &&
-    pickupMinutes !== null &&
-    lines.length > 0 &&
-    lines.every(
-      (l) =>
-        lineReferenceOk(l) &&
-        (l.kind === 'catalog'
-          ? l.designId && l.variantId && l.relleno.trim()
-          : l.customName.trim() &&
-            l.price !== '' &&
-            Number(l.price) >= 0 &&
-            l.customSize.trim() &&
-            l.shape.trim() &&
-            l.customFlavor.trim() &&
-            l.relleno.trim())
-    ) &&
-    !submitting;
+
+  // Drives both canSubmit and the on-screen checklist next to the button — a
+  // disabled button with no explanation reads as "broken" (ver conversación:
+  // el botón no avisaba que faltaba la foto de referencia del cliente).
+  const missingReasons = useMemo(() => {
+    const reasons: string[] = [];
+    if (!clientName.trim()) reasons.push('Falta el nombre del cliente');
+    if (!clientPhone.trim()) reasons.push('Falta el teléfono del cliente');
+    if (!deliveryDate) reasons.push('Falta la fecha de entrega');
+    if (pickupMinutes === null) reasons.push('Falta la hora de recogida');
+    if (lines.length === 0) reasons.push('Agrega al menos un producto');
+    lines.forEach((l, i) => {
+      const label = `Producto ${i + 1}`;
+      if (!lineReferenceOk(l)) {
+        reasons.push(
+          `${label}: falta la foto de referencia del cliente (la que mandó por WhatsApp) — o marca "Sin foto de referencia"`
+        );
+      }
+      if (l.kind === 'catalog') {
+        if (!l.designId) reasons.push(`${label}: falta elegir el diseño`);
+        if (!l.variantId) reasons.push(`${label}: falta elegir el tamaño`);
+        if (!l.relleno.trim()) reasons.push(`${label}: falta el relleno`);
+      } else {
+        if (!l.customName.trim()) reasons.push(`${label}: falta la descripción`);
+        if (l.price === '' || Number(l.price) < 0) reasons.push(`${label}: falta el precio`);
+        if (!l.customSize.trim()) reasons.push(`${label}: faltan las porciones`);
+        if (!l.shape.trim()) reasons.push(`${label}: falta la forma`);
+        if (!l.customFlavor.trim()) reasons.push(`${label}: falta el sabor`);
+        if (!l.relleno.trim()) reasons.push(`${label}: falta el relleno`);
+      }
+    });
+    return reasons;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientName, clientPhone, deliveryDate, pickupMinutes, lines, designs]);
+
+  const canSubmit = missingReasons.length === 0 && !submitting;
 
   interface ExistingOrder {
     ticketNumber: number;
@@ -532,6 +548,14 @@ export default function NewOrderPage() {
 
       <p style={{ fontWeight: 700 }}>Total: ${total.toLocaleString('es-CO')}</p>
       {error && <p className="warning">{error}</p>}
+
+      {missingReasons.length > 0 && !submitting && (
+        <ul className="missing-list">
+          {missingReasons.map((r, i) => (
+            <li key={i}>{r}</li>
+          ))}
+        </ul>
+      )}
 
       <button
         type="button"
