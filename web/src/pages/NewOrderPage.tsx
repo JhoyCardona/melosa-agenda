@@ -388,24 +388,36 @@ export default function NewOrderPage() {
 
             {l.kind === 'catalog' ? (
               <>
-                <select
-                  value={l.designId}
-                  onChange={(e) => {
-                    const d = designs.find((x) => x.id === e.target.value);
-                    const v = d?.variants[0];
-                    patchLine(l.key, {
-                      designId: e.target.value,
-                      variantId: v?.id ?? '',
-                      relleno: v?.enPromocion ? 'Vainilla' : '',
-                    });
-                  }}
-                >
-                  {designs.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
+                <label className="field-label">Diseño</label>
+                <p className="muted">Los diseños no tienen nombre, se reconocen por foto — igual que hace el cliente.</p>
+                <div className="design-picker" role="radiogroup" aria-label="Elegir diseño del catálogo">
+                  {designs.map((d) => {
+                    const isSelected = d.id === l.designId;
+                    return (
+                      <button
+                        key={d.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        className={`design-picker-item ${isSelected ? 'is-selected' : ''}`}
+                        onClick={() => {
+                          const v = d.variants[0];
+                          patchLine(l.key, {
+                            designId: d.id,
+                            variantId: v?.id ?? '',
+                            relleno: v?.enPromocion ? 'Vainilla' : '',
+                          });
+                        }}
+                      >
+                        {d.imageUrl ? (
+                          <img src={d.imageUrl} alt={d.name || ''} loading="lazy" />
+                        ) : (
+                          <span className="design-picker-noimg">Sin foto</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
                 <select
                   value={l.variantId}
                   onChange={(e) => {

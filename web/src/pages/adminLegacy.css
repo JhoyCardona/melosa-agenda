@@ -219,3 +219,51 @@
   color: var(--color-muted);
   margin: 2px 0 8px;
 }
+
+/* ---------- Catalog design picker (thumbnail grid) ----------
+   Designs from the catalog rebuild have no name (photo is the identity, same
+   as the public catalog). A text <select> left every option blank, so admins
+   pick by tapping the thumbnail instead. */
+.design-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  margin-bottom: 10px;
+  border: 1px solid var(--color-bg-soft);
+  border-radius: 8px;
+}
+
+.design-picker-item {
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--color-bg-soft);
+  aspect-ratio: 1 / 1;
+  display: block;
+}
+
+.design-picker-item.is-selected {
+  border-color: var(--color-primary);
+}
+
+.design-picker-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.design-picker-noimg {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: 0.65rem;
+  color: var(--color-muted);
+  text-align: center;
+}
