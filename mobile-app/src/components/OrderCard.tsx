@@ -221,10 +221,12 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
             <Text style={styles.blockLabel}>Productos ({order.items.length})</Text>
 
             {order.items.map((item, index) => {
-              // What the cake should look like: the client's WhatsApp reference
-              // photo first, then an edible-print image, then the catalog photo.
-              const photoUrl =
-                item.referenceImageUrl ?? item.customImageUrl ?? item.productDesign?.imageUrl ?? null;
+              // How the cake should look: the client's WhatsApp reference photo,
+              // or the catalog design's own photo when there's no client photo
+              // (skipReference). Never the edible-print image — that's a
+              // separate block below, always shown on its own regardless of
+              // whether it happens to match this one.
+              const referencePhotoUrl = item.referenceImageUrl ?? item.productDesign?.imageUrl ?? null;
               return (
               <View key={item.id} style={styles.itemDetailCard}>
                 <Text style={styles.itemDetailTitle}>
@@ -234,13 +236,18 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
                 {item.shape ? <Text style={styles.detailLine}>Forma: {item.shape}</Text> : null}
                 {item.relleno ? <Text style={styles.detailLine}>Relleno: {item.relleno}</Text> : null}
 
-                {photoUrl && (
-                  <TouchableOpacity onPress={() => setViewingImage(photoUrl)}>
-                    <Image source={{ uri: photoUrl }} style={styles.itemImage} />
-                  </TouchableOpacity>
+                {referencePhotoUrl && (
+                  <>
+                    <Text style={styles.detailLine}>
+                      {item.referenceImageUrl ? 'Foto de referencia del cliente:' : 'Diseño del catálogo:'}
+                    </Text>
+                    <TouchableOpacity onPress={() => setViewingImage(referencePhotoUrl)}>
+                      <Image source={{ uri: referencePhotoUrl }} style={styles.itemImage} />
+                    </TouchableOpacity>
+                  </>
                 )}
 
-                {item.customImageUrl && item.customImageUrl !== photoUrl && (
+                {item.customImageUrl && (
                   <>
                     <Text style={styles.detailLine}>Imagen para imprimir:</Text>
                     <TouchableOpacity onPress={() => setViewingImage(item.customImageUrl!)}>
