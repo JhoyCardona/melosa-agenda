@@ -1,4 +1,6 @@
-export type Flavor = 'VAINILLA' | 'CHOCOLATE';
+// ALFAJOR isn't a pickable option next to Vainilla/Chocolate — it's the fixed
+// flavor the ALFAJOR_CAKE design always locks to (no flavor picker shown).
+export type Flavor = 'VAINILLA' | 'CHOCOLATE' | 'ALFAJOR';
 
 export interface ProductVariant {
   id: string;
@@ -29,7 +31,14 @@ export interface ProductDesign {
   shape: string | null;
   imageUrl: string | null;
   allowsCustomImage: boolean;
+  // True when the client MUST upload a print-ready image for this design
+  // (Melosa doesn't edit/design the print herself). Meaningless unless
+  // allowsCustomImage is also true.
+  requiresCustomImage: boolean;
   allowsCustomText: boolean;
+  // Per-design cap on the custom phrase/number length (20 by default; some
+  // designs — smaller print area — cap it lower).
+  customTextMaxLength: number;
   variants: ProductVariant[];
   images: ProductDesignImage[];
 }

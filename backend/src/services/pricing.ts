@@ -7,9 +7,11 @@ export const RELLENOS_BASICOS = ['Vainilla', 'Arequipe', 'Chocolate', 'Frutos ro
 export const RELLENOS_PREMIUM = ['Oreo', 'Milo', 'Fresas con crema'];
 
 // Extra charge for a premium filling, keyed by portion count. Only applies to
-// tortas sold by porciones (not minicakes, which are locked to Arequipe).
+// tortas sold by porciones (not minicakes, which are locked to Arequipe). The
+// smallest torta size is 6 porciones, not 5 — the catalog's original 5-porciones
+// variant was renamed/repriced when the real torta sizes/prices landed.
 export const RELLENO_PREMIUM_SURCHARGE_BY_PORTIONS: Record<number, number> = {
-  5: 5000,
+  6: 5000,
   10: 10000,
   15: 12500,
   20: 15000,

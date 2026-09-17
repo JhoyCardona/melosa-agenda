@@ -24,10 +24,27 @@ interface OrderItem {
   referenceImageUrl: string | null;
   customText: string | null;
   shape: string | null;
+  // The color the client picked (BookingPage's color picker), used to find the
+  // matching photo among the design's per-color images.
+  color: string | null;
   relleno: string | null;
   customSize: string | null;
-  productDesign: { name: string; imageUrl: string | null } | null;
+  productDesign: {
+    name: string;
+    imageUrl: string | null;
+    images: { colorName: string; imageUrl: string }[];
+  } | null;
   variant: { label: string } | null;
+}
+
+// The cake's own photo: the color the client picked, if the design has one for
+// it, else the design's cover photo. Never the print image (customImageUrl) —
+// that's a separate block, always shown below this one.
+function catalogPhotoUrl(item: OrderItem): string | null {
+  const colorMatch = item.color
+    ? item.productDesign?.images.find((img) => img.colorName === item.color)?.imageUrl
+    : undefined;
+  return colorMatch ?? item.productDesign?.imageUrl ?? null;
 }
 
 const flavorLabels: Record<string, string> = {
@@ -221,12 +238,17 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
             <Text style={styles.blockLabel}>Productos ({order.items.length})</Text>
 
             {order.items.map((item, index) => {
-              // How the cake should look: the client's WhatsApp reference photo,
-              // or the catalog design's own photo when there's no client photo
-              // (skipReference). Never the edible-print image — that's a
-              // separate block below, always shown on its own regardless of
-              // whether it happens to match this one.
-              const referencePhotoUrl = item.referenceImageUrl ?? item.productDesign?.imageUrl ?? null;
+              // How the cake should look, ALWAYS the big photo: the client's
+              // WhatsApp reference photo (admin-entered orders), or the
+              // catalog design's photo in the color the client picked. Never
+              // the edible-print image(s) — those are a row of small
+              // thumbnails below, since a design says nothing about what goes
+              // on the print (and soon an order can carry several of them).
+              const referencePhotoUrl = item.referenceImageUrl ?? catalogPhotoUrl(item) ?? null;
+              // Single field today; wrapped in an array so this already
+              // renders as a row and doesn't need touching once an order can
+              // carry more than one print image.
+              const printImageUrls = item.customImageUrl ? [item.customImageUrl] : [];
               return (
               <View key={item.id} style={styles.itemDetailCard}>
                 <Text style={styles.itemDetailTitle}>
@@ -247,12 +269,18 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
                   </>
                 )}
 
-                {item.customImageUrl && (
+                {printImageUrls.length > 0 && (
                   <>
-                    <Text style={styles.detailLine}>Imagen para imprimir:</Text>
-                    <TouchableOpacity onPress={() => setViewingImage(item.customImageUrl!)}>
-                      <Image source={{ uri: item.customImageUrl }} style={styles.itemImage} />
-                    </TouchableOpacity>
+                    <Text style={styles.detailLine}>
+                      {printImageUrls.length > 1 ? 'Imágenes para imprimir:' : 'Imagen para imprimir:'}
+                    </Text>
+                    <View style={styles.printThumbRow}>
+                      {printImageUrls.map((url, i) => (
+                        <TouchableOpacity key={i} onPress={() => setViewingImage(url)}>
+                          <Image source={{ uri: url }} style={styles.printThumb} />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   </>
                 )}
 
@@ -379,6 +407,8 @@ const styles = StyleSheet.create({
   itemDetailCard: { backgroundColor: '#F5EBE0', borderRadius: 6, padding: 10, marginBottom: 8 },
   itemDetailTitle: { fontSize: 14, fontWeight: '700', color: '#3E2723', marginBottom: 4 },
   itemImage: { width: '100%', height: 120, borderRadius: 6, marginBottom: 6 },
+  printThumbRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 },
+  printThumb: { width: 56, height: 56, borderRadius: 6 },
   itemDetailPrice: { fontSize: 13, fontWeight: '600', color: '#C82333', marginTop: 4 },
   actionsRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
   actionButton: { flex: 1, backgroundColor: '#F4DCD6', borderRadius: 6, paddingVertical: 10, alignItems: 'center' },

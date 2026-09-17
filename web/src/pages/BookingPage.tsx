@@ -6,21 +6,16 @@ import { CAKE_SHAPES } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import RellenoSelect from '../components/RellenoSelect';
-import { waLink, rellenoSurcharge, PAYMENT, PAYMENT_WARNING } from '../config';
+import { waLink, rellenoSurcharge, BUSINESS } from '../config';
 import './BookingPage.css';
 
-const flavorLabels: Record<Flavor, string> = { VAINILLA: 'Vainilla', CHOCOLATE: 'Chocolate' };
+const flavorLabels: Record<Flavor, string> = { VAINILLA: 'Vainilla', CHOCOLATE: 'Chocolate', ALFAJOR: 'Alfajor' };
 const FLAVORS: Flavor[] = ['VAINILLA', 'CHOCOLATE'];
 
 // Mirrors the backend cap (createPublicOrder). Bigger orders go through WhatsApp.
 const MAX_ITEMS = 12;
-// Hard 20-character limit on the personalised phrase/number (matches the
-// `maximo_20_letras` catalog folder). Enforced again by the backend.
-const MAX_CUSTOM_TEXT = 20;
 const MAX_CLIENT_NAME = 120;
 const MAX_NOTES = 500;
-// Last confirmation, kept only to survive an accidental page reload (consumed once).
-const CONFIRM_KEY = 'melosa_last_confirmation';
 
 // Earliest bookable delivery date = today (Colombia, UTC-5) + 2 calendar days,
 // i.e. the 48h booking cutoff. The public order endpoint re-checks this.
@@ -34,24 +29,42 @@ function earliestDeliveryDateString(): string {
 // generic label wherever a non-empty string is structurally needed.
 const DESIGN_FALLBACK = 'Minicake';
 
-// Tortas 5+ deshabilitadas temporalmente (sin precios reales todavía, ver
-// CLAUDE.md / Landing.tsx): cada diseño en catálogo ya trae variantes de 5, 10,
-// 15 y 20 porciones con precio placeholder (rebuildCatalog28000.ts), así que hay
-// que filtrarlas explícitamente para que no aparezcan como opción de Tamaño.
-// Para reactivar: volver a usar `design?.variants ?? []` directamente.
+// $28.000, $30.000 (CAKE) y el alfajor (ALFAJOR_CAKE) ya tienen precios reales
+// de torta grande, así que muestran todos los tamaños. La única forma de
+// distinguir un catálogo con precios reales hoy es el precio de la minicake —
+// no hay un flag propio en el schema.
+const CAKE_TIERS_WITH_REAL_SIZES = [28000, 30000];
 function bookableVariants(design: ProductDesign | undefined): ProductDesign['variants'] {
-  return design?.variants.filter((v) => v.enPromocion) ?? [];
+  if (!design) return [];
+  if (design.category === 'ALFAJOR_CAKE') return design.variants;
+  const minicake = design.variants.find((v) => v.enPromocion);
+  if (minicake && CAKE_TIERS_WITH_REAL_SIZES.includes(Number(minicake.price))) return design.variants;
+  return design.variants.filter((v) => v.enPromocion);
 }
 
-// "Minicake (2 porciones) x2, Torta 5 porciones x1" — the compact breakdown that
-// goes into the WhatsApp confirmation message.
-function itemsBreakdown(items: { designName: string; variantLabel: string }[]): string {
+// "MiniCake x1\nTorta 6 porciones x1\nTorta 10 porciones x2" — the compact,
+// size-only breakdown (not per design/color) that goes into the WhatsApp
+// order message.
+function whatsappItemLabel(variantLabel: string): string {
+  return variantLabel.startsWith('Minicake') ? 'MiniCake' : `Torta ${variantLabel}`;
+}
+
+// MiniCake first, then ascending by portion count, so the message reads in a
+// predictable size order regardless of the order items were added in.
+function whatsappSortKey(label: string): number {
+  if (label === 'MiniCake') return 0;
+  const match = label.match(/(\d+)/);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+function itemsBreakdown(items: { variantLabel: string }[]): string {
   const counts = new Map<string, number>();
   for (const i of items) {
-    const key = i.designName ? `${i.designName} (${i.variantLabel})` : i.variantLabel;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    const label = whatsappItemLabel(i.variantLabel);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
   }
   return Array.from(counts.entries())
+    .sort(([a], [b]) => whatsappSortKey(a) - whatsappSortKey(b))
     .map(([label, n]) => `${label} x${n}`)
     .join('\n');
 }
@@ -73,10 +86,8 @@ function newKey(): string {
 }
 
 interface OrderResult {
-  id: string;
   ticketNumber: number;
   totalPrice: string;
-  requiredPaymentPercent: number;
   deliveryTimeLabel?: string;
 }
 
@@ -123,9 +134,6 @@ export default function BookingPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [result, setResult] = useState<OrderResult | null>(null);
-  const [confirmedName, setConfirmedName] = useState('');
-  const [confirmedBreakdown, setConfirmedBreakdown] = useState('');
 
   const design = designs.find((d) => d.id === designId);
   const variant = design?.variants.find((v) => v.id === variantId);
@@ -165,28 +173,6 @@ export default function BookingPage() {
     if (designsLoaded && !design) navigate(catalogHref, { replace: true });
   }, [designsLoaded, design, navigate, catalogHref]);
 
-  // On mount: always consume any stored confirmation, but only re-show it when
-  // this was an actual page reload — so an accidental F5 on "¡Pedido recibido!"
-  // doesn't wipe the ticket number, while navigating back to book again doesn't
-  // resurrect the old confirmation.
-  useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(CONFIRM_KEY);
-      if (!raw) return;
-      sessionStorage.removeItem(CONFIRM_KEY);
-      const nav = performance.getEntriesByType('navigation')[0] as
-        | PerformanceNavigationTiming
-        | undefined;
-      if (nav?.type !== 'reload') return;
-      const saved = JSON.parse(raw) as { result: OrderResult; name: string; breakdown: string };
-      setResult(saved.result);
-      setConfirmedName(saved.name);
-      setConfirmedBreakdown(saved.breakdown);
-    } catch {
-      // ignore
-    }
-  }, []);
-
   // Reset the configurator whenever the design changes. From the "tortas" view we
   // preselect the first non-promo size so a buyer who came for a 10-porciones
   // cake doesn't silently end up ordering a minicake.
@@ -199,7 +185,7 @@ export default function BookingPage() {
     const variants = bookableVariants(design);
     const preferred = variants[0];
     setVariantId(preferred ? preferred.id : '');
-    setFlavor('VAINILLA');
+    setFlavor(design?.category === 'ALFAJOR_CAKE' ? 'ALFAJOR' : 'VAINILLA');
     setShape('Redonda');
     setColor(design?.images[0]?.colorName ?? '');
     setCustomText('');
@@ -213,11 +199,12 @@ export default function BookingPage() {
   const displayedImageUrl =
     design?.images.find((img) => img.colorName === color)?.imageUrl ?? design?.imageUrl ?? null;
 
-  // A minicake (promo variant) is locked to Arequipe; any other size needs the
+  // A minicake (promo variant) is locked to Arequipe; so is every size of the
+  // alfajor minicake (its filling never changes). Any other size needs the
   // client to actually choose, so the field resets whenever the size changes.
   useEffect(() => {
-    setRelleno(variant?.enPromocion ? 'Arequipe' : '');
-  }, [variant?.id, variant?.enPromocion]);
+    setRelleno(variant?.enPromocion || design?.category === 'ALFAJOR_CAKE' ? 'Arequipe' : '');
+  }, [variant?.id, variant?.enPromocion, design?.category]);
 
   useEffect(() => {
     if (!draft.deliveryDate) {
@@ -311,11 +298,19 @@ export default function BookingPage() {
   async function handleSubmit() {
     setErrorMessage('');
     setSubmitting(true);
+    // Opened synchronously, still inside the click handler's own gesture —
+    // browsers block a popup opened after an `await`, so this blank tab is
+    // the placeholder we redirect once the order actually exists.
+    const whatsappTab = window.open('', '_blank');
     try {
+      const name = draft.clientName.trim();
+      const normalizedPhone = draft.clientPhone.replace(/[^\d+]/g, '');
+      const breakdown = itemsBreakdown(draft.items);
+
       const response = await api.post<OrderResult>('/public-orders', {
-        clientName: draft.clientName.trim(),
+        clientName: name,
         // Keep only digits and a leading +, but accept any country's number.
-        clientPhone: draft.clientPhone.replace(/[^\d+]/g, ''),
+        clientPhone: normalizedPhone,
         deliveryDate: draft.deliveryDate,
         notes: draft.notes.trim() || undefined,
         items: draft.items.map((i) => ({
@@ -329,21 +324,25 @@ export default function BookingPage() {
           customImageUrl: i.customImageUrl,
         })),
       });
-      const name = draft.clientName.trim();
-      const breakdown = itemsBreakdown(draft.items);
-      setConfirmedName(name);
-      setConfirmedBreakdown(breakdown);
-      setResult(response.data);
+
+      const waHref = waLink(
+        `${name}\n` +
+          `Tel: ${normalizedPhone}\n\n` +
+          `Ticket #${response.data.ticketNumber}\n\n` +
+          `${breakdown}\n\n` +
+          `Hora: ${response.data.deliveryTimeLabel ?? 'por confirmar'} (Esta es la hora mínima de entrega de mi pedido)\n\n` +
+          `Total: $${Number(response.data.totalPrice).toLocaleString('es-CO')}\n\n` +
+          `Este es el resumen de mi pedido, quiero proceder con el pago.`
+      );
       draft.reset();
-      try {
-        sessionStorage.setItem(
-          CONFIRM_KEY,
-          JSON.stringify({ result: response.data, name, breakdown })
-        );
-      } catch {
-        // storage disabled — the confirmation still shows, just won't survive a reload
+      if (whatsappTab) {
+        whatsappTab.location.href = waHref;
+      } else {
+        // Popup blocked anyway — fall back to navigating this tab.
+        window.location.href = waHref;
       }
     } catch (error) {
+      whatsappTab?.close();
       const message =
         (error as { response?: { data?: { error?: string } } })?.response?.data?.error ??
         'No se pudo enviar el pedido. Intenta de nuevo.';
@@ -351,64 +350,6 @@ export default function BookingPage() {
     } finally {
       setSubmitting(false);
     }
-  }
-
-  if (result) {
-    const waHref = waLink(
-      `${confirmedName}\n` +
-        `Ticket #${result.ticketNumber}\n` +
-        `${confirmedBreakdown}\n` +
-        `Total: $${Number(result.totalPrice).toLocaleString('es-CO')}\n` +
-        `Hora de recogida: ${result.deliveryTimeLabel ?? 'por confirmar'}\n` +
-        `¿Cómo puedo pagar para abonar mi pedido?`
-    );
-    return (
-      <div className="booking-page">
-        <AnnouncementBar />
-        <SiteHeader />
-        <main className="booking-main">
-          <div className="confirmation-card">
-            <h1>¡Pedido recibido!</h1>
-            <p>
-              Tu ticket es <strong>#{result.ticketNumber}</strong>.
-            </p>
-            <p>
-              Total: <strong>${Number(result.totalPrice).toLocaleString('es-CO')}</strong>
-            </p>
-            {result.deliveryTimeLabel && (
-              <p>
-                Tu pedido va a estar listo a partir de las{' '}
-                <strong>{result.deliveryTimeLabel}</strong>. Puedes recogerlo a esa hora o más tarde
-                ese mismo día.
-              </p>
-            )}
-            <p>
-              Requiere un abono del <strong>{result.requiredPaymentPercent}%</strong>. Manda el
-              comprobante por WhatsApp para confirmar tu pedido.
-            </p>
-            <div className="payment-info">
-              <p className="field-label">Opciones de pago</p>
-              <p>Bancolombia (Ahorros): {PAYMENT.bancolombiaAhorros}</p>
-              <p>Nequi: {PAYMENT.nequi}</p>
-              <p>Llave: {PAYMENT.llave}</p>
-              <p>A nombre de: {PAYMENT.accountHolder}</p>
-              <p className="warning">{PAYMENT_WARNING}</p>
-            </div>
-            <p className="booking-ticket-note">
-              Guarda tu número de ticket <strong>#{result.ticketNumber}</strong>. Si nos escribes por
-              cualquier tema de tu pedido, dánoslo siempre: es la forma en que ubicamos tu pedido.
-            </p>
-            <a className="whatsapp-button" href={waHref} target="_blank" rel="noreferrer">
-              Confirmar por WhatsApp
-            </a>
-            <Link to="/" className="booking-back">
-              Volver al inicio
-            </Link>
-          </div>
-        </main>
-        <SiteFooter />
-      </div>
-    );
   }
 
   if (!designsLoaded || !design) {
@@ -508,25 +449,29 @@ export default function BookingPage() {
             ))}
           </div>
 
-          <label className="field-label">Sabor de la torta</label>
-          <div className="pills">
-            {FLAVORS.map((f) => (
-              <button
-                key={f}
-                type="button"
-                className={`pill ${flavor === f ? 'pill-active' : ''}`}
-                onClick={() => setFlavor(f)}
-              >
-                {flavorLabels[f]}
-              </button>
-            ))}
-          </div>
+          {design.category !== 'ALFAJOR_CAKE' && (
+            <>
+              <label className="field-label">Sabor de la torta</label>
+              <div className="pills">
+                {FLAVORS.map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    className={`pill ${flavor === f ? 'pill-active' : ''}`}
+                    onClick={() => setFlavor(f)}
+                  >
+                    {flavorLabels[f]}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
           <label className="field-label">Sabor de relleno</label>
           {variant && (
             <RellenoSelect
               portions={variant.portions}
-              isPromo={variant.enPromocion}
+              isPromo={variant.enPromocion || design.category === 'ALFAJOR_CAKE'}
               value={relleno}
               onChange={setRelleno}
             />
@@ -537,20 +482,28 @@ export default function BookingPage() {
               <label className="field-label">Texto personalizado (opcional)</label>
               <input
                 type="text"
-                maxLength={MAX_CUSTOM_TEXT}
+                maxLength={design.customTextMaxLength}
                 placeholder="Ej: Feliz cumple Ana"
                 value={customText}
-                onChange={(e) => setCustomText(e.target.value.slice(0, MAX_CUSTOM_TEXT))}
+                onChange={(e) => setCustomText(e.target.value.slice(0, design.customTextMaxLength))}
               />
               <p className="field-hint">
-                Máximo {MAX_CUSTOM_TEXT} letras ({customText.length}/{MAX_CUSTOM_TEXT}).
+                Máximo {design.customTextMaxLength} letras ({customText.length}/{design.customTextMaxLength}).
               </p>
             </>
           )}
 
           {design.allowsCustomImage && (
             <>
-              <label className="field-label">Imagen para imprimir (opcional)</label>
+              <label className="field-label">
+                Imagen para imprimir {design.requiresCustomImage ? '(obligatoria)' : '(opcional)'}
+              </label>
+              {design.requiresCustomImage && (
+                <p className="field-hint">
+                  No editamos ni diseñamos la imagen: súbela lista para imprimir tal como la quieres en la
+                  minicake.
+                </p>
+              )}
               <input type="file" accept="image/*" onChange={handleImageChange} disabled={uploadingImage} />
               {uploadingImage && <p className="muted">Subiendo imagen...</p>}
               {imageError && <p className="warning">{imageError}</p>}
@@ -564,10 +517,19 @@ export default function BookingPage() {
             type="button"
             className="btn btn-primary"
             onClick={handleAddItem}
-            disabled={!variant || !relleno || uploadingImage || cartFull}
+            disabled={
+              !variant ||
+              !relleno ||
+              uploadingImage ||
+              cartFull ||
+              (design.requiresCustomImage && !customImageUrl)
+            }
           >
             Agregar al pedido
           </button>
+          {design.requiresCustomImage && !customImageUrl && (
+            <p className="field-hint">Sube tu imagen para poder agregar este producto.</p>
+          )}
           {cartFull && (
             <p className="warning">
               Un pedido web admite hasta {MAX_ITEMS} productos. Para más, escríbenos por WhatsApp.
@@ -702,14 +664,12 @@ export default function BookingPage() {
             onChange={(e) => draft.patch({ clientPhone: e.target.value })}
           />
 
-          <label className="field-label">Notas (opcional)</label>
+          <label className="field-label">Especificaciones (opcional)</label>
           <textarea
             maxLength={MAX_NOTES}
             value={draft.notes}
             onChange={(e) => draft.patch({ notes: e.target.value })}
           />
-
-          <p className="muted">Todos los pedidos son para recoger en el local.</p>
         </section>
 
         {/* ---------- Resumen antes de pagar ---------- */}
@@ -739,6 +699,18 @@ export default function BookingPage() {
               </dl>
             </section>
           )}
+
+        {/* ---------- Ubicación para recoger ---------- */}
+        <section className="booking-block booking-pickup dot-edges">
+          <h2>Todos los pedidos son para recoger en el local</h2>
+          <p className="booking-pickup-address">{BUSINESS.addressLine}</p>
+          <p className="booking-pickup-sub">
+            {BUSINESS.city} · Estación de metro más cercana: {BUSINESS.nearestMetro}
+          </p>
+          <a className="btn btn-accent" href={BUSINESS.mapsUrl} target="_blank" rel="noreferrer">
+            Abrir en Google Maps
+          </a>
+        </section>
 
         <div className="checkout-bar">
           <div className="checkout-bar-inner">

@@ -19,14 +19,14 @@ const prisma = new PrismaClient();
 
 const SOURCE_ROOT =
   process.env.CATALOG_SOURCE_ROOT ??
-  '/home/jhoyners-cardona/Downloads/promo-minickaes-melosa/28000';
+  '/home/jhoyners-cardona/proyects/melosa/imagenes-promo-minicakes/28000';
 
 const VARIANT_TEMPLATE = [
   { label: 'Minicake (2 porciones)', price: 28000, points: 4, prepMinutes: 20, portions: null, enPromocion: true },
-  { label: '5 porciones', price: 60000, points: 6, prepMinutes: 20, portions: 5, enPromocion: false },
-  { label: '10 porciones', price: 90000, points: 8, prepMinutes: 20, portions: 10, enPromocion: false },
-  { label: '15 porciones', price: 120000, points: 10, prepMinutes: 20, portions: 15, enPromocion: false },
-  { label: '20 porciones', price: 150000, points: 12, prepMinutes: 20, portions: 20, enPromocion: false },
+  { label: '6 porciones', price: 73000, points: 6, prepMinutes: 20, portions: 6, enPromocion: false },
+  { label: '10 porciones', price: 125000, points: 8, prepMinutes: 20, portions: 10, enPromocion: false },
+  { label: '15 porciones', price: 170000, points: 10, prepMinutes: 20, portions: 15, enPromocion: false },
+  { label: '20 porciones', price: 210000, points: 12, prepMinutes: 20, portions: 20, enPromocion: false },
 ];
 
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png']);

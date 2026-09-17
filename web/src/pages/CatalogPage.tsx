@@ -7,10 +7,10 @@ import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrom
 import DesignCarousel from '../components/DesignCarousel';
 import './CatalogPage.css';
 
-// Rama de prueba del catálogo por colores: solo se muestran los diseños que ya
-// tienen fotos de color cargadas (por ahora, 1 y 2). El resto del catálogo
-// $28.000 sigue intacto en la base de datos — este filtro es solo de esta
-// rama, no se toca `main`.
+// Hides the ~44 legacy one-photo-per-design rows from before the color-picker
+// rework (still in the DB, never deleted, just superseded). A design with
+// color images loaded shows; so does the alfajor minicake, which has none on
+// purpose — it's a single fixed design, no color/flavor to pick.
 const ONLY_COLOR_DESIGNS = true;
 
 function minVariantPrice(design: ProductDesign): number | null {
@@ -32,7 +32,10 @@ function minicakePrice(design: ProductDesign): number | null {
 // cards don't repeat it.
 const PRICE_BUCKETS = [
   { id: '28000', label: '$28.000', test: (p: number) => p === 28000 },
-  { id: '29000plus', label: '$29.000+', test: (p: number) => p >= 29000 },
+  // >= 29000 (not 30000) on purpose: catches the handful of designs already
+  // loaded at the old $29.000 price point before that tier was renamed to
+  // $30.000, so they don't silently vanish from every tab.
+  { id: '30000plus', label: '$30.000+', test: (p: number) => p >= 29000 },
 ];
 const DEFAULT_BUCKET = '28000';
 
@@ -74,7 +77,9 @@ export default function CatalogPage() {
   const grandes = false;
 
   const activeBucket = PRICE_BUCKETS.find((b) => b.id === bucketId) ?? PRICE_BUCKETS[0];
-  const colorDesigns = ONLY_COLOR_DESIGNS ? designs.filter((d) => d.images.length > 0) : designs;
+  const colorDesigns = ONLY_COLOR_DESIGNS
+    ? designs.filter((d) => d.images.length > 0 || d.category === 'ALFAJOR_CAKE')
+    : designs;
   const visibleDesigns = grandes
     ? colorDesigns
     : colorDesigns.filter((d) => {

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient, Flavor, OrderStatus } from '@prisma/client';
+import { PrismaClient, Flavor, ItemCategory, OrderStatus } from '@prisma/client';
 import { isBusinessDay } from '../utils/colombianHolidays';
 import { computePaymentDueDate, earliestPublicDeliveryDate, isValidIsoDate } from '../utils/colombiaTime';
 import { reserveDeliverySlot, minutesToLabel, isNotEnoughRoomError, isDateBlocked } from '../services/availability';
@@ -53,10 +53,6 @@ const VALID_SHAPES = ['Redonda', 'Corazón'];
 // A self-service web order bigger than this should go through WhatsApp / the admin
 // panel instead — also caps spam and "one order eats half the day" cases.
 const MAX_ITEMS_PER_PUBLIC_ORDER = 12;
-// Hard cap on the personalised phrase/number a client can add to a design that
-// allows it (matches the `maximo_20_letras` catalog folder). The web form caps
-// the input too; this is the server-side guard.
-const MAX_CUSTOM_TEXT_LENGTH = 20;
 
 interface PublicOrderItemInput {
   productDesignId: string;
@@ -104,15 +100,6 @@ export async function createPublicOrder(req: Request, res: Response) {
     });
   }
 
-  const overLongText = (items as PublicOrderItemInput[]).some(
-    (item) => (item.customText?.trim().length ?? 0) > MAX_CUSTOM_TEXT_LENGTH
-  );
-  if (overLongText) {
-    return res.status(400).json({
-      error: `El texto personalizado no puede pasar de ${MAX_CUSTOM_TEXT_LENGTH} letras.`,
-    });
-  }
-
   if (!isValidIsoDate(deliveryDate)) {
     return res.status(400).json({ error: 'deliveryDate debe ser una fecha válida con formato YYYY-MM-DD' });
   }
@@ -155,13 +142,15 @@ export async function createPublicOrder(req: Request, res: Response) {
     const designById = new Map(designs.map((d) => [d.id, d]));
 
     // effectiveRelleno/effectiveShape are decided here, not fully trusted from
-    // the client: a promo (minicake) variant is always Arequipe regardless of
-    // what was posted, and an empty/unknown shape falls back to "Redonda"
-    // (the form's own default).
+    // the client: a promo (minicake) variant is always Arequipe, as is every
+    // size of the alfajor minicake (its filling never changes, unlike a
+    // regular cake where only the 2-porciones size is locked), and an
+    // empty/unknown shape falls back to "Redonda" (the form's own default).
     const resolvedItems = (items as PublicOrderItemInput[]).map((item) => {
       const variant = variantById.get(item.variantId);
       const design = variant ? designById.get(item.productDesignId) : undefined;
-      const effectiveRelleno = variant?.enPromocion ? 'Arequipe' : item.relleno?.trim() || '';
+      const isAlfajor = design?.category === ItemCategory.ALFAJOR_CAKE;
+      const effectiveRelleno = variant?.enPromocion || isAlfajor ? 'Arequipe' : item.relleno?.trim() || '';
       const effectiveShape = item.shape?.trim() || 'Redonda';
       const effectiveColor = item.color?.trim() || undefined;
       return { item, variant, design, effectiveRelleno, effectiveShape, effectiveColor };
@@ -188,6 +177,17 @@ export async function createPublicOrder(req: Request, res: Response) {
         if (!knownColor) {
           return res.status(400).json({ error: `color no reconocido para ese diseño: "${effectiveColor}"` });
         }
+      }
+      if (design?.requiresCustomImage && !item.customImageUrl) {
+        return res.status(400).json({
+          error: 'Este diseño necesita que subas una imagen para imprimir.',
+        });
+      }
+      const maxTextLength = design?.customTextMaxLength ?? 20;
+      if ((item.customText?.trim().length ?? 0) > maxTextLength) {
+        return res.status(400).json({
+          error: `El texto personalizado no puede pasar de ${maxTextLength} letras.`,
+        });
       }
     }
 

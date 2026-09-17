@@ -27,7 +27,7 @@ export const SOCIAL = {
 export const RELLENOS_BASICOS = ['Vainilla', 'Arequipe', 'Chocolate', 'Frutos rojos'];
 export const RELLENOS_PREMIUM = ['Oreo', 'Milo', 'Fresas con crema'];
 export const RELLENO_PREMIUM_SURCHARGE_BY_PORTIONS: Record<number, number> = {
-  5: 5000,
+  6: 5000,
   10: 10000,
   15: 12500,
   20: 15000,

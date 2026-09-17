@@ -87,7 +87,16 @@ model ProductDesign {
   // first color uploaded; the picker swaps the displayed photo client-side.
   imageUrl               String?
   allowsCustomImage      Boolean      @default(false)
+  // True for a design where the client MUST upload their own print-ready image
+  // (Melosa doesn't edit/design the print herself) — the $29.000 catalog's
+  // "solo_imagen" and "texto_e_imagen" folders. Meaningless unless
+  // allowsCustomImage is also true.
+  requiresCustomImage    Boolean      @default(false)
   allowsCustomText       Boolean      @default(true)
+  // Per-design cap on the custom phrase/number length. Defaults to 20 (the
+  // $28.000 catalog's cap); the $29.000 "texto_e_imagen" designs use 10 so the
+  // phrase fits on the smaller minicake print.
+  customTextMaxLength    Int          @default(20)
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
 
@@ -177,6 +186,9 @@ enum OrderSource {
 enum Flavor {
   VAINILLA
   CHOCOLATE
+  // The alfajor minicake's fixed flavor — not a pickable option alongside
+  // Vainilla/Chocolate, the ALFAJOR_CAKE design always locks to this.
+  ALFAJOR
 }
 
 enum ItemCategory {

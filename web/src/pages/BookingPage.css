@@ -83,14 +83,6 @@ img.config-photo:not(.config-photo-empty) {
   color: var(--color-muted);
 }
 
-.booking-ticket-note {
-  background: var(--color-bg-soft);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3);
-  font-size: var(--text-sm);
-}
-
 .booking-block input[type='text'],
 .booking-block input[type='tel'],
 .booking-block input[type='date'],
@@ -259,6 +251,29 @@ img.config-photo:not(.config-photo-empty) {
   line-height: 1;
 }
 
+/* ---------- Pickup location callout ---------- */
+/* Same red + blinking-lights (.dot-edges, index.css) treatment as the
+   Landing "Todos los pedidos son para recoger" band, but as a card here
+   instead of a full-bleed section. overflow: hidden clips the dot bands to
+   the rounded corners so they don't poke out past the border-radius. */
+.booking-pickup {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  text-align: center;
+  overflow: hidden;
+}
+
+.booking-pickup-address {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  margin: 0 0 var(--space-2);
+}
+
+.booking-pickup-sub {
+  color: color-mix(in srgb, var(--color-on-primary) 75%, transparent);
+  margin: 0 0 var(--space-4);
+}
+
 /* ---------- Sticky checkout bar ---------- */
 /* Lives as the last child of .booking-main; the negative inline margin lets it
    span the column's full width past the page padding. */
@@ -314,34 +329,4 @@ img.config-photo:not(.config-photo-empty) {
 .checkout-error {
   margin: 0;
   padding: 0 0 var(--space-3);
-}
-
-/* ---------- Confirmation ---------- */
-.confirmation-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-12) var(--space-6);
-  text-align: center;
-  margin-top: var(--space-12);
-}
-
-.confirmation-card h1 {
-  margin-bottom: var(--space-4);
-}
-
-.whatsapp-button {
-  display: inline-block;
-  background: #25d366;
-  color: #fff;
-  text-decoration: none;
-  font-weight: 700;
-  padding: var(--space-3) var(--space-8);
-  border-radius: var(--radius-pill);
-  margin: var(--space-4) 0;
-}
-
-.confirmation-card .booking-back {
-  display: block;
-  margin-top: var(--space-4);
 }

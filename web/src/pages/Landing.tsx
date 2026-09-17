@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { getWithRetry } from '../api';
+import type { ProductDesign } from '../types';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import HeroCarousel, { type HeroSlide } from '../components/HeroCarousel';
 import { BUSINESS } from '../config';
@@ -12,6 +15,7 @@ import heroVerdeMariposas from '../assets/hero/hero-5-verde-mariposas.jpeg';
 import heroNaranjaFlores from '../assets/hero/hero-6-naranja-flores.jpeg';
 import heroDegradadoAzul from '../assets/hero/hero-7-degradado-azul.jpeg';
 import promoMinicake from '../assets/promo/minicake-blanca-verde.jpeg';
+import minicakeAlfajor from '../assets/alfajor/minicake-alfajor.jpeg';
 import localMelosa from '../assets/local-melosa.jpeg';
 
 const HERO_SLIDES: HeroSlide[] = [
@@ -35,6 +39,20 @@ const STEPS = [
 // catalog, so more images here would just be noise.
 
 export default function Landing() {
+  // The alfajor minicake has its own fixed design (no catalog picker), so its
+  // "Agendar" button needs to jump straight to /agendar/:id — resolved from the
+  // catalog instead of hardcoded, since the id changes if the design is ever
+  // recreated. Falls back to /catalogo if the fetch fails.
+  const [alfajorDesignId, setAlfajorDesignId] = useState<string | null>(null);
+  useEffect(() => {
+    getWithRetry<ProductDesign[]>('/product-designs')
+      .then((data) => {
+        const alfajor = data.find((d) => d.category === 'ALFAJOR_CAKE');
+        if (alfajor) setAlfajorDesignId(alfajor.id);
+      })
+      .catch((err) => console.error('Error cargando diseño de alfajor:', err));
+  }, []);
+
   return (
     <div className="landing">
       <AnnouncementBar />
@@ -96,6 +114,35 @@ export default function Landing() {
               <a href="#como" className="btn btn-ghost">
                 Cómo pedir
               </a>
+            </div>
+          </div>
+        </section>
+
+        {/* ---------- Minicake de alfajor ---------- */}
+        <section className="section alfajor-section dot-edges" id="alfajor">
+          <div className="section-inner">
+            <p className="eyebrow">También tenemos</p>
+            <h2>Minicake de alfajor</h2>
+
+            <div className="feature">
+              <img
+                className="feature-photo"
+                src={minicakeAlfajor}
+                alt="Minicake de alfajor, decoración clásica de dulce de leche"
+                loading="lazy"
+              />
+            </div>
+
+            <p className="section-lead alfajor-copy">
+              Nuestra MiniCake de Alfajor es tan deliciosa que podrías llegar a olvidarte de nuestro
+              catálogo de MiniCakes. Agenda una y prueba el sabor y la textura de un verdadero
+              alfajor.
+            </p>
+
+            <div className="btn-row">
+              <Link to={alfajorDesignId ? `/agendar/${alfajorDesignId}` : '/catalogo'} className="btn btn-primary">
+                Agendar
+              </Link>
             </div>
           </div>
         </section>

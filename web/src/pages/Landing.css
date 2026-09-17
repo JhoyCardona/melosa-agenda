@@ -119,6 +119,22 @@
   font-weight: 700;
 }
 
+/* ---------- Alfajor callout ---------- */
+/* Same lights (.dot-edges, index.css) as .pickup, but on the caramel/dulce de
+   leche tone instead of red — dark text (inherited from body) reads fine on
+   it, unlike .pickup's white-on-red. */
+.alfajor-section {
+  background: var(--color-alfajor-bg);
+}
+
+/* Warmer, tagline-ish treatment for the one-off marketing line — sets it apart
+   from a plain .section-lead intro paragraph. */
+.alfajor-copy {
+  font-family: var(--font-display);
+  font-style: italic;
+  max-width: 46ch;
+}
+
 /* ---------- Pickup callout ---------- */
 .pickup {
   background: var(--color-primary);

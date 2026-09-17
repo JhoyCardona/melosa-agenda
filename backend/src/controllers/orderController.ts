@@ -311,7 +311,7 @@ export async function createOrder(req: AuthRequest, res: Response) {
             })),
           },
         },
-        include: { items: { include: { productDesign: true, variant: true } } },
+        include: { items: { include: { productDesign: { include: { images: true } }, variant: true } } },
       });
     });
 
@@ -418,7 +418,7 @@ export async function getOrderById(req: AuthRequest, res: Response) {
 
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      include: { items: { include: { productDesign: true, variant: true } } },
+      include: { items: { include: { productDesign: { include: { images: true } }, variant: true } } },
     });
 
     if (!order) {
@@ -446,7 +446,7 @@ export async function getOrderByTicket(req: AuthRequest, res: Response) {
 
     const order = await prisma.order.findUnique({
       where: { ticketNumber },
-      include: { items: { include: { productDesign: true, variant: true } } },
+      include: { items: { include: { productDesign: { include: { images: true } }, variant: true } } },
     });
 
     if (!order) {
@@ -490,7 +490,7 @@ export async function listOrders(req: AuthRequest, res: Response) {
 
     const orders = await prisma.order.findMany({
       where,
-      include: { items: { include: { productDesign: true, variant: true } } },
+      include: { items: { include: { productDesign: { include: { images: true } }, variant: true } } },
       orderBy: [{ deliveryDate: 'asc' }, { deliveryStartMinutes: 'asc' }],
     });
 
@@ -521,7 +521,7 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
         deliveryDate: new Date(`${date}T00:00:00.000Z`),
         status: { not: OrderStatus.CANCELLED },
       },
-      include: { items: { include: { productDesign: true, variant: true } } },
+      include: { items: { include: { productDesign: { include: { images: true } }, variant: true } } },
     });
 
     const PAID_STATUSES = new Set<OrderStatus>([OrderStatus.DEPOSIT_PAID, OrderStatus.FULLY_PAID, OrderStatus.COMPLETED]);
@@ -606,7 +606,7 @@ async function findDayImageItems(date: string) {
       // To restrict the gallery to paid orders only, swap the line above for:
       // status: { in: [OrderStatus.DEPOSIT_PAID, OrderStatus.FULLY_PAID, OrderStatus.COMPLETED] },
     },
-    include: { items: { include: { productDesign: true, variant: true } } },
+    include: { items: { include: { productDesign: { include: { images: true } }, variant: true } } },
   });
 
   return orders.flatMap((order) =>
@@ -705,7 +705,7 @@ export async function getNotifications(req: AuthRequest, res: Response) {
     await markExpiredOrders();
 
     const dueSoonCutoff = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-    const include = { items: { include: { productDesign: true, variant: true } } };
+    const include = { items: { include: { productDesign: { include: { images: true } }, variant: true } } };
 
     const [porVencer, vencidos] = await Promise.all([
       prisma.order.findMany({

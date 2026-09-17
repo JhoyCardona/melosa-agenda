@@ -304,12 +304,13 @@ export async function deleteProductVariant(req: AuthRequest, res: Response) {
 }
 
 // Public catalog read — used by the mobile app's "add order" flow today, and by
-// the public web form later (Fase 2). Only CAKE is enabled for scheduling so far
-// (cupcakes/alfajores points are still pending per CLAUDE.md).
+// the public web form later (Fase 2). CAKE and ALFAJOR_CAKE are enabled for
+// scheduling (alfajor's prepMinutes/pricing landed with the alfajor minicake
+// design); cupcakes are still pending per CLAUDE.md.
 export async function listProductDesigns(req: Request, res: Response) {
   try {
     const designs = await prisma.productDesign.findMany({
-      where: { category: ItemCategory.CAKE },
+      where: { category: { in: [ItemCategory.CAKE, ItemCategory.ALFAJOR_CAKE] } },
       include: { variants: { orderBy: { points: 'asc' } }, images: { orderBy: { colorName: 'asc' } } },
       orderBy: { name: 'asc' },
     });

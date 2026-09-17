@@ -18,6 +18,7 @@
   --color-muted: #8a7a72; /* texto secundario */
   --color-on-primary: #fffaf4; /* texto sobre el rojo */
   --color-accent: #f2b705; /* amarillo dorado — detalles decorativos sobre el rojo */
+  --color-alfajor-bg: #b98d54; /* marrón dulce de leche, más oscuro para que resalten los focos dorados */
 
   /* --- Tipografía --- */
   --font-display: 'Fraunces', 'Georgia', 'Times New Roman', serif;
@@ -202,6 +203,17 @@ html {
 
 .btn-ghost:hover {
   background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+/* Dorado — para un CTA que necesita destacar sobre un fondo rojo (.btn-primary
+   ahí se perdería). Ver --color-accent arriba. */
+.btn-accent {
+  background: var(--color-accent);
+  color: var(--color-text);
+}
+
+.btn-accent:hover {
+  background: color-mix(in srgb, var(--color-accent) 85%, black);
 }
 
 .btn-row {
