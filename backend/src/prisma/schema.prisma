@@ -58,6 +58,11 @@ model OrderItem {
   customName      String?
   customFlavor    String?
   customImageUrl  String?
+  // Extra print images beyond the single-image case above, for a design whose
+  // variant allows more than one (ProductVariant.maxCustomImages > 1 — the
+  // memory cake and similar). Empty for the ordinary case; customImageUrl
+  // alone covers that.
+  customImageUrls String[]        @default([])
   customText      String?
   // Reference/inspiration photo the client sent by WhatsApp ("quiero algo así").
   // NOT the same as customImageUrl: that one is edible-print artwork and feeds
@@ -137,6 +142,11 @@ model ProductVariant {
   // that isn't sold by portions (e.g. a minicake, which is promo-locked anyway).
   portions        Int?
   enPromocion     Boolean       @default(false)
+  // How many print images an order item of this size can carry. 1 covers the
+  // ordinary case (OrderItem.customImageUrl). A design like the memory cake
+  // sets this higher per size (e.g. 5 on the minicake, 10 on bigger sizes) —
+  // those extra images live in OrderItem.customImageUrls.
+  maxCustomImages Int           @default(1)
   createdAt       DateTime      @default(now())
 
   orderItems OrderItem[]

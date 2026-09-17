@@ -8,9 +8,9 @@ import DesignCarousel from '../components/DesignCarousel';
 import './CatalogPage.css';
 
 // Hides the ~44 legacy one-photo-per-design rows from before the color-picker
-// rework (still in the DB, never deleted, just superseded). A design with
-// color images loaded shows; so does the alfajor minicake, which has none on
-// purpose — it's a single fixed design, no color/flavor to pick.
+// rework (still in the DB, never deleted, just superseded — all nameless). A
+// design with color images loaded shows; so does any named one-off design
+// (alfajor, memory cake, ...) even with no colors of its own to pick.
 const ONLY_COLOR_DESIGNS = true;
 
 function minVariantPrice(design: ProductDesign): number | null {
@@ -27,15 +27,18 @@ function minicakePrice(design: ProductDesign): number | null {
   return minVariantPrice(design);
 }
 
-// Minicake price tiers. Only two for now: $28.000 exactly, and "$29.000+" for
-// everything above it. The tabs are the only place the price is shown — the
+// Minicake price tiers. The tabs are the only place the price is shown — the
 // cards don't repeat it.
 const PRICE_BUCKETS = [
   { id: '28000', label: '$28.000', test: (p: number) => p === 28000 },
-  // >= 29000 (not 30000) on purpose: catches the handful of designs already
-  // loaded at the old $29.000 price point before that tier was renamed to
-  // $30.000, so they don't silently vanish from every tab.
-  { id: '30000plus', label: '$30.000+', test: (p: number) => p >= 29000 },
+  // === 30000 (not >=) now that $31.000 is its own tab — matches exactly one
+  // tier. p===29000 would fall through both tabs, but that price no longer
+  // exists in the catalog (the $29.000 tier was renamed to $30.000).
+  { id: '30000', label: '$30.000', test: (p: number) => p === 30000 },
+  // >= 31000 on purpose: 31000+/ is gretica's folder for one-off special
+  // designs (memory cake, and whatever she adds there next) — not a single
+  // fixed price point.
+  { id: '31000plus', label: '$31.000', test: (p: number) => p >= 31000 },
 ];
 const DEFAULT_BUCKET = '28000';
 
@@ -78,7 +81,7 @@ export default function CatalogPage() {
 
   const activeBucket = PRICE_BUCKETS.find((b) => b.id === bucketId) ?? PRICE_BUCKETS[0];
   const colorDesigns = ONLY_COLOR_DESIGNS
-    ? designs.filter((d) => d.images.length > 0 || d.category === 'ALFAJOR_CAKE')
+    ? designs.filter((d) => d.images.length > 0 || d.name !== '')
     : designs;
   const visibleDesigns = grandes
     ? colorDesigns

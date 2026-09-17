@@ -14,6 +14,9 @@ export interface ProductVariant {
   // `label`.
   portions: number | null;
   enPromocion: boolean;
+  // How many print images this size can carry. 1 for the ordinary case (a
+  // single upload); a design like the memory cake sets this higher per size.
+  maxCustomImages: number;
 }
 
 // One photo of a design in a given color. `colorName` is freeform text set by
@@ -80,6 +83,9 @@ export interface CartItem {
   color?: string;
   customText?: string;
   customImageUrl?: string;
+  // Extra print images beyond the single-image case above, for a design whose
+  // variant allows more than one (memory cake and similar).
+  customImageUrls?: string[];
   // Client's WhatsApp reference photo ("quiero algo así"). Separate from
   // customImageUrl, which is edible-print artwork.
   referenceImageUrl?: string;

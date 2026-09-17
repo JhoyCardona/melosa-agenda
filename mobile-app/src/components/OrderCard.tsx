@@ -15,10 +15,14 @@ interface OrderItem {
   priceAtOrder: string;
   pointsAtOrder: number;
   // Catalog fields are null for a custom line entered from the web admin form.
-  flavor: 'VAINILLA' | 'CHOCOLATE' | null;
+  // ALFAJOR is the alfajor minicake's fixed flavor, never client-picked.
+  flavor: 'VAINILLA' | 'CHOCOLATE' | 'ALFAJOR' | null;
   customName: string | null;
   customFlavor: string | null;
   customImageUrl: string | null;
+  // Extra print images beyond the one above, for a design whose variant
+  // allows more than one (the memory cake and similar).
+  customImageUrls: string[];
   // Client's WhatsApp reference photo ("quiero algo así"). Not the same as
   // customImageUrl (edible-print artwork) — shown as its own block.
   referenceImageUrl: string | null;
@@ -50,6 +54,7 @@ function catalogPhotoUrl(item: OrderItem): string | null {
 const flavorLabels: Record<string, string> = {
   VAINILLA: 'Vainilla',
   CHOCOLATE: 'Chocolate',
+  ALFAJOR: 'Alfajor',
 };
 
 // "Torta Corazón - 10 porciones" from a catalog item, or the hand-typed name
@@ -245,10 +250,15 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
               // thumbnails below, since a design says nothing about what goes
               // on the print (and soon an order can carry several of them).
               const referencePhotoUrl = item.referenceImageUrl ?? catalogPhotoUrl(item) ?? null;
-              // Single field today; wrapped in an array so this already
-              // renders as a row and doesn't need touching once an order can
-              // carry more than one print image.
-              const printImageUrls = item.customImageUrl ? [item.customImageUrl] : [];
+              // customImageUrls covers a design whose variant allows more
+              // than one print image (the memory cake's 5/10 toppers);
+              // customImageUrl alone covers the ordinary single-image case.
+              const printImageUrls =
+                item.customImageUrls.length > 0
+                  ? item.customImageUrls
+                  : item.customImageUrl
+                    ? [item.customImageUrl]
+                    : [];
               return (
               <View key={item.id} style={styles.itemDetailCard}>
                 <Text style={styles.itemDetailTitle}>

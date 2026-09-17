@@ -33,7 +33,7 @@ const DESIGN_FALLBACK = 'Minicake';
 // de torta grande, así que muestran todos los tamaños. La única forma de
 // distinguir un catálogo con precios reales hoy es el precio de la minicake —
 // no hay un flag propio en el schema.
-const CAKE_TIERS_WITH_REAL_SIZES = [28000, 30000];
+const CAKE_TIERS_WITH_REAL_SIZES = [28000, 30000, 31000];
 function bookableVariants(design: ProductDesign | undefined): ProductDesign['variants'] {
   if (!design) return [];
   if (design.category === 'ALFAJOR_CAKE') return design.variants;
@@ -123,7 +123,11 @@ export default function BookingPage() {
   const [color, setColor] = useState('');
   const [relleno, setRelleno] = useState('');
   const [customText, setCustomText] = useState('');
-  const [customImageUrl, setCustomImageUrl] = useState('');
+  // Holds every uploaded print image, in order. For the ordinary case
+  // (variant.maxCustomImages === 1) this is at most 1 URL — same behavior as
+  // before, just stored as an array so a design like the memory cake (up to
+  // 5/10 images) doesn't need separate state.
+  const [customImages, setCustomImages] = useState<string[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageError, setImageError] = useState('');
   const [justAdded, setJustAdded] = useState(false);
@@ -189,7 +193,7 @@ export default function BookingPage() {
     setShape('Redonda');
     setColor(design?.images[0]?.colorName ?? '');
     setCustomText('');
-    setCustomImageUrl('');
+    setCustomImages([]);
     setImageError('');
   }, [design, grandes]);
 
@@ -205,6 +209,14 @@ export default function BookingPage() {
   useEffect(() => {
     setRelleno(variant?.enPromocion || design?.category === 'ALFAJOR_CAKE' ? 'Arequipe' : '');
   }, [variant?.id, variant?.enPromocion, design?.category]);
+
+  // maxCustomImages is per size (the memory cake: 5 on the minicake/6-porciones,
+  // 10 on bigger sizes) — trim already-uploaded images down if switching to a
+  // smaller size drops the cap.
+  useEffect(() => {
+    const max = variant?.maxCustomImages ?? 1;
+    setCustomImages((prev) => (prev.length > max ? prev.slice(0, max) : prev));
+  }, [variant?.id, variant?.maxCustomImages]);
 
   useEffect(() => {
     if (!draft.deliveryDate) {
@@ -226,19 +238,30 @@ export default function BookingPage() {
       .finally(() => setLoadingPreview(false));
   }, [draft.deliveryDate, draft.totalMinutes]);
 
+  // Uploads every file the client just picked (one request each, sequentially —
+  // simpler to reason about than parallel uploads racing each other's errors),
+  // stopping at however many slots are left under the current size's cap.
   async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !design) return;
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ''; // lets picking the exact same file again re-trigger onChange
+    if (files.length === 0 || !design || !variant) return;
+    const remaining = Math.max(0, variant.maxCustomImages - customImages.length);
+    const toUpload = files.slice(0, remaining);
+    if (toUpload.length === 0) return;
     setImageError('');
     setUploadingImage(true);
     try {
-      const formData = new FormData();
-      formData.append('image', file);
-      formData.append('productDesignId', design.id);
-      const response = await api.post<{ imageUrl: string }>('/public-orders/upload-image', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      setCustomImageUrl(response.data.imageUrl);
+      const uploaded: string[] = [];
+      for (const file of toUpload) {
+        const formData = new FormData();
+        formData.append('image', file);
+        formData.append('productDesignId', design.id);
+        const response = await api.post<{ imageUrl: string }>('/public-orders/upload-image', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        uploaded.push(response.data.imageUrl);
+      }
+      setCustomImages((prev) => [...prev, ...uploaded]);
     } catch (error) {
       const message =
         (error as { response?: { data?: { error?: string } } })?.response?.data?.error ??
@@ -249,11 +272,16 @@ export default function BookingPage() {
     }
   }
 
+  function removeImage(index: number) {
+    setCustomImages((prev) => prev.filter((_, i) => i !== index));
+  }
+
   const cartFull = draft.items.length >= MAX_ITEMS;
 
   function handleAddItem() {
     if (!design || !variant || !relleno || cartFull) return;
     const surcharge = rellenoSurcharge(relleno, variant.portions, variant.enPromocion);
+    const multiImage = variant.maxCustomImages > 1;
     draft.addItem({
       key: newKey(),
       designId: design.id,
@@ -269,10 +297,11 @@ export default function BookingPage() {
       shape,
       color: color || undefined,
       customText: customText.trim() || undefined,
-      customImageUrl: customImageUrl || undefined,
+      customImageUrl: !multiImage ? customImages[0] || undefined : undefined,
+      customImageUrls: multiImage && customImages.length > 0 ? customImages : undefined,
     });
     setCustomText('');
-    setCustomImageUrl('');
+    setCustomImages([]);
     setImageError('');
     setJustAdded(true);
     window.setTimeout(() => setJustAdded(false), 2500);
@@ -322,6 +351,7 @@ export default function BookingPage() {
           color: i.color,
           customText: i.customText,
           customImageUrl: i.customImageUrl,
+          customImageUrls: i.customImageUrls,
         })),
       });
 
@@ -493,10 +523,12 @@ export default function BookingPage() {
             </>
           )}
 
-          {design.allowsCustomImage && (
+          {design.allowsCustomImage && variant && (
             <>
               <label className="field-label">
-                Imagen para imprimir {design.requiresCustomImage ? '(obligatoria)' : '(opcional)'}
+                {variant.maxCustomImages > 1
+                  ? `Imágenes para imprimir (hasta ${variant.maxCustomImages}${design.requiresCustomImage ? ', mínimo 1' : ''})`
+                  : `Imagen para imprimir ${design.requiresCustomImage ? '(obligatoria)' : '(opcional)'}`}
               </label>
               {design.requiresCustomImage && (
                 <p className="field-hint">
@@ -504,11 +536,39 @@ export default function BookingPage() {
                   minicake.
                 </p>
               )}
-              <input type="file" accept="image/*" onChange={handleImageChange} disabled={uploadingImage} />
+              <input
+                type="file"
+                accept="image/*"
+                multiple={variant.maxCustomImages > 1}
+                onChange={handleImageChange}
+                disabled={uploadingImage || customImages.length >= variant.maxCustomImages}
+              />
+              {variant.maxCustomImages > 1 && (
+                <p className="field-hint">
+                  {customImages.length}/{variant.maxCustomImages} imágenes.
+                </p>
+              )}
               {uploadingImage && <p className="muted">Subiendo imagen...</p>}
               {imageError && <p className="warning">{imageError}</p>}
-              {customImageUrl && (
-                <img className="config-photo" src={customImageUrl} alt="Imagen personalizada" />
+              {customImages.length > 0 && (
+                <div className={variant.maxCustomImages > 1 ? 'custom-images-grid' : 'custom-image-single'}>
+                  {customImages.map((url, i) => (
+                    <div key={url} className="custom-image-thumb">
+                      <img
+                        src={url}
+                        alt={variant.maxCustomImages > 1 ? `Imagen ${i + 1}` : 'Imagen personalizada'}
+                      />
+                      <button
+                        type="button"
+                        className="custom-image-remove"
+                        aria-label="Quitar imagen"
+                        onClick={() => removeImage(i)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </>
           )}
@@ -522,12 +582,12 @@ export default function BookingPage() {
               !relleno ||
               uploadingImage ||
               cartFull ||
-              (design.requiresCustomImage && !customImageUrl)
+              (design.requiresCustomImage && customImages.length === 0)
             }
           >
             Agregar al pedido
           </button>
-          {design.requiresCustomImage && !customImageUrl && (
+          {design.requiresCustomImage && customImages.length === 0 && (
             <p className="field-hint">Sube tu imagen para poder agregar este producto.</p>
           )}
           {cartFull && (
@@ -551,6 +611,7 @@ export default function BookingPage() {
                       .join(' · ')}
                     {i.customText ? ` · "${i.customText}"` : ''}
                     {i.customImageUrl ? ' · con imagen' : ''}
+                    {i.customImageUrls?.length ? ` · ${i.customImageUrls.length} imágenes` : ''}
                   </span>
                   <span className="cart-item-right">
                     ${i.price.toLocaleString('es-CO')}

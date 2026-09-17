@@ -66,6 +66,56 @@ img.config-photo:not(.config-photo-empty) {
   margin-top: var(--space-3);
 }
 
+/* ---------- Custom print image(s) ---------- */
+.custom-image-thumb {
+  position: relative;
+  display: inline-block;
+}
+
+.custom-image-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.custom-image-single {
+  margin-top: var(--space-3);
+}
+
+.custom-image-single .custom-image-thumb img {
+  width: 96px;
+  height: 128px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  display: block;
+}
+
+.custom-images-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.custom-images-grid .custom-image-thumb img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  display: block;
+}
+
 /* ---------- Fields ---------- */
 .field-label {
   display: block;

@@ -60,6 +60,9 @@ interface PublicOrderItemInput {
   flavor: Flavor;
   relleno: string;
   customImageUrl?: string;
+  // Only used for a variant with maxCustomImages > 1 (the memory cake and
+  // similar) — customImageUrl alone covers the ordinary case.
+  customImageUrls?: string[];
   customText?: string;
   shape?: string;
   color?: string;
@@ -153,10 +156,27 @@ export async function createPublicOrder(req: Request, res: Response) {
       const effectiveRelleno = variant?.enPromocion || isAlfajor ? 'Arequipe' : item.relleno?.trim() || '';
       const effectiveShape = item.shape?.trim() || 'Redonda';
       const effectiveColor = item.color?.trim() || undefined;
-      return { item, variant, design, effectiveRelleno, effectiveShape, effectiveColor };
+      // A variant with maxCustomImages > 1 (the memory cake and similar) uses
+      // customImageUrls; the ordinary single-image case ignores it entirely.
+      const multiImage = (variant?.maxCustomImages ?? 1) > 1;
+      const effectiveImages = multiImage
+        ? (item.customImageUrls ?? []).filter((url) => typeof url === 'string' && url.trim())
+        : item.customImageUrl
+          ? [item.customImageUrl]
+          : [];
+      return { item, variant, design, effectiveRelleno, effectiveShape, effectiveColor, multiImage, effectiveImages };
     });
 
-    for (const { item, variant, design, effectiveRelleno, effectiveShape, effectiveColor } of resolvedItems) {
+    for (const {
+      item,
+      variant,
+      design,
+      effectiveRelleno,
+      effectiveShape,
+      effectiveColor,
+      multiImage,
+      effectiveImages,
+    } of resolvedItems) {
       if (!variant || variant.productDesignId !== item.productDesignId) {
         return res.status(404).json({ error: 'Uno de los productos seleccionados no existe' });
       }
@@ -178,9 +198,14 @@ export async function createPublicOrder(req: Request, res: Response) {
           return res.status(400).json({ error: `color no reconocido para ese diseño: "${effectiveColor}"` });
         }
       }
-      if (design?.requiresCustomImage && !item.customImageUrl) {
+      if (design?.requiresCustomImage && effectiveImages.length === 0) {
         return res.status(400).json({
           error: 'Este diseño necesita que subas una imagen para imprimir.',
+        });
+      }
+      if (multiImage && variant && effectiveImages.length > variant.maxCustomImages) {
+        return res.status(400).json({
+          error: `Este tamaño admite hasta ${variant.maxCustomImages} imágenes.`,
         });
       }
       const maxTextLength = design?.customTextMaxLength ?? 20;
@@ -229,24 +254,28 @@ export async function createPublicOrder(req: Request, res: Response) {
           requiredPaymentPercent,
           totalPrice,
           items: {
-            create: resolvedItems.map(({ item, variant, design, effectiveRelleno, effectiveShape, effectiveColor }) => {
-              // Honour the design's flags even if the client posts these fields
-              // directly (the form already hides the inputs when not allowed).
-              return {
-                productDesignId: item.productDesignId,
-                variantId: item.variantId,
-                priceAtOrder:
-                  Number(variant!.price) +
-                  rellenoSurcharge(effectiveRelleno, variant!.portions, variant!.enPromocion),
-                pointsAtOrder: variant!.points,
-                flavor: item.flavor,
-                shape: effectiveShape,
-                color: effectiveColor ?? null,
-                relleno: effectiveRelleno,
-                customImageUrl: design!.allowsCustomImage ? item.customImageUrl || null : null,
-                customText: design!.allowsCustomText ? item.customText?.trim() || null : null,
-              };
-            }),
+            create: resolvedItems.map(
+              ({ item, variant, design, effectiveRelleno, effectiveShape, effectiveColor, multiImage, effectiveImages }) => {
+                // Honour the design's flags even if the client posts these fields
+                // directly (the form already hides the inputs when not allowed).
+                const imagesAllowed = design!.allowsCustomImage;
+                return {
+                  productDesignId: item.productDesignId,
+                  variantId: item.variantId,
+                  priceAtOrder:
+                    Number(variant!.price) +
+                    rellenoSurcharge(effectiveRelleno, variant!.portions, variant!.enPromocion),
+                  pointsAtOrder: variant!.points,
+                  flavor: item.flavor,
+                  shape: effectiveShape,
+                  color: effectiveColor ?? null,
+                  relleno: effectiveRelleno,
+                  customImageUrl: imagesAllowed && !multiImage ? effectiveImages[0] ?? null : null,
+                  customImageUrls: imagesAllowed && multiImage ? effectiveImages : [],
+                  customText: design!.allowsCustomText ? item.customText?.trim() || null : null,
+                };
+              }
+            ),
           },
         },
         include: { items: true },

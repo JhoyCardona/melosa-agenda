@@ -610,16 +610,19 @@ async function findDayImageItems(date: string) {
   });
 
   return orders.flatMap((order) =>
-    order.items
-      .filter((item) => !!item.customImageUrl)
-      .map((item) => ({
+    order.items.flatMap((item) => {
+      // customImageUrls covers a variant with maxCustomImages > 1 (the memory
+      // cake and similar); everything else is the ordinary single-image case.
+      const urls = item.customImageUrls.length > 0 ? item.customImageUrls : item.customImageUrl ? [item.customImageUrl] : [];
+      return urls.map((imageUrl) => ({
         itemId: item.id,
         ticketNumber: order.ticketNumber,
         clientName: order.clientName,
         productDesignName: item.productDesign?.name ?? item.customName ?? 'Personalizado',
         variantLabel: item.variant?.label ?? '',
-        imageUrl: item.customImageUrl as string,
-      }))
+        imageUrl,
+      }));
+    })
   );
 }
 
