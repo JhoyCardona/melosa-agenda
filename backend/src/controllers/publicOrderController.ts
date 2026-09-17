@@ -47,6 +47,9 @@ export async function uploadPublicImage(req: Request, res: Response) {
 }
 
 const VALID_FLAVORS = Object.values(Flavor);
+// Shape is now a client pick at add-to-cart time (color-picker rework), not a
+// fixed ProductDesign field — "Redonda" is the default the form preselects.
+const VALID_SHAPES = ['Redonda', 'Corazón'];
 // A self-service web order bigger than this should go through WhatsApp / the admin
 // panel instead — also caps spam and "one order eats half the day" cases.
 const MAX_ITEMS_PER_PUBLIC_ORDER = 12;
@@ -62,6 +65,8 @@ interface PublicOrderItemInput {
   relleno: string;
   customImageUrl?: string;
   customText?: string;
+  shape?: string;
+  color?: string;
 }
 
 // Public, no-auth endpoint clients use to book their own order from the web form.
@@ -144,21 +149,25 @@ export async function createPublicOrder(req: Request, res: Response) {
     const designIds = (items as PublicOrderItemInput[]).map((item) => item.productDesignId);
     const [variants, designs] = await Promise.all([
       prisma.productVariant.findMany({ where: { id: { in: variantIds } } }),
-      prisma.productDesign.findMany({ where: { id: { in: designIds } } }),
+      prisma.productDesign.findMany({ where: { id: { in: designIds } }, include: { images: true } }),
     ]);
     const variantById = new Map(variants.map((v) => [v.id, v]));
     const designById = new Map(designs.map((d) => [d.id, d]));
 
-    // effectiveRelleno is decided here, not trusted from the client: a promo
-    // (minicake) variant is always Arequipe regardless of what was posted.
+    // effectiveRelleno/effectiveShape are decided here, not fully trusted from
+    // the client: a promo (minicake) variant is always Arequipe regardless of
+    // what was posted, and an empty/unknown shape falls back to "Redonda"
+    // (the form's own default).
     const resolvedItems = (items as PublicOrderItemInput[]).map((item) => {
       const variant = variantById.get(item.variantId);
       const design = variant ? designById.get(item.productDesignId) : undefined;
       const effectiveRelleno = variant?.enPromocion ? 'Arequipe' : item.relleno?.trim() || '';
-      return { item, variant, design, effectiveRelleno };
+      const effectiveShape = item.shape?.trim() || 'Redonda';
+      const effectiveColor = item.color?.trim() || undefined;
+      return { item, variant, design, effectiveRelleno, effectiveShape, effectiveColor };
     });
 
-    for (const { item, variant, effectiveRelleno } of resolvedItems) {
+    for (const { item, variant, design, effectiveRelleno, effectiveShape, effectiveColor } of resolvedItems) {
       if (!variant || variant.productDesignId !== item.productDesignId) {
         return res.status(404).json({ error: 'Uno de los productos seleccionados no existe' });
       }
@@ -170,6 +179,15 @@ export async function createPublicOrder(req: Request, res: Response) {
       }
       if (!isValidRelleno(effectiveRelleno)) {
         return res.status(400).json({ error: `relleno no reconocido: "${effectiveRelleno}"` });
+      }
+      if (!VALID_SHAPES.includes(effectiveShape)) {
+        return res.status(400).json({ error: `shape debe ser uno de: ${VALID_SHAPES.join(', ')}` });
+      }
+      if (effectiveColor && design && design.images.length > 0) {
+        const knownColor = design.images.some((img) => img.colorName === effectiveColor);
+        if (!knownColor) {
+          return res.status(400).json({ error: `color no reconocido para ese diseño: "${effectiveColor}"` });
+        }
       }
     }
 
@@ -211,7 +229,7 @@ export async function createPublicOrder(req: Request, res: Response) {
           requiredPaymentPercent,
           totalPrice,
           items: {
-            create: resolvedItems.map(({ item, variant, design, effectiveRelleno }) => {
+            create: resolvedItems.map(({ item, variant, design, effectiveRelleno, effectiveShape, effectiveColor }) => {
               // Honour the design's flags even if the client posts these fields
               // directly (the form already hides the inputs when not allowed).
               return {
@@ -222,7 +240,8 @@ export async function createPublicOrder(req: Request, res: Response) {
                   rellenoSurcharge(effectiveRelleno, variant!.portions, variant!.enPromocion),
                 pointsAtOrder: variant!.points,
                 flavor: item.flavor,
-                shape: design!.shape,
+                shape: effectiveShape,
+                color: effectiveColor ?? null,
                 relleno: effectiveRelleno,
                 customImageUrl: design!.allowsCustomImage ? item.customImageUrl || null : null,
                 customText: design!.allowsCustomText ? item.customText?.trim() || null : null,

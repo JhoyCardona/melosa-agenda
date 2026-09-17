@@ -64,11 +64,14 @@ model OrderItem {
   // the day's print ZIP (findDayImageItems). referenceImageUrl is for the baker's
   // eyes only and stays out of the print gallery.
   referenceImageUrl String?
-  // Shape snapshot (from ProductDesign.shape, or hand-typed for a free line) and
-  // filling, mandatory on every order item going forward. customSize is the
-  // free-text portions ("20 porciones") for a free line only — catalog lines get
-  // their size from variant.label.
+  // Shape snapshot — for a catalog line this is now the client's own pick at
+  // add-to-cart time (Redonda/Corazón), not inherited from ProductDesign.shape
+  // (that field only matters for designs outside this color-picker flow).
+  // Hand-typed for a free line. Mandatory on every order item going forward.
   shape           String?
+  // Color snapshot — the client's pick among that design's ProductDesignImage
+  // rows. Null for a free line or a design with no color images loaded yet.
+  color           String?
   relleno         String?
   customSize      String?
   createdAt       DateTime        @default(now())
@@ -79,6 +82,9 @@ model ProductDesign {
   name                   String
   category               ItemCategory
   shape                  String?
+  // Cover photo — shown in catalog grids and as the default before a color is
+  // picked. For a design with color variants (see `images`), this is just the
+  // first color uploaded; the picker swaps the displayed photo client-side.
   imageUrl               String?
   allowsCustomImage      Boolean      @default(false)
   allowsCustomText       Boolean      @default(true)
@@ -87,6 +93,21 @@ model ProductDesign {
 
   variants   ProductVariant[]
   orderItems OrderItem[]
+  images     ProductDesignImage[]
+}
+
+// One photo per color a design is available in. Colors are freeform text (no
+// master color list) since the source of truth is gretica's file naming, not a
+// separate admin screen. `colorName` is unique per design, not globally.
+model ProductDesignImage {
+  id              String        @id @default(uuid())
+  productDesignId String
+  productDesign   ProductDesign @relation(fields: [productDesignId], references: [id], onDelete: Cascade)
+  colorName       String
+  imageUrl        String
+  createdAt       DateTime      @default(now())
+
+  @@unique([productDesignId, colorName])
 }
 
 model ProductVariant {

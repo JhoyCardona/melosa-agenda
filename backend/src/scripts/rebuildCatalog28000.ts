@@ -8,12 +8,13 @@ const prisma = new PrismaClient();
 // One-off: wipe the whole catalog and rebuild it from the client's organised
 // $28.000 minicake photo set. Every design is nameless and description-less on
 // purpose — the photo is the identity, and it's the photo that shows up on the
-// order. The source folder tree encodes the two things that vary:
+// order. The source folder tree encodes design + color:
 //
-//   maximo_20_letras/ -> allowsCustomText: true   (client can add a phrase/number)
-//   sin_texto/        -> allowsCustomText: false
-//   .../corazon/      -> shape: "Corazón"
-//   .../redondas/     -> shape: "Redonda"
+//   28000/<designNumber>/<colorName>.jpg  -> one ProductDesign per numbered
+//   folder, one ProductDesignImage per file (colorName = filename without
+//   extension). Shape and custom text are no longer folder-driven: shape is a
+//   client pick on BookingPage (Redonda/Corazón), and every design here allows
+//   custom text (20-letter cap still enforced server-side).
 //
 // Run it against prod the same way the earlier seed scripts were run:
 //   npx ts-node src/scripts/rebuildCatalog28000.ts --yes
@@ -21,19 +22,6 @@ const prisma = new PrismaClient();
 const SOURCE_ROOT =
   process.env.CATALOG_SOURCE_ROOT ??
   '/home/jhoyners-cardona/Downloads/promo-minickaes-melosa/28000';
-
-interface FolderRule {
-  relDir: string;
-  allowsCustomText: boolean;
-  shape: string;
-}
-
-const FOLDER_RULES: FolderRule[] = [
-  { relDir: 'maximo_20_letras/corazon', allowsCustomText: true, shape: 'Corazón' },
-  { relDir: 'maximo_20_letras/redondas', allowsCustomText: true, shape: 'Redonda' },
-  { relDir: 'sin_texto/corazon', allowsCustomText: false, shape: 'Corazón' },
-  { relDir: 'sin_texto/redondas', allowsCustomText: false, shape: 'Redonda' },
-];
 
 // Same 5-size shape every design gets. Minicake (2 porciones) is the promo, at
 // the real $28.000; the torta sizes keep the placeholder prices from
@@ -67,6 +55,38 @@ async function uploadToCloudinary(absPath: string): Promise<string> {
   return result.secure_url;
 }
 
+interface DesignFolder {
+  designNumber: string;
+  images: { colorName: string; absPath: string }[];
+}
+
+function collectDesignFolders(): DesignFolder[] {
+  const entries = fs
+    .readdirSync(SOURCE_ROOT, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    // Numeric folder names sort as strings by default ("10" before "2") —
+    // sort numerically so console output/order matches how gretica numbered them.
+    .sort((a, b) => Number(a.name) - Number(b.name));
+
+  const folders: DesignFolder[] = [];
+  for (const entry of entries) {
+    const dir = path.join(SOURCE_ROOT, entry.name);
+    const files = fs
+      .readdirSync(dir)
+      .filter((f) => IMAGE_EXT.has(path.extname(f).toLowerCase()))
+      .sort();
+    if (files.length === 0) continue;
+    folders.push({
+      designNumber: entry.name,
+      images: files.map((f) => ({
+        colorName: path.basename(f, path.extname(f)),
+        absPath: path.join(dir, f),
+      })),
+    });
+  }
+  return folders;
+}
+
 async function main() {
   if (!process.argv.includes('--yes')) {
     console.error(
@@ -76,22 +96,16 @@ async function main() {
     return;
   }
 
-  // Collect the source files first, so we fail before touching the DB if the
-  // folder tree isn't where we expect.
-  const jobs: { absPath: string; rule: FolderRule }[] = [];
-  for (const rule of FOLDER_RULES) {
-    const dir = path.join(SOURCE_ROOT, rule.relDir);
-    if (!fs.existsSync(dir)) {
-      throw new Error(`Source folder not found: ${dir}`);
-    }
-    const files = fs
-      .readdirSync(dir)
-      .filter((f) => IMAGE_EXT.has(path.extname(f).toLowerCase()))
-      .sort();
-    for (const f of files) jobs.push({ absPath: path.join(dir, f), rule });
+  if (!fs.existsSync(SOURCE_ROOT)) {
+    throw new Error(`Source folder not found: ${SOURCE_ROOT}`);
   }
-  if (jobs.length === 0) throw new Error(`No images found under ${SOURCE_ROOT}`);
-  console.log(`Found ${jobs.length} source images.`);
+
+  const designFolders = collectDesignFolders();
+  if (designFolders.length === 0) {
+    throw new Error(`No design folders with images found under ${SOURCE_ROOT}`);
+  }
+  const totalImages = designFolders.reduce((sum, d) => sum + d.images.length, 0);
+  console.log(`Found ${designFolders.length} design(s), ${totalImages} image(s) total.`);
 
   // Safety: never orphan order history. With FK onDelete: Restrict, a delete
   // would throw anyway, but this gives a clear message instead.
@@ -103,19 +117,28 @@ async function main() {
   }
 
   const deleted = await prisma.productDesign.deleteMany({});
-  console.log(`Deleted ${deleted.count} existing ProductDesign row(s) (variants cascade).`);
+  console.log(`Deleted ${deleted.count} existing ProductDesign row(s) (variants + images cascade).`);
 
-  let created = 0;
-  for (const { absPath, rule } of jobs) {
-    const imageUrl = await uploadToCloudinary(absPath);
+  let createdDesigns = 0;
+  let uploadedImages = 0;
+  for (const folder of designFolders) {
+    // Upload every color photo first so a mid-upload failure doesn't leave a
+    // ProductDesign with a broken cover imageUrl.
+    const uploaded: { colorName: string; imageUrl: string }[] = [];
+    for (const img of folder.images) {
+      const imageUrl = await uploadToCloudinary(img.absPath);
+      uploaded.push({ colorName: img.colorName, imageUrl });
+      uploadedImages += 1;
+    }
+
     await prisma.productDesign.create({
       data: {
         name: '',
         category: ItemCategory.CAKE,
-        shape: rule.shape,
-        imageUrl,
+        shape: null,
+        imageUrl: uploaded[0].imageUrl,
         allowsCustomImage: false,
-        allowsCustomText: rule.allowsCustomText,
+        allowsCustomText: true,
         variants: {
           create: VARIANT_TEMPLATE.map((v) => ({
             label: v.label,
@@ -126,20 +149,20 @@ async function main() {
             enPromocion: v.enPromocion,
           })),
         },
+        images: {
+          create: uploaded.map((u) => ({ colorName: u.colorName, imageUrl: u.imageUrl })),
+        },
       },
     });
-    created += 1;
+    createdDesigns += 1;
     console.log(
-      `  [${created}/${jobs.length}] ${rule.shape} · texto=${rule.allowsCustomText ? 'sí' : 'no'} · ${path.basename(absPath)}`
+      `  [${createdDesigns}/${designFolders.length}] diseño ${folder.designNumber} · colores: ${uploaded.map((u) => u.colorName).join(', ')}`
     );
   }
 
-  const byShape = await prisma.productDesign.groupBy({ by: ['shape'], _count: true });
-  const withText = await prisma.productDesign.count({ where: { allowsCustomText: true } });
   console.log(
-    `\nDone. ${created} designs created. Con texto: ${withText}, sin texto: ${created - withText}.`
+    `\nDone. ${createdDesigns} design(s) created, ${uploadedImages} color image(s) uploaded. Todos con texto habilitado (máx. 20 letras).`
   );
-  console.log('Por forma:', byShape.map((g) => `${g.shape}=${g._count}`).join(', '));
 }
 
 main()

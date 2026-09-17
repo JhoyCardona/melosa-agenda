@@ -21,7 +21,7 @@ interface VariantInput {
 export async function listAllProductDesigns(req: AuthRequest, res: Response) {
   try {
     const designs = await prisma.productDesign.findMany({
-      include: { variants: { orderBy: { points: 'asc' } } },
+      include: { variants: { orderBy: { points: 'asc' } }, images: { orderBy: { colorName: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -310,7 +310,7 @@ export async function listProductDesigns(req: Request, res: Response) {
   try {
     const designs = await prisma.productDesign.findMany({
       where: { category: ItemCategory.CAKE },
-      include: { variants: { orderBy: { points: 'asc' } } },
+      include: { variants: { orderBy: { points: 'asc' } }, images: { orderBy: { colorName: 'asc' } } },
       orderBy: { name: 'asc' },
     });
 

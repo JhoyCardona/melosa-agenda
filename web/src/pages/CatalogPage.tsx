@@ -4,7 +4,14 @@ import { getWithRetry } from '../api';
 import type { ProductDesign } from '../types';
 import { useAdminAuth } from '../context/AdminAuth';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
+import DesignCarousel from '../components/DesignCarousel';
 import './CatalogPage.css';
+
+// Rama de prueba del catálogo por colores: solo se muestran los diseños que ya
+// tienen fotos de color cargadas (por ahora, 1 y 2). El resto del catálogo
+// $28.000 sigue intacto en la base de datos — este filtro es solo de esta
+// rama, no se toca `main`.
+const ONLY_COLOR_DESIGNS = true;
 
 function minVariantPrice(design: ProductDesign): number | null {
   if (design.variants.length === 0) return null;
@@ -67,9 +74,10 @@ export default function CatalogPage() {
   const grandes = false;
 
   const activeBucket = PRICE_BUCKETS.find((b) => b.id === bucketId) ?? PRICE_BUCKETS[0];
+  const colorDesigns = ONLY_COLOR_DESIGNS ? designs.filter((d) => d.images.length > 0) : designs;
   const visibleDesigns = grandes
-    ? designs
-    : designs.filter((d) => {
+    ? colorDesigns
+    : colorDesigns.filter((d) => {
         const price = minicakePrice(d);
         return price !== null && activeBucket.test(price);
       });
@@ -160,17 +168,11 @@ export default function CatalogPage() {
                       aria-pressed={isSelected}
                       onClick={() => setSelectedId(isSelected ? null : design.id)}
                     >
-                      {design.imageUrl ? (
-                        <img
-                          src={design.imageUrl}
-                          alt={design.name || 'Diseño de minicake'}
-                          loading="lazy"
-                        />
-                      ) : (
-                        <span className="catalog-card-noimg" aria-hidden="true">
-                          Sin foto
-                        </span>
-                      )}
+                      <DesignCarousel
+                        images={design.images}
+                        fallbackImageUrl={design.imageUrl}
+                        alt={design.name || 'Diseño de minicake'}
+                      />
                     </button>
 
                     <div className="catalog-card-body">

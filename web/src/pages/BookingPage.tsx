@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams /*, useSearchParams */ } from 'react-router-dom';
 import api, { getWithRetry } from '../api';
-import type { DeliveryPreview, Flavor, ProductDesign } from '../types';
+import type { CakeShape, DeliveryPreview, Flavor, ProductDesign } from '../types';
+import { CAKE_SHAPES } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import RellenoSelect from '../components/RellenoSelect';
@@ -107,6 +108,8 @@ export default function BookingPage() {
   // Per-item configurator (the product currently being built, not yet added).
   const [variantId, setVariantId] = useState('');
   const [flavor, setFlavor] = useState<Flavor>('VAINILLA');
+  const [shape, setShape] = useState<CakeShape>('Redonda');
+  const [color, setColor] = useState('');
   const [relleno, setRelleno] = useState('');
   const [customText, setCustomText] = useState('');
   const [customImageUrl, setCustomImageUrl] = useState('');
@@ -197,10 +200,18 @@ export default function BookingPage() {
     const preferred = variants[0];
     setVariantId(preferred ? preferred.id : '');
     setFlavor('VAINILLA');
+    setShape('Redonda');
+    setColor(design?.images[0]?.colorName ?? '');
     setCustomText('');
     setCustomImageUrl('');
     setImageError('');
   }, [design, grandes]);
+
+  // The picked color swaps the displayed photo; falls back to the design's
+  // cover photo when no color is picked or none matches (design with no
+  // color images loaded yet).
+  const displayedImageUrl =
+    design?.images.find((img) => img.colorName === color)?.imageUrl ?? design?.imageUrl ?? null;
 
   // A minicake (promo variant) is locked to Arequipe; any other size needs the
   // client to actually choose, so the field resets whenever the size changes.
@@ -260,7 +271,7 @@ export default function BookingPage() {
       key: newKey(),
       designId: design.id,
       designName: design.name || DESIGN_FALLBACK,
-      designImageUrl: design.imageUrl,
+      designImageUrl: displayedImageUrl,
       variantId: variant.id,
       variantLabel: variant.label,
       price: Number(variant.price) + surcharge,
@@ -268,6 +279,8 @@ export default function BookingPage() {
       prepMinutes: variant.prepMinutes,
       flavor,
       relleno,
+      shape,
+      color: color || undefined,
       customText: customText.trim() || undefined,
       customImageUrl: customImageUrl || undefined,
     });
@@ -310,6 +323,8 @@ export default function BookingPage() {
           variantId: i.variantId,
           flavor: i.flavor,
           relleno: i.relleno,
+          shape: i.shape,
+          color: i.color,
           customText: i.customText,
           customImageUrl: i.customImageUrl,
         })),
@@ -433,8 +448,8 @@ export default function BookingPage() {
         {/* ---------- Configurador del producto actual ---------- */}
         <section className="booking-block">
           <div className="config-head">
-            {design.imageUrl ? (
-              <img className="config-photo" src={design.imageUrl} alt={design.name || DESIGN_FALLBACK} />
+            {displayedImageUrl ? (
+              <img className="config-photo" src={displayedImageUrl} alt={design.name || DESIGN_FALLBACK} />
             ) : (
               <div className="config-photo config-photo-empty" aria-hidden="true">
                 Sin foto
@@ -443,8 +458,39 @@ export default function BookingPage() {
             <div>
               <p className="eyebrow">Estás personalizando</p>
               <h2>{design.name || DESIGN_FALLBACK}</h2>
-              {design.shape && <p className="field-hint">Forma: {design.shape}</p>}
             </div>
+          </div>
+
+          {design.images.length > 0 && (
+            <>
+              <label className="field-label">Color</label>
+              <div className="pills">
+                {design.images.map((img) => (
+                  <button
+                    key={img.colorName}
+                    type="button"
+                    className={`pill ${color === img.colorName ? 'pill-active' : ''}`}
+                    onClick={() => setColor(img.colorName)}
+                  >
+                    {img.colorName}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          <label className="field-label">Forma</label>
+          <div className="pills">
+            {CAKE_SHAPES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={`pill ${shape === s ? 'pill-active' : ''}`}
+                onClick={() => setShape(s)}
+              >
+                {s}
+              </button>
+            ))}
           </div>
 
           <label className="field-label">Tamaño</label>
@@ -538,7 +584,7 @@ export default function BookingPage() {
               {draft.items.map((i) => (
                 <li key={i.key}>
                   <span>
-                    {[i.designName, i.variantLabel, flavorLabels[i.flavor], i.relleno]
+                    {[i.designName, i.variantLabel, flavorLabels[i.flavor], i.relleno, i.color, i.shape]
                       .filter(Boolean)
                       .join(' · ')}
                     {i.customText ? ` · "${i.customText}"` : ''}

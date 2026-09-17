@@ -14,6 +14,14 @@ export interface ProductVariant {
   enPromocion: boolean;
 }
 
+// One photo of a design in a given color. `colorName` is freeform text set by
+// however the catalog was loaded (folder/file naming, not a master list).
+export interface ProductDesignImage {
+  id: string;
+  colorName: string;
+  imageUrl: string;
+}
+
 export interface ProductDesign {
   id: string;
   name: string;
@@ -23,7 +31,13 @@ export interface ProductDesign {
   allowsCustomImage: boolean;
   allowsCustomText: boolean;
   variants: ProductVariant[];
+  images: ProductDesignImage[];
 }
+
+// Shape is a client pick on BookingPage (color-picker rework), not a fixed
+// ProductDesign field. "Redonda" is the default.
+export type CakeShape = 'Redonda' | 'Corazón';
+export const CAKE_SHAPES: CakeShape[] = ['Redonda', 'Corazón'];
 
 // Response of GET /public-orders/availability?date=&minutes=
 export interface DeliveryPreview {
@@ -53,6 +67,8 @@ export interface CartItem {
   prepMinutes: number;
   flavor: Flavor;
   relleno: string;
+  shape: CakeShape;
+  color?: string;
   customText?: string;
   customImageUrl?: string;
   // Client's WhatsApp reference photo ("quiero algo así"). Separate from
