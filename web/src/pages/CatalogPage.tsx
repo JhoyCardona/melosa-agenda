@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link /*, useSearchParams */ } from 'react-router-dom';
 import { getWithRetry } from '../api';
-import type { ProductDesign } from '../types';
+import type { ProductDesign, ProductDesignImage } from '../types';
 import { useAdminAuth } from '../context/AdminAuth';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import DesignCarousel from '../components/DesignCarousel';
@@ -25,6 +25,23 @@ function minicakePrice(design: ProductDesign): number | null {
   const promo = design.variants.filter((v) => v.enPromocion).map((v) => Number(v.price));
   if (promo.length > 0) return Math.min(...promo);
   return minVariantPrice(design);
+}
+
+// Photos the card carousel cycles through. A color design uses its color photos;
+// a design with options (gatitos: 1/2/3 gatos) uses one photo per option, most
+// expensive first — more cats cost more, so that reads 3 → 2 → 1 gatos. One photo
+// per option even when the option also exists in other sizes.
+function carouselImages(design: ProductDesign): ProductDesignImage[] {
+  if (!design.variants.some((v) => v.optionLabel)) return design.images;
+  const seen = new Set<string>();
+  return [...design.variants]
+    .sort((a, b) => Number(b.price) - Number(a.price))
+    .filter((v) => {
+      if (!v.optionLabel || !v.imageUrl || seen.has(v.optionLabel)) return false;
+      seen.add(v.optionLabel);
+      return true;
+    })
+    .map((v) => ({ id: v.id, colorName: v.optionLabel!, imageUrl: v.imageUrl! }));
 }
 
 // Minicake price tiers. The tabs are the only place the price is shown — the
@@ -177,7 +194,7 @@ export default function CatalogPage() {
                       onClick={() => setSelectedId(isSelected ? null : design.id)}
                     >
                       <DesignCarousel
-                        images={design.images}
+                        images={carouselImages(design)}
                         fallbackImageUrl={design.imageUrl}
                         alt={design.name || 'Diseño de minicake'}
                       />
