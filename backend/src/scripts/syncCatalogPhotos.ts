@@ -38,13 +38,12 @@ const FOLDER_TO_DESIGN: Record<string, string> = {
   '30000/texto_e_imagen/6': 'f17cfc28',
   '30000/texto_e_imagen/7': 'dabee735',
   '30000/texto_e_imagen/8': '7550b695',
+  '30000/texto_e_imagen/13': '82917598',
 };
 
 // Same color name, different photo (gretica re-edited it) -> re-upload + update.
-const CHANGED: Record<string, string[]> = {
-  '30000/texto_e_imagen/6': ['azul'],
-  '30000/texto_e_imagen/8': ['amarillo'],
-};
+// Already applied Sep 21 (re-listing them re-uploads); empty on purpose.
+const CHANGED: Record<string, string[]> = {};
 
 // File names that are typos — the color name is customer-facing.
 const COLOR_ALIASES: Record<string, string> = { 'aul claro': 'azul claro' };
