@@ -46,7 +46,10 @@ function bookableVariants(design: ProductDesign | undefined): ProductDesign['var
 // size-only breakdown (not per design/color) that goes into the WhatsApp
 // order message.
 function whatsappItemLabel(variantLabel: string): string {
-  return variantLabel.startsWith('Minicake') ? 'MiniCake' : `Torta ${variantLabel}`;
+  // "Minicake (2 porciones) · 3 gatos" -> "MiniCake (3 gatos)": keep the option.
+  const option = variantLabel.split(' · ')[1];
+  if (variantLabel.startsWith('Minicake')) return option ? `MiniCake (${option})` : 'MiniCake';
+  return `Torta ${variantLabel}`;
 }
 
 // MiniCake first, then ascending by portion count, so the message reads in a
@@ -187,7 +190,9 @@ export default function BookingPage() {
   // const preferred = grandes ? variants.find((v) => !v.enPromocion) ?? variants[0] : variants[0];
   useEffect(() => {
     const variants = bookableVariants(design);
-    const preferred = variants[0];
+    // Cheapest first: for a design with options (gatitos) that lands on the
+    // first option, and for an ordinary design it's the minicake, same as before.
+    const preferred = [...variants].sort((a, b) => Number(a.price) - Number(b.price))[0];
     setVariantId(preferred ? preferred.id : '');
     setFlavor(design?.category === 'ALFAJOR_CAKE' ? 'ALFAJOR' : 'VAINILLA');
     setShape('Redonda');
@@ -200,8 +205,45 @@ export default function BookingPage() {
   // The picked color swaps the displayed photo; falls back to the design's
   // cover photo when no color is picked or none matches (design with no
   // color images loaded yet).
+  // A variant's own photo (an option like "3 gatos") sits between the two.
   const displayedImageUrl =
-    design?.images.find((img) => img.colorName === color)?.imageUrl ?? design?.imageUrl ?? null;
+    design?.images.find((img) => img.colorName === color)?.imageUrl ??
+    variant?.imageUrl ??
+    design?.imageUrl ??
+    null;
+
+  // Option picker (gatitos: "1 gato" / "3 gatos"): variants sharing an
+  // optionLabel form one option; picking one swaps the variant, so price and
+  // photo follow. Keeps the current size when the new option has it.
+  const bookable = bookableVariants(design);
+  // Sorted by price so "1 gato" comes before "3 gatos" (the API's order between
+  // equal-points variants isn't guaranteed).
+  const optionLabels = Array.from(
+    new Set(
+      [...bookable]
+        .sort((a, b) => Number(a.price) - Number(b.price))
+        .map((v) => v.optionLabel)
+        .filter((o): o is string => !!o)
+    )
+  );
+  const sizeVariants = variant?.optionLabel
+    ? bookable.filter((v) => v.optionLabel === variant.optionLabel)
+    : bookable;
+  // The label already carries the option ("Minicake (2 porciones) · 1 gato") so
+  // orders show it everywhere; the size button doesn't repeat it.
+  const sizeText = (v: ProductDesign['variants'][number]) =>
+    v.optionLabel ? v.label.replace(` · ${v.optionLabel}`, '') : v.label;
+
+  function pickOption(optionLabel: string) {
+    const target =
+      bookable.find(
+        (v) =>
+          v.optionLabel === optionLabel &&
+          v.portions === variant?.portions &&
+          v.enPromocion === variant?.enPromocion
+      ) ?? bookable.find((v) => v.optionLabel === optionLabel);
+    if (target) setVariantId(target.id);
+  }
 
   // A minicake (promo variant) defaults to Arequipe but can be changed; every
   // size of the alfajor minicake is locked to it (its filling never changes).
@@ -433,6 +475,24 @@ export default function BookingPage() {
             </div>
           </div>
 
+          {optionLabels.length > 0 && (
+            <>
+              <label className="field-label">{design.optionTitle ?? 'Opción'}</label>
+              <div className="pills">
+                {optionLabels.map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    className={`pill ${variant?.optionLabel === opt ? 'pill-active' : ''}`}
+                    onClick={() => pickOption(opt)}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
           {design.images.length > 0 && (
             <>
               <label className="field-label">Color</label>
@@ -468,14 +528,14 @@ export default function BookingPage() {
           <label className="field-label">Tamaño</label>
           <div className="pills">
             {/* Original (para cuando se reactiven tortas 5+): design.variants.map(...) */}
-            {bookableVariants(design).map((v) => (
+            {sizeVariants.map((v) => (
               <button
                 key={v.id}
                 type="button"
                 className={`pill ${variantId === v.id ? 'pill-active' : ''}`}
                 onClick={() => setVariantId(v.id)}
               >
-                {v.label} — ${Number(v.price).toLocaleString('es-CO')}
+                {sizeText(v)} — ${Number(v.price).toLocaleString('es-CO')}
               </button>
             ))}
           </div>

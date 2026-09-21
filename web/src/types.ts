@@ -17,6 +17,11 @@ export interface ProductVariant {
   // How many print images this size can carry. 1 for the ordinary case (a
   // single upload); a design like the memory cake sets this higher per size.
   maxCustomImages: number;
+  // Client-facing choice that changes price + photo but isn't a color (gatitos
+  // minicake: "1 gato" / "3 gatos"). Null for an ordinary variant.
+  optionLabel: string | null;
+  // Photo shown while this variant is selected; null falls back to the design's.
+  imageUrl: string | null;
 }
 
 // One photo of a design in a given color. `colorName` is freeform text set by
@@ -42,6 +47,8 @@ export interface ProductDesign {
   // Per-design cap on the custom phrase/number length (20 by default; some
   // designs — smaller print area — cap it lower).
   customTextMaxLength: number;
+  // Heading for the option picker ("Cantidad de gatos"); null = no picker.
+  optionTitle: string | null;
   variants: ProductVariant[];
   images: ProductDesignImage[];
 }

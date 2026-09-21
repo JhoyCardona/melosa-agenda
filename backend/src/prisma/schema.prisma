@@ -102,6 +102,10 @@ model ProductDesign {
   // $28.000 catalog's cap); the $29.000 "texto_e_imagen" designs use 10 so the
   // phrase fits on the smaller minicake print.
   customTextMaxLength    Int          @default(20)
+  // Question shown above the option picker for a design whose variants are
+  // grouped by ProductVariant.optionLabel (the gatitos minicake: "Cantidad de
+  // gatos"). Null for every ordinary design — no option picker is shown.
+  optionTitle            String?
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
 
@@ -147,6 +151,16 @@ model ProductVariant {
   // sets this higher per size (e.g. 5 on the minicake, 10 on bigger sizes) —
   // those extra images live in OrderItem.customImageUrls.
   maxCustomImages Int           @default(1)
+  // A client-facing choice that changes the price and the photo but is NOT a
+  // color (the gatitos minicake: "1 gato" / "3 gatos"). Variants sharing an
+  // optionLabel form one option; the size buttons then only list that option's
+  // variants. Null for an ordinary variant. The label also carries the option
+  // text (e.g. "Minicake (2 porciones) · 1 gato") so orders and the baker's day
+  // summary show it with no mobile-app change (no OTA updates).
+  optionLabel     String?
+  // Photo shown while this variant is selected (falls back to the design's
+  // color/cover photo). Set on option variants so each option has its own picture.
+  imageUrl        String?
   createdAt       DateTime      @default(now())
 
   orderItems OrderItem[]
