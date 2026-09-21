@@ -96,8 +96,9 @@ export default function Landing() {
               <p className="feature-notes-title">Tener en cuenta que:</p>
               <ol>
                 <li>
-                  Puedes elegir el sabor del bizcocho: Vainilla o Chocolate. El relleno siempre es
-                  de arequipe (nuevos sabores estarán disponibles pronto).
+                  Puedes elegir el sabor del bizcocho: Vainilla o Chocolate, y el relleno: Arequipe,
+                  Frutos rojos, Frutos amarillos, Caramelo salado, Chocolate o Fresas con crema, sin
+                  costo adicional.
                 </li>
                 <li>Puedes modificar el texto o la imagen que lleva el diseño de ejemplo.</li>
                 <li>

@@ -6,8 +6,26 @@
 export const RELLENOS_BASICOS = ['Vainilla', 'Arequipe', 'Chocolate', 'Frutos rojos'];
 export const RELLENOS_PREMIUM = ['Oreo', 'Milo', 'Fresas con crema'];
 
+// Fillings offered on a minicake (the promo variant), all at no extra charge.
+// Arequipe stays the default. Separate from the lists above on purpose: the new
+// minicake-only flavors (Frutos amarillos, Caramelo salado) must NOT become
+// valid for tortas de 6+ porciones yet.
+export const RELLENOS_MINICAKE = [
+  'Arequipe',
+  'Frutos rojos',
+  'Frutos amarillos',
+  'Caramelo salado',
+  'Chocolate',
+  'Fresas con crema',
+];
+export const DEFAULT_MINICAKE_RELLENO = 'Arequipe';
+
+export function isValidMinicakeRelleno(relleno: string): boolean {
+  return RELLENOS_MINICAKE.includes(relleno);
+}
+
 // Extra charge for a premium filling, keyed by portion count. Only applies to
-// tortas sold by porciones (not minicakes, which are locked to Arequipe). The
+// tortas sold by porciones (a minicake never pays a filling surcharge). The
 // smallest torta size is 6 porciones, not 5 — the catalog's original 5-porciones
 // variant was renamed/repriced when the real torta sizes/prices landed.
 export const RELLENO_PREMIUM_SURCHARGE_BY_PORTIONS: Record<number, number> = {

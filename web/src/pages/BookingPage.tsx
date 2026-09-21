@@ -203,9 +203,10 @@ export default function BookingPage() {
   const displayedImageUrl =
     design?.images.find((img) => img.colorName === color)?.imageUrl ?? design?.imageUrl ?? null;
 
-  // A minicake (promo variant) is locked to Arequipe; so is every size of the
-  // alfajor minicake (its filling never changes). Any other size needs the
-  // client to actually choose, so the field resets whenever the size changes.
+  // A minicake (promo variant) defaults to Arequipe but can be changed; every
+  // size of the alfajor minicake is locked to it (its filling never changes).
+  // Any other size needs the client to actually choose, so the field resets
+  // whenever the size changes.
   useEffect(() => {
     setRelleno(variant?.enPromocion || design?.category === 'ALFAJOR_CAKE' ? 'Arequipe' : '');
   }, [variant?.id, variant?.enPromocion, design?.category]);
@@ -501,7 +502,8 @@ export default function BookingPage() {
           {variant && (
             <RellenoSelect
               portions={variant.portions}
-              isPromo={variant.enPromocion || design.category === 'ALFAJOR_CAKE'}
+              isPromo={variant.enPromocion}
+              locked={design.category === 'ALFAJOR_CAKE'}
               value={relleno}
               onChange={setRelleno}
             />

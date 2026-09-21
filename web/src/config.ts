@@ -22,8 +22,16 @@ export const SOCIAL = {
 
 // Filling list and premium surcharge — kept in sync by hand with the backend's
 // backend/src/services/pricing.ts (no shared package between the two yet).
-// Only used for a torta sold by porciones — a minicake is always locked to
-// Arequipe, no choice shown.
+// RELLENOS_BASICOS/PREMIUM are for a torta sold by porciones; a minicake picks
+// from RELLENOS_MINICAKE instead (all free, Arequipe by default).
+export const RELLENOS_MINICAKE = [
+  'Arequipe',
+  'Frutos rojos',
+  'Frutos amarillos',
+  'Caramelo salado',
+  'Chocolate',
+  'Fresas con crema',
+];
 export const RELLENOS_BASICOS = ['Vainilla', 'Arequipe', 'Chocolate', 'Frutos rojos'];
 export const RELLENOS_PREMIUM = ['Oreo', 'Milo', 'Fresas con crema'];
 export const RELLENO_PREMIUM_SURCHARGE_BY_PORTIONS: Record<number, number> = {

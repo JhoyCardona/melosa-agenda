@@ -112,7 +112,7 @@ export default function NewOrderPage() {
         designId: first?.id ?? '',
         variantId: firstVariant?.id ?? '',
         flavor: 'VAINILLA',
-        relleno: firstVariant?.enPromocion ? 'Vainilla' : '',
+        relleno: firstVariant?.enPromocion ? 'Arequipe' : '',
         customText: '',
         customImageUrl: '',
         referenceImageUrl: '',
@@ -421,7 +421,7 @@ export default function NewOrderPage() {
                           patchLine(l.key, {
                             designId: d.id,
                             variantId: v?.id ?? '',
-                            relleno: v?.enPromocion ? 'Vainilla' : '',
+                            relleno: v?.enPromocion ? 'Arequipe' : '',
                           });
                         }}
                       >
@@ -438,7 +438,7 @@ export default function NewOrderPage() {
                   value={l.variantId}
                   onChange={(e) => {
                     const v = designs.find((d) => d.id === l.designId)?.variants.find((x) => x.id === e.target.value);
-                    patchLine(l.key, { variantId: e.target.value, relleno: v?.enPromocion ? 'Vainilla' : '' });
+                    patchLine(l.key, { variantId: e.target.value, relleno: v?.enPromocion ? 'Arequipe' : '' });
                   }}
                 >
                   {designs

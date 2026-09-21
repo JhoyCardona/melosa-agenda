@@ -3,7 +3,13 @@ import { PrismaClient, Flavor, ItemCategory, OrderStatus } from '@prisma/client'
 import { isBusinessDay } from '../utils/colombianHolidays';
 import { computePaymentDueDate, earliestPublicDeliveryDate, isValidIsoDate } from '../utils/colombiaTime';
 import { reserveDeliverySlot, minutesToLabel, isNotEnoughRoomError, isDateBlocked } from '../services/availability';
-import { rellenoSurcharge, computeRequiredPaymentPercent, isValidRelleno } from '../services/pricing';
+import {
+  rellenoSurcharge,
+  computeRequiredPaymentPercent,
+  isValidRelleno,
+  isValidMinicakeRelleno,
+  DEFAULT_MINICAKE_RELLENO,
+} from '../services/pricing';
 import { MAX_CLIENT_NAME_LENGTH, MAX_NOTES_LENGTH, MAX_ADDRESS_LENGTH } from '../services/limits';
 import cloudinary from '../config/cloudinary';
 
@@ -145,15 +151,20 @@ export async function createPublicOrder(req: Request, res: Response) {
     const designById = new Map(designs.map((d) => [d.id, d]));
 
     // effectiveRelleno/effectiveShape are decided here, not fully trusted from
-    // the client: a promo (minicake) variant is always Arequipe, as is every
-    // size of the alfajor minicake (its filling never changes, unlike a
-    // regular cake where only the 2-porciones size is locked), and an
+    // the client: a promo (minicake) variant picks from RELLENOS_MINICAKE
+    // (defaulting to Arequipe when nothing is sent), every size of the alfajor
+    // minicake is always Arequipe (its filling never changes), and an
     // empty/unknown shape falls back to "Redonda" (the form's own default).
     const resolvedItems = (items as PublicOrderItemInput[]).map((item) => {
       const variant = variantById.get(item.variantId);
       const design = variant ? designById.get(item.productDesignId) : undefined;
       const isAlfajor = design?.category === ItemCategory.ALFAJOR_CAKE;
-      const effectiveRelleno = variant?.enPromocion || isAlfajor ? 'Arequipe' : item.relleno?.trim() || '';
+      const posted = item.relleno?.trim() || '';
+      const effectiveRelleno = isAlfajor
+        ? DEFAULT_MINICAKE_RELLENO
+        : variant?.enPromocion
+          ? posted || DEFAULT_MINICAKE_RELLENO
+          : posted;
       const effectiveShape = item.shape?.trim() || 'Redonda';
       const effectiveColor = item.color?.trim() || undefined;
       // A variant with maxCustomImages > 1 (the memory cake and similar) uses
@@ -186,7 +197,8 @@ export async function createPublicOrder(req: Request, res: Response) {
       if (!effectiveRelleno) {
         return res.status(400).json({ error: 'relleno es requerido' });
       }
-      if (!isValidRelleno(effectiveRelleno)) {
+      const isMinicake = variant.enPromocion && design?.category !== ItemCategory.ALFAJOR_CAKE;
+      if (!(isMinicake ? isValidMinicakeRelleno(effectiveRelleno) : isValidRelleno(effectiveRelleno))) {
         return res.status(400).json({ error: `relleno no reconocido: "${effectiveRelleno}"` });
       }
       if (!VALID_SHAPES.includes(effectiveShape)) {

@@ -4,7 +4,13 @@ import archiver from 'archiver';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { computePaymentDueDate } from '../utils/colombiaTime';
 import { reserveDeliverySlot, minutesToLabel, isNotEnoughRoomError } from '../services/availability';
-import { rellenoSurcharge, computeRequiredPaymentPercent, isValidRelleno } from '../services/pricing';
+import {
+  rellenoSurcharge,
+  computeRequiredPaymentPercent,
+  isValidRelleno,
+  isValidMinicakeRelleno,
+  DEFAULT_MINICAKE_RELLENO,
+} from '../services/pricing';
 import { MAX_CLIENT_NAME_LENGTH, MAX_NOTES_LENGTH, MAX_ADDRESS_LENGTH } from '../services/limits';
 
 const prisma = new PrismaClient();
@@ -176,15 +182,23 @@ export async function createOrder(req: AuthRequest, res: Response) {
         if (!item.flavor || !VALID_FLAVORS.includes(item.flavor)) {
           return res.status(400).json({ error: `flavor debe ser uno de: ${VALID_FLAVORS.join(', ')}` });
         }
-        // A promo (minicake) variant is always Arequipe, regardless of what was posted.
-        const effectiveRelleno = variant.enPromocion ? 'Arequipe' : item.relleno?.trim() || '';
+        // A minicake (promo variant) picks from RELLENOS_MINICAKE, defaulting to
+        // Arequipe; the alfajor minicake is always Arequipe.
+        const design = designById.get(variant.productDesignId);
+        const isAlfajor = design?.category === ItemCategory.ALFAJOR_CAKE;
+        const isMinicake = variant.enPromocion && !isAlfajor;
+        const posted = item.relleno?.trim() || '';
+        const effectiveRelleno = isAlfajor
+          ? DEFAULT_MINICAKE_RELLENO
+          : variant.enPromocion
+            ? posted || DEFAULT_MINICAKE_RELLENO
+            : posted;
         if (!effectiveRelleno) {
           return res.status(400).json({ error: 'relleno es requerido' });
         }
-        if (!isValidRelleno(effectiveRelleno)) {
+        if (!(isMinicake ? isValidMinicakeRelleno(effectiveRelleno) : isValidRelleno(effectiveRelleno))) {
           return res.status(400).json({ error: `relleno no reconocido: "${effectiveRelleno}"` });
         }
-        const design = designById.get(variant.productDesignId);
         if (design?.category === ItemCategory.CAKE && missingReference(item)) {
           return res.status(400).json({
             error: 'Falta la foto de referencia de la torta (o marca "sin foto de referencia").',

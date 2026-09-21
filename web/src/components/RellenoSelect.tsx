@@ -1,4 +1,9 @@
-import { RELLENOS_BASICOS, RELLENOS_PREMIUM, RELLENO_PREMIUM_SURCHARGE_BY_PORTIONS } from '../config';
+import {
+  RELLENOS_BASICOS,
+  RELLENOS_MINICAKE,
+  RELLENOS_PREMIUM,
+  RELLENO_PREMIUM_SURCHARGE_BY_PORTIONS,
+} from '../config';
 
 interface RellenoSelectProps {
   // Portion count of the currently-selected size (from ProductVariant.portions),
@@ -7,20 +12,34 @@ interface RellenoSelectProps {
   // button is picked, since that swaps which variant (and portions) is active.
   portions: number | null;
   isPromo: boolean;
+  // The alfajor minicake is promo-priced too but its filling never changes.
+  locked?: boolean;
   value: string;
   onChange: (relleno: string) => void;
 }
 
-// A minicake (promo variant) is always Arequipe, no choice — locked in the UI so
-// nobody accidentally picks a paid filling on a product that doesn't offer it.
-// A torta por porciones gets a real choice, split into "sin costo" and "premium"
-// (the premium surcharge depends on the size/portions currently selected).
-export default function RellenoSelect({ portions, isPromo, value, onChange }: RellenoSelectProps) {
-  if (isPromo) {
+// A minicake (promo variant) chooses from RELLENOS_MINICAKE, all free. The
+// alfajor minicake is locked to Arequipe. A torta por porciones gets the full
+// choice, split into "sin costo" and "premium" (the premium surcharge depends
+// on the size/portions currently selected).
+export default function RellenoSelect({ portions, isPromo, locked, value, onChange }: RellenoSelectProps) {
+  if (locked) {
     return (
       <p className="field-hint">
         Relleno: <strong>Arequipe</strong>
       </p>
+    );
+  }
+
+  if (isPromo) {
+    return (
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        {RELLENOS_MINICAKE.map((r) => (
+          <option key={r} value={r}>
+            {r}
+          </option>
+        ))}
+      </select>
     );
   }
 
