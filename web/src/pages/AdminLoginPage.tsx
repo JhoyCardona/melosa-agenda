@@ -34,16 +34,16 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="booking-page">
-      <Link to="/" className="booking-back">
+    <div className="admin-page">
+      <Link to="/" className="admin-back">
         ← Volver al inicio
       </Link>
       <h1>Ingresar</h1>
       <form className="form-section" onSubmit={handleSubmit}>
-        <label className="field-label">Usuario</label>
+        <label className="admin-field-label">Usuario</label>
         <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} />
 
-        <label className="field-label">Contraseña</label>
+        <label className="admin-field-label">Contraseña</label>
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
 
         {error && <p className="warning">{error}</p>}

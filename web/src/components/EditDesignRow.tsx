@@ -168,10 +168,10 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
         <div style={{ marginTop: 12 }}>
           {error && <p className="warning">{error}</p>}
 
-          <label className="field-label">Nombre</label>
+          <label className="admin-field-label">Nombre</label>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
 
-          <label className="field-label">Categoría</label>
+          <label className="admin-field-label">Categoría</label>
           <select value={category} onChange={(e) => setCategory(e.target.value as ItemCategory)}>
             {(Object.keys(categoryLabels) as ItemCategory[]).map((c) => (
               <option key={c} value={c}>
@@ -180,15 +180,15 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
             ))}
           </select>
 
-          <label className="field-label">Forma</label>
+          <label className="admin-field-label">Forma</label>
           <input type="text" required value={shape} onChange={(e) => setShape(e.target.value)} />
 
-          <label className="field-label">Foto</label>
+          <label className="admin-field-label">Foto</label>
           <input type="file" accept="image/*" onChange={handleImageChange} disabled={uploading} />
           {uploading && <p className="muted">Subiendo...</p>}
           {imageUrl && <img className="design-preview" src={imageUrl} alt={name} />}
 
-          <label className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label className="admin-field-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
               type="checkbox"
               checked={allowsCustomImage}
@@ -196,7 +196,7 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
             />
             Admite imagen personalizada
           </label>
-          <label className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label className="admin-field-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
               type="checkbox"
               checked={allowsCustomText}
@@ -214,7 +214,7 @@ export default function EditDesignRow({ design, onSaved, requestConfirm }: Props
             </button>
           </div>
 
-          <label className="field-label" style={{ marginTop: 20 }}>
+          <label className="admin-field-label" style={{ marginTop: 20 }}>
             Tamaños
           </label>
           <p className="edit-hint">label · precio · puntos · minutos de agenda · porciones · promo</p>

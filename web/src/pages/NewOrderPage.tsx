@@ -307,7 +307,7 @@ export default function NewOrderPage() {
 
   if (createdTicket !== null) {
     return (
-      <div className="booking-page">
+      <div className="admin-page">
         <h1>Pedido creado</h1>
         <p className="form-section">
           Ticket <strong>#{createdTicket}</strong>
@@ -326,8 +326,8 @@ export default function NewOrderPage() {
   }
 
   return (
-    <div className="booking-page">
-      <Link to="/" className="booking-back">
+    <div className="admin-page">
+      <Link to="/" className="admin-back">
         ← Volver al inicio
       </Link>
       <h1>Crear pedido</h1>
@@ -337,22 +337,22 @@ export default function NewOrderPage() {
 
       <div className="form-section">
         <h2>Cliente</h2>
-        <label className="field-label">Nombre</label>
+        <label className="admin-field-label">Nombre</label>
         <input
           type="text"
           maxLength={MAX_CLIENT_NAME}
           value={clientName}
           onChange={(e) => setClientName(e.target.value)}
         />
-        <label className="field-label">Teléfono</label>
+        <label className="admin-field-label">Teléfono</label>
         <input type="text" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} />
       </div>
 
       <div className="form-section">
         <h2>Entrega</h2>
-        <label className="field-label">Fecha</label>
+        <label className="admin-field-label">Fecha</label>
         <input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} />
-        <label className="field-label">Hora de recogida</label>
+        <label className="admin-field-label">Hora de recogida</label>
         <input type="time" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} />
       </div>
 
@@ -376,7 +376,7 @@ export default function NewOrderPage() {
               </button>
             </div>
 
-            <label className="field-label">
+            <label className="admin-field-label">
               Foto de referencia de la torta {lineNeedsReference(l) ? '(obligatoria)' : '(opcional)'}
             </label>
             <p className="muted">Lo que mandó el cliente por WhatsApp: "quiero algo así". Es la foto que se ve en el pedido.</p>
@@ -404,7 +404,7 @@ export default function NewOrderPage() {
 
             {l.kind === 'catalog' ? (
               <>
-                <label className="field-label">Diseño</label>
+                <label className="admin-field-label">Diseño</label>
                 <p className="muted">Los diseños no tienen nombre, se reconocen por foto — igual que hace el cliente.</p>
                 <div className="design-picker" role="radiogroup" aria-label="Elegir diseño del catálogo">
                   {designs.map((d) => {
@@ -515,7 +515,7 @@ export default function NewOrderPage() {
               value={l.customText}
               onChange={(e) => patchLine(l.key, { customText: e.target.value })}
             />
-            <label className="field-label">Imagen para imprimir en papel comestible (opcional)</label>
+            <label className="admin-field-label">Imagen para imprimir en papel comestible (opcional)</label>
             <input
               type="file"
               accept="image/*"
@@ -540,9 +540,9 @@ export default function NewOrderPage() {
 
       <div className="form-section">
         <h2>Pago y origen</h2>
-        <label className="field-label">Abono recibido (opcional — si lo pones, el pedido queda ABONADO)</label>
+        <label className="admin-field-label">Abono recibido (opcional — si lo pones, el pedido queda ABONADO)</label>
         <input type="number" value={deposit} onChange={(e) => setDeposit(e.target.value)} />
-        <label className="field-label">Notas</label>
+        <label className="admin-field-label">Notas</label>
         <textarea maxLength={MAX_NOTES} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>
 

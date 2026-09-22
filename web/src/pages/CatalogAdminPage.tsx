@@ -199,7 +199,7 @@ export default function CatalogAdminPage() {
   }
 
   return (
-    <div className="booking-page">
+    <div className="admin-page">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>Catálogo</h1>
         <button type="button" className="secondary-button" style={{ marginTop: 0 }} onClick={handleLogout}>
@@ -210,10 +210,10 @@ export default function CatalogAdminPage() {
       <form className="form-section" onSubmit={handleSubmit}>
         <h2>Agregar producto nuevo</h2>
 
-        <label className="field-label">Nombre</label>
+        <label className="admin-field-label">Nombre</label>
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
 
-        <label className="field-label">Categoría</label>
+        <label className="admin-field-label">Categoría</label>
         <select value={category} onChange={(e) => setCategory(e.target.value as ItemCategory)}>
           {(Object.keys(categoryLabels) as ItemCategory[]).map((c) => (
             <option key={c} value={c}>
@@ -222,15 +222,15 @@ export default function CatalogAdminPage() {
           ))}
         </select>
 
-        <label className="field-label">Forma (ej: Corazón, Redonda)</label>
+        <label className="admin-field-label">Forma (ej: Corazón, Redonda)</label>
         <input type="text" required value={shape} onChange={(e) => setShape(e.target.value)} />
 
-        <label className="field-label">Foto</label>
+        <label className="admin-field-label">Foto</label>
         <input type="file" accept="image/*" onChange={handleImageChange} disabled={uploadingImage} />
         {uploadingImage && <p className="muted">Subiendo foto...</p>}
         {imageUrl && <img className="design-preview" src={imageUrl} alt="Vista previa" />}
 
-        <label className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <label className="admin-field-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input
             type="checkbox"
             checked={allowsCustomImage}
@@ -239,7 +239,7 @@ export default function CatalogAdminPage() {
           Admite imagen personalizada del cliente (para imprimir)
         </label>
 
-        <label className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <label className="admin-field-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input
             type="checkbox"
             checked={allowsCustomText}
@@ -248,7 +248,7 @@ export default function CatalogAdminPage() {
           Admite texto personalizado (frase o número)
         </label>
 
-        <label className="field-label" style={{ marginTop: 16 }}>
+        <label className="admin-field-label" style={{ marginTop: 16 }}>
           Tamaños
         </label>
         {variants.map((v) => (
