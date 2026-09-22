@@ -72,8 +72,28 @@
   box-sizing: border-box;
 }
 
+/* Bulletproofing against horizontal overflow on mobile: any child that's even
+   1px wider than the viewport (a flex row that doesn't wrap, a marquee track,
+   a rounding error in a clamp()/vw calc) makes the WHOLE document wider than
+   the screen. Mobile browsers then let the page pan sideways, so it loads (or
+   settles after a bounce) slightly offset — the page never looks flush with
+   the browser's edge even though nothing is visibly "broken". overflow-x on
+   both html and body is the standard belt-and-suspenders fix (some engines
+   only honor it on one or the other); width 100% keeps both from ever being
+   sized wider than the viewport themselves. Previously this was only set
+   per-page (.booking-page etc.), which doesn't catch overflow coming from
+   shared chrome (SiteChrome's header/marquee) rendered outside those pages.
+   Purely defensive — doesn't change layout on a page with no bug. */
+html {
+  width: 100%;
+  overflow-x: hidden;
+  background: var(--color-bg);
+}
+
 body {
+  width: 100%;
   margin: 0;
+  overflow-x: hidden;
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-body);
