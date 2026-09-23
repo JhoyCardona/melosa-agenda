@@ -9,6 +9,7 @@ import publicOrderRoutes from './routes/publicOrderRoutes';
 import productDesignRoutes from './routes/productDesignRoutes';
 import productVariantRoutes from './routes/productVariantRoutes';
 import blockedDayRoutes from './routes/blockedDayRoutes';
+import cakeSettingsRoutes from './routes/cakeSettingsRoutes';
 
 dotenv.config();
 
@@ -23,6 +24,7 @@ app.use('/api/public-orders', publicOrderRoutes);
 app.use('/api/product-designs', productDesignRoutes);
 app.use('/api/product-variants', productVariantRoutes);
 app.use('/api/blocked-days', blockedDayRoutes);
+app.use('/api/cake-settings', cakeSettingsRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Melosa Agenda API running' });
