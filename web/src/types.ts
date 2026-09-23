@@ -138,3 +138,26 @@ export interface CakeSettings {
   rellenos: CakeFlavorSetting[];
   shapes: CakeShapeSetting[];
 }
+
+// ─── Catalog v2: designs (GET /cake-designs, admin only) ───
+
+export interface DesignColorConfig {
+  id: string;
+  colorName: string;
+  imageUrl: string;
+  flavorIds: string[];
+  shapeIds: string[];
+  // { sizeId: price } — a size missing from the map isn't offered in this color.
+  sizePrices: Record<string, number>;
+}
+
+export interface CakeDesignV2 {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  allowsCustomImage: boolean;
+  requiresCustomImage: boolean;
+  allowsCustomText: boolean;
+  customTextMaxLength: number;
+  colors: DesignColorConfig[];
+}

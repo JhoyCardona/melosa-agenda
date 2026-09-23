@@ -24,7 +24,9 @@ export default function CakeModulePage() {
         <Link to="/admin/pedidos/nuevo" className="cs-menu-item">
           Agendar torta
         </Link>
-        <span className="cs-menu-item is-disabled">Modificar / agregar diseños · en construcción</span>
+        <Link to="/admin/tortas/disenos" className="cs-menu-item">
+          Modificar / agregar diseños
+        </Link>
         <Link to="/admin/tortas/sabores-tamanos" className="cs-menu-item">
           Sabores, tamaños y formas
         </Link>

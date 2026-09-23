@@ -310,7 +310,13 @@ export async function deleteProductVariant(req: AuthRequest, res: Response) {
 export async function listProductDesigns(req: Request, res: Response) {
   try {
     const designs = await prisma.productDesign.findMany({
-      where: { category: { in: [ItemCategory.CAKE, ItemCategory.ALFAJOR_CAKE] } },
+      // Legacy catalog only: catalog v2 designs have no variants and aren't
+      // bookable from the public page yet; archived designs are retired.
+      where: {
+        category: { in: [ItemCategory.CAKE, ItemCategory.ALFAJOR_CAKE] },
+        archivedAt: null,
+        variants: { some: {} },
+      },
       include: { variants: { orderBy: { points: 'asc' } }, images: { orderBy: { colorName: 'asc' } } },
       orderBy: { name: 'asc' },
     });

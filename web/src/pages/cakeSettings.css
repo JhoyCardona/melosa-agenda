@@ -230,3 +230,191 @@ a.cs-menu-item:hover {
   font-weight: 600;
   font-size: 0.9rem;
 }
+
+/* ---------- Designs page ---------- */
+.cs-matches {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 1px solid var(--color-bg-soft);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cs-matches li + li {
+  border-top: 1px solid var(--color-bg-soft);
+}
+
+.cs-matches li.muted {
+  padding: 10px 12px;
+  font-size: 0.9rem;
+}
+
+.cs-matches button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: #fff;
+  text-align: left;
+  font: inherit;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.cs-matches button:hover {
+  background: var(--color-bg);
+}
+
+.cs-matches img,
+.cs-thumb-empty {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--color-bg-soft);
+}
+
+.cs-editing-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 16px 0 4px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--color-bg-soft);
+  font-size: 0.9rem;
+  color: var(--color-muted);
+}
+
+.cs-editing-label strong {
+  color: var(--color-text);
+}
+
+.cs-indent {
+  margin-left: 30px;
+}
+
+.cs-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cs-chip {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--color-bg-soft);
+  background: #fff;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.cs-chip.is-selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.cs-chip-add {
+  border-style: dashed;
+}
+
+.cs-photo {
+  display: grid;
+  place-items: center;
+  margin: 12px 0 8px;
+  min-height: 160px;
+  border: 1px solid var(--color-bg-soft);
+  border-radius: 8px;
+  background: var(--color-bg);
+  overflow: hidden;
+}
+
+.cs-photo img {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+}
+
+.secondary-button.cs-file {
+  display: inline-block;
+  margin-top: 0;
+  position: relative;
+}
+
+.cs-file input[type='file'] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.link-button.cs-danger-link {
+  margin-top: 14px;
+  font-size: 0.85rem;
+}
+
+.cs-copy {
+  margin-bottom: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--color-bg-soft);
+}
+
+.cs-copy select {
+  flex: 1 1 200px;
+}
+
+.cs-subtitle {
+  font-size: 0.9rem;
+  color: var(--color-text);
+  margin: 18px 0 2px;
+}
+
+.cs-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0 12px;
+}
+
+.cs-size-price {
+  display: grid;
+  grid-template-columns: 1fr 150px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-bg-soft);
+}
+
+.cs-size-price .cs-check {
+  margin: 0;
+}
+
+.cs-money:has(input:disabled) {
+  opacity: 0.45;
+}
+
+.cs-gaps {
+  margin-top: 12px;
+  color: var(--color-primary);
+}
+
+.cs-notice {
+  margin: 14px 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-bg-soft);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.cta-button.cs-full {
+  width: 100%;
+}

@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAdminAuth } from '../context/AdminAuth';
 import PasswordPrompt from '../components/PasswordPrompt';
+import MoneyInput from '../components/MoneyInput';
+import { errorText, onlyDigits } from '../adminUtils';
 import type {
   CakeFlavorSetting,
   CakeSettings,
@@ -19,36 +21,6 @@ import './cakeSettings.css';
 // with the bottom button, since gretica fills many of them at once.
 
 type SurchargeDrafts = Record<string, Record<string, string>>; // flavorId → sizeId → digits
-
-function errorText(err: unknown, fallback: string): string {
-  return (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? fallback;
-}
-
-// Digits-only money handling: the input shows "12.500" but state keeps "12500",
-// so a typed thousands separator can never be read as a decimal point.
-function onlyDigits(v: string): string {
-  return v.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
-}
-
-function formatPesos(digits: string): string {
-  return digits === '' ? '' : Number(digits).toLocaleString('es-CO');
-}
-
-function MoneyInput({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
-  return (
-    <span className="cs-money">
-      <span aria-hidden="true">$</span>
-      <input
-        type="text"
-        inputMode="numeric"
-        aria-label={label}
-        value={formatPesos(value)}
-        placeholder="0"
-        onChange={(e) => onChange(onlyDigits(e.target.value))}
-      />
-    </span>
-  );
-}
 
 function usageNote(count: number): string {
   if (count === 0) return 'No está en ningún diseño todavía.';
