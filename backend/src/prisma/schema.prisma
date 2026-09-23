@@ -42,81 +42,93 @@ model Order {
 }
 
 model OrderItem {
-  id              String          @id @default(uuid())
-  orderId         String
-  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id                 String          @id @default(uuid())
+  orderId            String
+  order              Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   // Catalog link — null for a fully custom line entered from the admin order
   // form (personalized cakes not in the catalog). customName/customFlavor carry
   // the hand-typed values; priceAtOrder still holds the price either way.
-  productDesignId String?
-  productDesign   ProductDesign?  @relation(fields: [productDesignId], references: [id], onDelete: Restrict)
-  variantId       String?
-  variant         ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
-  priceAtOrder    Decimal
-  pointsAtOrder   Int
-  flavor          Flavor?
-  customName      String?
-  customFlavor    String?
-  customImageUrl  String?
+  productDesignId    String?
+  productDesign      ProductDesign?  @relation(fields: [productDesignId], references: [id], onDelete: Restrict)
+  variantId          String?
+  variant            ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  priceAtOrder       Decimal
+  pointsAtOrder      Int
+  flavor             Flavor?
+  customName         String?
+  customFlavor       String?
+  customImageUrl     String?
   // Extra print images beyond the single-image case above, for a design whose
   // variant allows more than one (ProductVariant.maxCustomImages > 1 — the
   // memory cake and similar). Empty for the ordinary case; customImageUrl
   // alone covers that.
-  customImageUrls String[]        @default([])
-  customText      String?
+  customImageUrls    String[]        @default([])
+  customText         String?
   // Reference/inspiration photo the client sent by WhatsApp ("quiero algo así").
   // NOT the same as customImageUrl: that one is edible-print artwork and feeds
   // the day's print ZIP (findDayImageItems). referenceImageUrl is for the baker's
   // eyes only and stays out of the print gallery.
-  referenceImageUrl String?
+  referenceImageUrl  String?
   // Shape snapshot — for a catalog line this is now the client's own pick at
   // add-to-cart time (Redonda/Corazón), not inherited from ProductDesign.shape
   // (that field only matters for designs outside this color-picker flow).
   // Hand-typed for a free line. Mandatory on every order item going forward.
-  shape           String?
+  shape              String?
   // Color snapshot — the client's pick among that design's ProductDesignImage
   // rows. Null for a free line or a design with no color images loaded yet.
-  color           String?
-  relleno         String?
-  customSize      String?
-  createdAt       DateTime        @default(now())
+  color              String?
+  relleno            String?
+  customSize         String?
+  // Timeline minutes this line occupies, frozen at order time. Catalog v2 lines
+  // (productDesignId set, variantId null) carry CakeSize.prepMinutes here, since
+  // they have no ProductVariant to read it from. Null on legacy rows — those
+  // still fall back to variant.prepMinutes.
+  prepMinutesAtOrder Int?
+  createdAt          DateTime        @default(now())
 }
 
 model ProductDesign {
-  id                     String       @id @default(uuid())
-  name                   String
-  category               ItemCategory
-  shape                  String?
+  id                  String       @id @default(uuid())
+  name                String
+  category            ItemCategory
+  shape               String?
   // Cover photo — shown in catalog grids and as the default before a color is
   // picked. For a design with color variants (see `images`), this is just the
   // first color uploaded; the picker swaps the displayed photo client-side.
-  imageUrl               String?
-  allowsCustomImage      Boolean      @default(false)
+  imageUrl            String?
+  allowsCustomImage   Boolean      @default(false)
   // True for a design where the client MUST upload their own print-ready image
   // (Melosa doesn't edit/design the print herself) — the $29.000 catalog's
   // "solo_imagen" and "texto_e_imagen" folders. Meaningless unless
   // allowsCustomImage is also true.
-  requiresCustomImage    Boolean      @default(false)
-  allowsCustomText       Boolean      @default(true)
+  requiresCustomImage Boolean      @default(false)
+  allowsCustomText    Boolean      @default(true)
   // Per-design cap on the custom phrase/number length. Defaults to 20 (the
   // $28.000 catalog's cap); the $29.000 "texto_e_imagen" designs use 10 so the
   // phrase fits on the smaller minicake print.
-  customTextMaxLength    Int          @default(20)
+  customTextMaxLength Int          @default(20)
   // Question shown above the option picker for a design whose variants are
   // grouped by ProductVariant.optionLabel (the gatitos minicake: "Cantidad de
   // gatos"). Null for every ordinary design — no option picker is shown.
-  optionTitle            String?
-  createdAt              DateTime     @default(now())
-  updatedAt              DateTime     @updatedAt
+  optionTitle         String?
+  // Soft-delete. Set when a design leaves the catalog: it stops showing
+  // anywhere, but its row survives so past OrderItems keep pointing at it
+  // (OrderItem.productDesign is onDelete: Restrict). Also how the pre-v2
+  // catalog gets retired without touching order history.
+  archivedAt          DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 
   variants   ProductVariant[]
   orderItems OrderItem[]
   images     ProductDesignImage[]
 }
 
-// One photo per color a design is available in. Colors are freeform text (no
-// master color list) since the source of truth is gretica's file naming, not a
-// separate admin screen. `colorName` is unique per design, not globally.
+// One color (decoration) of a design: its name + the photo the client sees.
+// Catalog v2 hangs the whole per-color configuration off this row — which
+// flavors and shapes are allowed and the price of each size. The model keeps
+// its old name because the mobile app reads it as `productDesign.images`
+// (no OTA updates, renaming would break installed APKs).
 model ProductDesignImage {
   id              String        @id @default(uuid())
   productDesignId String
@@ -125,7 +137,86 @@ model ProductDesignImage {
   imageUrl        String
   createdAt       DateTime      @default(now())
 
+  allowedFlavors CakeFlavor[]     @relation("ColorFlavors")
+  allowedShapes  CakeShape[]      @relation("ColorShapes")
+  sizePrices     ColorSizePrice[]
+
   @@unique([productDesignId, colorName])
+}
+
+// ─── Catalog v2: global cake settings ("Sabores, tamaños y formas" screen) ───
+// Everything here is global. A row with active = false is hidden from every
+// design, whatever the design's own checkboxes say. New rows start inactive so
+// a half-configured size or flavor never leaks to the public page.
+
+model CakeSize {
+  id                  String   @id @default(uuid())
+  label               String   @unique // "MiniCake", "6 porciones"
+  // Sort key — the list always shows sizes by portion count, so a size added
+  // later ("7 porciones") lands in its natural place.
+  portions            Int      @unique
+  // Minutes one cake of this size takes on the delivery timeline.
+  prepMinutes         Int
+  // An order made of exactly one cake of this size must be paid 100% up front
+  // (the MiniCake rule); any other order asks for 50%.
+  requiresFullPayment Boolean  @default(false)
+  active              Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  surcharges  FlavorSurcharge[]
+  colorPrices ColorSizePrice[]
+}
+
+model CakeFlavor {
+  id        String     @id @default(uuid())
+  name      String // "Vainilla Fiesta"
+  kind      FlavorKind
+  active    Boolean    @default(false)
+  createdAt DateTime   @default(now())
+
+  surcharges FlavorSurcharge[]
+  colors     ProductDesignImage[] @relation("ColorFlavors")
+
+  @@unique([kind, name])
+}
+
+// Extra cost of a flavor in a given size. Final price of a cake =
+// ColorSizePrice.price + bizcocho surcharge + relleno surcharge (same size).
+// A missing row counts as 0.
+model FlavorSurcharge {
+  flavorId String
+  flavor   CakeFlavor @relation(fields: [flavorId], references: [id], onDelete: Cascade)
+  sizeId   String
+  size     CakeSize   @relation(fields: [sizeId], references: [id], onDelete: Cascade)
+  amount   Decimal    @default(0)
+
+  @@id([flavorId, sizeId])
+}
+
+model CakeShape {
+  id        String   @id @default(uuid())
+  name      String   @unique // "Redonda", "Corazón"
+  active    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  colors ProductDesignImage[] @relation("ColorShapes")
+}
+
+// A size offered for one design color, with that color's own price. The row's
+// existence is the "size allowed" checkbox; no row = not offered.
+model ColorSizePrice {
+  colorId String
+  color   ProductDesignImage @relation(fields: [colorId], references: [id], onDelete: Cascade)
+  sizeId  String
+  size    CakeSize           @relation(fields: [sizeId], references: [id], onDelete: Cascade)
+  price   Decimal
+
+  @@id([colorId, sizeId])
+}
+
+enum FlavorKind {
+  BIZCOCHO
+  RELLENO
 }
 
 model ProductVariant {
