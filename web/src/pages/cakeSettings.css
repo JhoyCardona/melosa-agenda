@@ -1,0 +1,232 @@
+/* Catalog v2 admin screens (panel, módulo tortas, sabores/tamaños/formas).
+   Same plain admin look as adminLegacy.css; every class is `cs-` prefixed so
+   nothing collides with the public pages' CSS. */
+
+/* ---------- Menu buttons (panel + módulo tortas) ---------- */
+.cs-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.cs-menu-item {
+  display: block;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid var(--color-bg-soft);
+  background: #fff;
+  color: var(--color-text);
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+
+a.cs-menu-item:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.cs-menu-item.is-disabled {
+  color: var(--color-muted);
+  font-weight: 400;
+  background: transparent;
+  border-style: dashed;
+}
+
+/* ---------- Settings page ---------- */
+.cs-page {
+  max-width: 640px;
+}
+
+.cs-banner {
+  position: sticky;
+  top: 44px;
+  z-index: 5;
+  background: #fff;
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.cs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-bg-soft);
+}
+
+.cs-row.is-editing {
+  display: block;
+  padding: 12px;
+  margin: 6px 0;
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+}
+
+.cs-row.is-inactive strong {
+  color: var(--color-muted);
+}
+
+.cs-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.cs-row-main strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.cs-meta {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+.cs-row-buttons {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.cs-row-buttons .link-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cs-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 10px 0 0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.cs-row-main.cs-check {
+  margin: 0;
+}
+
+.cs-check input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  flex-shrink: 0;
+  accent-color: var(--color-primary);
+}
+
+.cs-two-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.cs-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.cs-actions .secondary-button {
+  margin-top: 0;
+}
+
+.secondary-button.cs-primary {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.cs-new {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--color-bg-soft);
+}
+
+.cs-new-inline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cs-new-inline input[type='text'] {
+  flex: 1 1 200px;
+}
+
+.cs-new-inline .secondary-button {
+  margin-top: 0;
+}
+
+/* ---------- Flavor surcharge grid ---------- */
+.cs-flavor {
+  border: 1px solid var(--color-bg-soft);
+  border-radius: 8px;
+  padding: 0 12px 12px;
+  margin-bottom: 12px;
+}
+
+.cs-flavor .cs-row {
+  border-bottom: none;
+}
+
+.cs-surcharge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.cs-surcharge-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--color-text);
+}
+
+.cs-surcharge-grid label.is-inactive {
+  color: var(--color-muted);
+}
+
+.cs-money {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--color-bg-soft);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #fff;
+}
+
+.admin-page .cs-money input[type='text'] {
+  border: none;
+  padding: 8px 0;
+  min-width: 0;
+}
+
+/* ---------- Save bar ---------- */
+.cs-save-bar {
+  position: sticky;
+  bottom: 0;
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-bg-soft);
+  padding: 12px 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cs-save-note {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  margin: 0;
+}
+
+.cs-saved {
+  margin: 0;
+  color: #2e7d32;
+  font-weight: 600;
+  font-size: 0.9rem;
+}

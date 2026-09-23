@@ -14,7 +14,7 @@ export default function AdminLoginPage() {
 
   // Already signed in → skip the form.
   useEffect(() => {
-    if (isAdmin) navigate('/admin/catalogo', { replace: true });
+    if (isAdmin) navigate('/admin/panel', { replace: true });
   }, [isAdmin, navigate]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -24,7 +24,7 @@ export default function AdminLoginPage() {
     try {
       const response = await api.post('/auth/login', { username, password });
       login(response.data.token);
-      navigate('/admin/catalogo');
+      navigate('/admin/panel');
     } catch (err: any) {
       // 429 from the login rate-limiter carries its own "espera 15 minutos" text.
       setError(err?.response?.data?.error ?? 'No se pudo iniciar sesión');

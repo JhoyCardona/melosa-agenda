@@ -97,3 +97,44 @@ export interface CartItem {
   // customImageUrl, which is edible-print artwork.
   referenceImageUrl?: string;
 }
+
+// ─── Catalog v2: global cake settings (GET /cake-settings, admin only) ───
+// `usedByColors` = how many design colors reference the row, so the UI can
+// warn before a delete wipes it from all of them. Named *Setting to stay clear
+// of the legacy CakeShape string union above (still used by the booking page).
+
+export interface CakeSizeSetting {
+  id: string;
+  label: string;
+  portions: number;
+  prepMinutes: number;
+  requiresFullPayment: boolean;
+  active: boolean;
+  usedByColors: number;
+}
+
+export type FlavorKind = 'BIZCOCHO' | 'RELLENO';
+
+export interface CakeFlavorSetting {
+  id: string;
+  name: string;
+  kind: FlavorKind;
+  active: boolean;
+  usedByColors: number;
+  // { sizeId: surcharge in pesos } — a size missing from the map costs 0 extra.
+  surcharges: Record<string, number>;
+}
+
+export interface CakeShapeSetting {
+  id: string;
+  name: string;
+  active: boolean;
+  usedByColors: number;
+}
+
+export interface CakeSettings {
+  sizes: CakeSizeSetting[];
+  bizcochos: CakeFlavorSetting[];
+  rellenos: CakeFlavorSetting[];
+  shapes: CakeShapeSetting[];
+}

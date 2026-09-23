@@ -12,6 +12,13 @@
   font-size: var(--text-xs);
 }
 
+/* On a phone the links wrap under each other instead of pushing "Salir" off
+   the right edge. */
+.admin-bar-nav a,
+.admin-bar-nav button {
+  white-space: nowrap;
+}
+
 .admin-bar-tag {
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -21,7 +28,9 @@
 .admin-bar-nav {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
 }
 
 .admin-bar-nav a,

@@ -5,6 +5,9 @@ import BookingPage from './pages/BookingPage';
 import AdminLoginPage from './pages/AdminLoginPage';
 import CatalogAdminPage from './pages/CatalogAdminPage';
 import NewOrderPage from './pages/NewOrderPage';
+import AdminPanelPage from './pages/AdminPanelPage';
+import CakeModulePage from './pages/CakeModulePage';
+import CakeSettingsPage from './pages/CakeSettingsPage';
 import ScrollToTop from './components/ScrollToTop';
 
 export default function App() {
@@ -21,6 +24,9 @@ export default function App() {
         <Route path="/admin" element={<AdminLoginPage />} />
         <Route path="/admin/catalogo" element={<CatalogAdminPage />} />
         <Route path="/admin/pedidos/nuevo" element={<NewOrderPage />} />
+        <Route path="/admin/panel" element={<AdminPanelPage />} />
+        <Route path="/admin/tortas" element={<CakeModulePage />} />
+        <Route path="/admin/tortas/sabores-tamanos" element={<CakeSettingsPage />} />
       </Routes>
     </>
   );
