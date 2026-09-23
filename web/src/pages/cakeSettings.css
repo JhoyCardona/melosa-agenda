@@ -418,3 +418,16 @@ a.cs-menu-item:hover {
 .cta-button.cs-full {
   width: 100%;
 }
+
+.cs-image-limits {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.cs-image-limits label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+}

@@ -80,6 +80,33 @@ function parseFlags(body: Record<string, unknown>): { data: DesignFlags } | { er
   return { data };
 }
 
+// imageLimits arrive as { [sizeId]: maxImages }. Returns null if malformed.
+function parseImageLimits(v: unknown): Record<string, number> | null {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return null;
+  const entries = Object.entries(v as Record<string, unknown>);
+  const ok = entries.every(([, n]) => typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= 20);
+  return ok ? (Object.fromEntries(entries) as Record<string, number>) : null;
+}
+
+// Replaces the design's per-size image caps. Rows equal to the default (1)
+// aren't stored — a missing row already means 1.
+async function writeImageLimits(tx: Prisma.TransactionClient, designId: string, limits: Record<string, number>) {
+  const sizeIds = Object.keys(limits);
+  const found = await tx.cakeSize.count({ where: { id: { in: sizeIds } } });
+  if (found !== sizeIds.length) throw new UnknownSizeError();
+  await tx.designImageLimit.deleteMany({ where: { designId } });
+  const rows = Object.entries(limits).filter(([, n]) => n > 1);
+  if (rows.length > 0) {
+    await tx.designImageLimit.createMany({
+      data: rows.map(([sizeId, maxImages]) => ({ designId, sizeId, maxImages })),
+    });
+  }
+}
+
+class UnknownSizeError extends Error {}
+
+const IMAGE_LIMITS_ERROR = 'El máximo de imágenes de cada tamaño debe ser un entero entre 1 y 20';
+
 // The design's cover photo (used by catalog grids) is its first color's photo.
 async function refreshCover(tx: Prisma.TransactionClient, designId: string) {
   const first = await tx.productDesignImage.findFirst({
@@ -100,7 +127,7 @@ export async function listCakeDesigns(req: AuthRequest, res: Response) {
     const designs = await prisma.productDesign.findMany({
       where: V2_DESIGN_WHERE,
       orderBy: { name: 'asc' },
-      include: { images: { orderBy: { createdAt: 'asc' }, include: COLOR_INCLUDE } },
+      include: { images: { orderBy: { createdAt: 'asc' }, include: COLOR_INCLUDE }, imageLimits: true },
     });
     res.json(
       designs.map((d) => ({
@@ -111,6 +138,8 @@ export async function listCakeDesigns(req: AuthRequest, res: Response) {
         requiresCustomImage: d.requiresCustomImage,
         allowsCustomText: d.allowsCustomText,
         customTextMaxLength: d.customTextMaxLength,
+        // { sizeId: max print images } — a size missing from the map allows 1.
+        imageLimits: Object.fromEntries(d.imageLimits.map((l) => [l.sizeId, l.maxImages])),
         colors: d.images.map(colorDto),
       }))
     );
@@ -125,6 +154,8 @@ export async function createCakeDesign(req: AuthRequest, res: Response) {
   if (!name) return res.status(400).json({ error: 'El nombre del diseño es obligatorio (máx. 60 caracteres)' });
   const flags = parseFlags(req.body);
   if ('error' in flags) return res.status(400).json({ error: flags.error });
+  const imageLimits = req.body.imageLimits === undefined ? null : parseImageLimits(req.body.imageLimits);
+  if (req.body.imageLimits !== undefined && !imageLimits) return res.status(400).json({ error: IMAGE_LIMITS_ERROR });
 
   try {
     // Names aren't a DB-level unique (legacy designs are nameless), so check
@@ -134,16 +165,21 @@ export async function createCakeDesign(req: AuthRequest, res: Response) {
     });
     if (clash) return res.status(409).json({ error: 'Ya existe un diseño con ese nombre' });
 
-    const design = await prisma.productDesign.create({
-      data: {
-        name,
-        category: ItemCategory.CAKE,
-        allowsCustomText: false,
-        ...flags.data,
-      },
+    const design = await prisma.$transaction(async (tx) => {
+      const created = await tx.productDesign.create({
+        data: {
+          name,
+          category: ItemCategory.CAKE,
+          allowsCustomText: false,
+          ...flags.data,
+        },
+      });
+      if (imageLimits) await writeImageLimits(tx, created.id, imageLimits);
+      return created;
     });
     res.status(201).json(design);
   } catch (error) {
+    if (error instanceof UnknownSizeError) return res.status(400).json({ error: 'Alguno de los tamaños ya no existe; recarga la página' });
     console.error('Error creando diseño (v2):', error);
     res.status(500).json({ error: 'Error al crear el diseño' });
   }
@@ -154,6 +190,8 @@ export async function updateCakeDesign(req: AuthRequest, res: Response) {
   const flags = parseFlags(req.body);
   if ('error' in flags) return res.status(400).json({ error: flags.error });
   const data: Prisma.ProductDesignUpdateInput = { ...flags.data };
+  const imageLimits = req.body.imageLimits === undefined ? null : parseImageLimits(req.body.imageLimits);
+  if (req.body.imageLimits !== undefined && !imageLimits) return res.status(400).json({ error: IMAGE_LIMITS_ERROR });
 
   if (req.body.name !== undefined) {
     const name = cleanName(req.body.name);
@@ -169,9 +207,14 @@ export async function updateCakeDesign(req: AuthRequest, res: Response) {
       });
       if (clash) return res.status(409).json({ error: 'Ya existe un diseño con ese nombre' });
     }
-    const design = await prisma.productDesign.update({ where: { id }, data });
+    const design = await prisma.$transaction(async (tx) => {
+      const updated = await tx.productDesign.update({ where: { id }, data });
+      if (imageLimits) await writeImageLimits(tx, id, imageLimits);
+      return updated;
+    });
     res.json(design);
   } catch (error) {
+    if (error instanceof UnknownSizeError) return res.status(400).json({ error: 'Alguno de los tamaños ya no existe; recarga la página' });
     console.error('Error editando diseño (v2):', error);
     res.status(500).json({ error: 'Error al editar el diseño' });
   }

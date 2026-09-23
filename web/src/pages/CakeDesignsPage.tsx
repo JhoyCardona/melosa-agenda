@@ -161,6 +161,7 @@ export default function CakeDesignsPage() {
         <DesignForm
           key={selectedId ?? 'new'}
           design={selected}
+          sizes={settings.sizes.filter((sz) => sz.active)}
           onSaved={async (id) => {
             await load();
             setSelectedId(id);
@@ -188,12 +189,24 @@ export default function CakeDesignsPage() {
 
 // ─── 1. Design name + customization ───
 
-function DesignForm({ design, onSaved }: { design: CakeDesignV2 | null; onSaved: (id: string) => Promise<void> }) {
+function DesignForm({
+  design,
+  sizes,
+  onSaved,
+}: {
+  design: CakeDesignV2 | null;
+  sizes: CakeSettings['sizes'];
+  onSaved: (id: string) => Promise<void>;
+}) {
   const [name, setName] = useState(design?.name ?? '');
   const [allowsCustomImage, setAllowsCustomImage] = useState(design?.allowsCustomImage ?? false);
   const [requiresCustomImage, setRequiresCustomImage] = useState(design?.requiresCustomImage ?? false);
   const [allowsCustomText, setAllowsCustomText] = useState(design?.allowsCustomText ?? false);
   const [maxLength, setMaxLength] = useState(String(design?.customTextMaxLength ?? 20));
+  // Per-size cap on print images, as digit strings while typing ('' = 1).
+  const [imageLimits, setImageLimits] = useState<Record<string, string>>(() =>
+    Object.fromEntries(Object.entries(design?.imageLimits ?? {}).map(([id, n]) => [id, String(n)]))
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
@@ -211,6 +224,10 @@ function DesignForm({ design, onSaved }: { design: CakeDesignV2 | null; onSaved:
       requiresCustomImage: allowsCustomImage && requiresCustomImage,
       allowsCustomText,
       customTextMaxLength: Number(maxLength) || 20,
+      // Only the active sizes shown here; an inactive size keeps whatever it had.
+      imageLimits: Object.fromEntries(
+        sizes.map((sz) => [sz.id, Math.min(20, Math.max(1, Number(imageLimits[sz.id]) || 1))])
+      ),
     };
     try {
       const res = design
@@ -259,8 +276,31 @@ function DesignForm({ design, onSaved }: { design: CakeDesignV2 | null; onSaved:
               setSaved('');
             }}
           />
-          La imagen es obligatoria (el cliente debe subirla)
+          La imagen es obligatoria (el cliente debe subir al menos 1)
         </label>
+      )}
+      {allowsCustomImage && sizes.length > 0 && (
+        <div className="cs-indent">
+          <label className="admin-field-label">Máximo de imágenes que puede subir el cliente, por tamaño</label>
+          <div className="cs-image-limits">
+            {sizes.map((sz) => (
+              <label key={sz.id}>
+                <span>{sz.label}</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={imageLimits[sz.id] ?? ''}
+                  placeholder="1"
+                  onChange={(e) => {
+                    setImageLimits((prev) => ({ ...prev, [sz.id]: onlyDigits(e.target.value).slice(0, 2) }));
+                    setSaved('');
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+          <p className="edit-hint">Vacío = 1 imagen. Máximo 20.</p>
+        </div>
       )}
       <label className="cs-check">
         <input

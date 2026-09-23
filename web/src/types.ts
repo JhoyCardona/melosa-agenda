@@ -159,5 +159,7 @@ export interface CakeDesignV2 {
   requiresCustomImage: boolean;
   allowsCustomText: boolean;
   customTextMaxLength: number;
+  // { sizeId: max print images } — a size missing from the map allows 1.
+  imageLimits: Record<string, number>;
   colors: DesignColorConfig[];
 }

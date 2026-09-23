@@ -21,6 +21,8 @@ interface VariantInput {
 export async function listAllProductDesigns(req: AuthRequest, res: Response) {
   try {
     const designs = await prisma.productDesign.findMany({
+      // Archived designs are retired (kept only for order history).
+      where: { archivedAt: null },
       include: { variants: { orderBy: { points: 'asc' } }, images: { orderBy: { colorName: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });

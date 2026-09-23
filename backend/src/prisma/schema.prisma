@@ -119,9 +119,10 @@ model ProductDesign {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
-  variants   ProductVariant[]
-  orderItems OrderItem[]
-  images     ProductDesignImage[]
+  variants    ProductVariant[]
+  orderItems  OrderItem[]
+  images      ProductDesignImage[]
+  imageLimits DesignImageLimit[]
 }
 
 // One color (decoration) of a design: its name + the photo the client sees.
@@ -165,6 +166,7 @@ model CakeSize {
 
   surcharges  FlavorSurcharge[]
   colorPrices ColorSizePrice[]
+  imageLimits DesignImageLimit[]
 }
 
 model CakeFlavor {
@@ -212,6 +214,19 @@ model ColorSizePrice {
   price   Decimal
 
   @@id([colorId, sizeId])
+}
+
+// How many print images the client may upload for one cake of this size, in
+// this design (the memory cake: 5 on the MiniCake, 10 on bigger sizes). Only
+// meaningful when the design allowsCustomImage; a missing row means 1.
+model DesignImageLimit {
+  designId  String
+  design    ProductDesign @relation(fields: [designId], references: [id], onDelete: Cascade)
+  sizeId    String
+  size      CakeSize      @relation(fields: [sizeId], references: [id], onDelete: Cascade)
+  maxImages Int
+
+  @@id([designId, sizeId])
 }
 
 enum FlavorKind {
