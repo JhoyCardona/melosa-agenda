@@ -1,29 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams /*, useSearchParams */ } from 'react-router-dom';
 import api, { getWithRetry } from '../api';
-import type { CakeShape, DeliveryPreview, Flavor, ProductDesign } from '../types';
-import { CAKE_SHAPES } from '../types';
+import type { CakeShape, Flavor, ProductDesign } from '../types';
+import { CAKE_SHAPES, isCakeItem } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import RellenoSelect from '../components/RellenoSelect';
-import { waLink, rellenoSurcharge, BUSINESS } from '../config';
+import BookingCheckout from '../components/BookingCheckout';
+import { rellenoSurcharge } from '../config';
+import { MAX_ITEMS, flavorLabels, newKey } from '../bookingShared';
 import './BookingPage.css';
 
-const flavorLabels: Record<Flavor, string> = { VAINILLA: 'Vainilla', CHOCOLATE: 'Chocolate', ALFAJOR: 'Alfajor' };
 const FLAVORS: Flavor[] = ['VAINILLA', 'CHOCOLATE'];
-
-// Mirrors the backend cap (createPublicOrder). Bigger orders go through WhatsApp.
-const MAX_ITEMS = 12;
-const MAX_CLIENT_NAME = 120;
-const MAX_NOTES = 500;
-
-// Earliest bookable delivery date = today (Colombia, UTC-5) + 2 calendar days,
-// i.e. the 48h booking cutoff. The public order endpoint re-checks this.
-function earliestDeliveryDateString(): string {
-  const colombiaNow = new Date(Date.now() - 5 * 60 * 60 * 1000);
-  colombiaNow.setUTCDate(colombiaNow.getUTCDate() + 2);
-  return colombiaNow.toISOString().slice(0, 10);
-}
 
 // Catalog designs have no name (the photo is the identity), so fall back to a
 // generic label wherever a non-empty string is structurally needed.
@@ -42,58 +30,6 @@ function bookableVariants(design: ProductDesign | undefined): ProductDesign['var
   return design.variants.filter((v) => v.enPromocion);
 }
 
-// "MiniCake x1\nTorta 6 porciones x1\nTorta 10 porciones x2" — the compact,
-// size-only breakdown (not per design/color) that goes into the WhatsApp
-// order message.
-function whatsappItemLabel(variantLabel: string): string {
-  // "Minicake (2 porciones) · 3 gatos" -> "MiniCake (3 gatos)": keep the option.
-  const option = variantLabel.split(' · ')[1];
-  if (variantLabel.startsWith('Minicake')) return option ? `MiniCake (${option})` : 'MiniCake';
-  return `Torta ${variantLabel}`;
-}
-
-// MiniCake first, then ascending by portion count, so the message reads in a
-// predictable size order regardless of the order items were added in.
-function whatsappSortKey(label: string): number {
-  if (label === 'MiniCake') return 0;
-  const match = label.match(/(\d+)/);
-  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
-}
-
-function itemsBreakdown(items: { variantLabel: string }[]): string {
-  const counts = new Map<string, number>();
-  for (const i of items) {
-    const label = whatsappItemLabel(i.variantLabel);
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
-  return Array.from(counts.entries())
-    .sort(([a], [b]) => whatsappSortKey(a) - whatsappSortKey(b))
-    .map(([label, n]) => `${label} x${n}`)
-    .join('\n');
-}
-
-// "2026-09-01" -> "martes 1 de septiembre". Noon avoids any timezone day-shift.
-function formatDeliveryDate(dateStr: string): string {
-  if (!dateStr) return '';
-  return new Date(`${dateStr}T12:00:00`).toLocaleDateString('es-CO', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  });
-}
-
-function newKey(): string {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `k-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-interface OrderResult {
-  ticketNumber: number;
-  totalPrice: string;
-  deliveryTimeLabel?: string;
-}
-
 export default function BookingPage() {
   const { designId } = useParams();
   const navigate = useNavigate();
@@ -110,7 +46,6 @@ export default function BookingPage() {
   // const catalogHref = grandes ? '/catalogo?ver=tortas' : '/catalogo';
   const grandes = false;
   const catalogHref = '/catalogo';
-  const earliestDate = earliestDeliveryDateString();
 
   const [designs, setDesigns] = useState<ProductDesign[]>([]);
   const [designsLoaded, setDesignsLoaded] = useState(false);
@@ -135,12 +70,6 @@ export default function BookingPage() {
   const [imageError, setImageError] = useState('');
   const [justAdded, setJustAdded] = useState(false);
 
-  const [preview, setPreview] = useState<DeliveryPreview | null>(null);
-  const [loadingPreview, setLoadingPreview] = useState(false);
-  const [previewError, setPreviewError] = useState(false);
-
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
 
   const design = designs.find((d) => d.id === designId);
   const variant = design?.variants.find((v) => v.id === variantId);
@@ -153,7 +82,9 @@ export default function BookingPage() {
         // design or variant is gone, or whose price changed, would otherwise
         // fail on submit with an unhelpful error — drop it and warn instead.
         const byId = new Map(data.map((d) => [d.id, d]));
+        // Catalog v2 cake lines are checked by their own page, not here.
         const kept = draft.items.filter((i) => {
+          if (isCakeItem(i)) return true;
           const d = byId.get(i.designId);
           const v = d?.variants.find((x) => x.id === i.variantId);
           if (!d || !v) return false;
@@ -261,26 +192,6 @@ export default function BookingPage() {
     setCustomImages((prev) => (prev.length > max ? prev.slice(0, max) : prev));
   }, [variant?.id, variant?.maxCustomImages]);
 
-  useEffect(() => {
-    if (!draft.deliveryDate) {
-      setPreview(null);
-      return;
-    }
-    setLoadingPreview(true);
-    setPreviewError(false);
-    api
-      .get<DeliveryPreview>('/public-orders/availability', {
-        params: { date: draft.deliveryDate, minutes: draft.totalMinutes },
-      })
-      .then((res) => setPreview(res.data))
-      .catch((err) => {
-        console.error('Error cargando disponibilidad:', err);
-        setPreview(null);
-        setPreviewError(true);
-      })
-      .finally(() => setLoadingPreview(false));
-  }, [draft.deliveryDate, draft.totalMinutes]);
-
   // Uploads every file the client just picked (one request each, sequentially —
   // simpler to reason about than parallel uploads racing each other's errors),
   // stopping at however many slots are left under the current size's cap.
@@ -326,6 +237,7 @@ export default function BookingPage() {
     const surcharge = rellenoSurcharge(relleno, variant.portions, variant.enPromocion);
     const multiImage = variant.maxCustomImages > 1;
     draft.addItem({
+      kind: 'legacy',
       key: newKey(),
       designId: design.id,
       designName: design.name || DESIGN_FALLBACK,
@@ -348,81 +260,6 @@ export default function BookingPage() {
     setImageError('');
     setJustAdded(true);
     window.setTimeout(() => setJustAdded(false), 2500);
-  }
-
-  // The date picker's `min` is only a soft hint (typable on desktop, and it goes
-  // stale if the page sits open past midnight), so re-check the 48h floor here —
-  // the backend rejects it anyway, this just stops a confusing "preview says OK,
-  // submit says no".
-  const dateTooSoon = !!draft.deliveryDate && draft.deliveryDate < earliestDate;
-
-  const canSubmit =
-    draft.items.length > 0 &&
-    !!draft.deliveryDate &&
-    !dateTooSoon &&
-    !!preview?.isBusinessDay &&
-    !preview?.isBlocked &&
-    !!preview?.fits &&
-    !!draft.clientName.trim() &&
-    !!draft.clientPhone.trim() &&
-    !submitting;
-
-  async function handleSubmit() {
-    setErrorMessage('');
-    setSubmitting(true);
-    // Opened synchronously, still inside the click handler's own gesture —
-    // browsers block a popup opened after an `await`, so this blank tab is
-    // the placeholder we redirect once the order actually exists.
-    const whatsappTab = window.open('', '_blank');
-    try {
-      const name = draft.clientName.trim();
-      const normalizedPhone = draft.clientPhone.replace(/[^\d+]/g, '');
-      const breakdown = itemsBreakdown(draft.items);
-
-      const response = await api.post<OrderResult>('/public-orders', {
-        clientName: name,
-        // Keep only digits and a leading +, but accept any country's number.
-        clientPhone: normalizedPhone,
-        deliveryDate: draft.deliveryDate,
-        notes: draft.notes.trim() || undefined,
-        items: draft.items.map((i) => ({
-          productDesignId: i.designId,
-          variantId: i.variantId,
-          flavor: i.flavor,
-          relleno: i.relleno,
-          shape: i.shape,
-          color: i.color,
-          customText: i.customText,
-          customImageUrl: i.customImageUrl,
-          customImageUrls: i.customImageUrls,
-        })),
-      });
-
-      const waHref = waLink(
-        `${name}\n` +
-          `Tel: ${normalizedPhone}\n\n` +
-          `Ticket #${response.data.ticketNumber}\n\n` +
-          `${breakdown}\n\n` +
-          `Hora: ${response.data.deliveryTimeLabel ?? 'por confirmar'} (Esta es la hora mínima de entrega de mi pedido)\n\n` +
-          `Total: $${Number(response.data.totalPrice).toLocaleString('es-CO')}\n\n` +
-          `Este es el resumen de mi pedido, quiero proceder con el pago.`
-      );
-      draft.reset();
-      if (whatsappTab) {
-        whatsappTab.location.href = waHref;
-      } else {
-        // Popup blocked anyway — fall back to navigating this tab.
-        window.location.href = waHref;
-      }
-    } catch (error) {
-      whatsappTab?.close();
-      const message =
-        (error as { response?: { data?: { error?: string } } })?.response?.data?.error ??
-        'No se pudo enviar el pedido. Intenta de nuevo.';
-      setErrorMessage(message);
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   if (!designsLoaded || !design) {
@@ -660,200 +497,7 @@ export default function BookingPage() {
           {justAdded && !cartFull && <p className="added-flash">Agregado a tu pedido ✓</p>}
         </section>
 
-        {/* ---------- Carrito ---------- */}
-        {draft.items.length > 0 && (
-          <section className="booking-block">
-            <h2>Tu pedido ({draft.items.length})</h2>
-            <ul className="cart-list">
-              {draft.items.map((i) => (
-                <li key={i.key}>
-                  <span>
-                    {[i.designName, i.variantLabel, flavorLabels[i.flavor], i.relleno, i.color, i.shape]
-                      .filter(Boolean)
-                      .join(' · ')}
-                    {i.customText ? ` · "${i.customText}"` : ''}
-                    {i.customImageUrl ? ' · con imagen' : ''}
-                    {i.customImageUrls?.length ? ` · ${i.customImageUrls.length} imágenes` : ''}
-                  </span>
-                  <span className="cart-item-right">
-                    ${i.price.toLocaleString('es-CO')}
-                    <button type="button" aria-label="Quitar del pedido" onClick={() => draft.removeItem(i.key)}>
-                      ✕
-                    </button>
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <Link to={catalogHref} className="btn btn-ghost">
-              Agregar otro producto
-            </Link>
-          </section>
-        )}
-
-        {/* ---------- Entrega ---------- */}
-        <section className="booking-block">
-          <h2>Fecha de entrega</h2>
-          <input
-            type="date"
-            min={earliestDate}
-            value={draft.deliveryDate}
-            onChange={(e) => draft.patch({ deliveryDate: e.target.value })}
-          />
-          <p className="field-hint">Necesitamos al menos 2 días de anticipación.</p>
-          {dateTooSoon && (
-            <p className="warning">
-              Esa fecha es muy pronto. Elige una a partir del {formatDeliveryDate(earliestDate)}.
-            </p>
-          )}
-
-          {/* Live pickup-time estimate: recalculates whenever the date or the
-              cart changes, so the client sees the hour before adding anything. */}
-          <div className="slot-box">
-            {!draft.deliveryDate && (
-              <p className="slot-hint">Elige una fecha para ver a qué hora estaría listo tu pedido.</p>
-            )}
-
-            {draft.deliveryDate && loadingPreview && (
-              <p className="slot-hint">Calculando la hora...</p>
-            )}
-
-            {draft.deliveryDate && !loadingPreview && previewError && (
-              <p className="warning">
-                No pudimos calcular la hora ahora mismo. Revisa tu conexión y vuelve a intentar en un
-                momento.
-              </p>
-            )}
-
-            {draft.deliveryDate && !loadingPreview && preview && (
-              <>
-                {!preview.isBusinessDay && (
-                  <p className="warning">
-                    Ese día no agendamos (domingo, lunes o festivo). Elige otra fecha.
-                  </p>
-                )}
-
-                {preview.isBusinessDay && preview.isBlocked && (
-                  <p className="warning">Ese día no está disponible. Elige otra fecha.</p>
-                )}
-
-                {/* No hay productos aún: mostramos desde qué hora entrega ese día. */}
-                {preview.isBusinessDay && !preview.isBlocked && draft.totalMinutes === 0 && (
-                  <>
-                    <p className="slot-label">Ese día entregamos</p>
-                    <p className="slot-time">desde las {preview.deliveryTimeLabel}</p>
-                    <p className="slot-sub">
-                      Agrega productos y te calculamos la hora exacta de recogida de tu pedido.
-                    </p>
-                  </>
-                )}
-
-                {preview.isBusinessDay && !preview.isBlocked && draft.totalMinutes > 0 && preview.fits && (
-                  <>
-                    <p className="slot-label">Tu pedido estaría listo</p>
-                    <p className="slot-time">a partir de las {preview.deliveryTimeLabel}</p>
-                    <p className="slot-sub">
-                      Puedes recogerlo a esa hora o más tarde ese mismo día, hasta las{' '}
-                      {preview.closesAtLabel}. Si lo necesitas antes, elige otro día.
-                    </p>
-                  </>
-                )}
-
-                {preview.isBusinessDay && !preview.isBlocked && draft.totalMinutes > 0 && !preview.fits && (
-                  <p className="warning">
-                    Ese día ya está lleno (entregamos hasta las {preview.closesAtLabel}). Elige otra
-                    fecha.
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        </section>
-
-        {/* ---------- Datos ---------- */}
-        <section className="booking-block">
-          <h2>Tus datos</h2>
-          <label className="field-label">Nombre completo</label>
-          <input
-            type="text"
-            maxLength={MAX_CLIENT_NAME}
-            value={draft.clientName}
-            onChange={(e) => draft.patch({ clientName: e.target.value })}
-          />
-
-          <label className="field-label">Teléfono (WhatsApp)</label>
-          <input
-            type="tel"
-            value={draft.clientPhone}
-            onChange={(e) => draft.patch({ clientPhone: e.target.value })}
-          />
-
-          <label className="field-label">Especificaciones (opcional)</label>
-          <textarea
-            maxLength={MAX_NOTES}
-            value={draft.notes}
-            onChange={(e) => draft.patch({ notes: e.target.value })}
-          />
-        </section>
-
-        {/* ---------- Resumen antes de pagar ---------- */}
-        {draft.items.length > 0 &&
-          draft.deliveryDate &&
-          preview?.isBusinessDay &&
-          preview?.fits && (
-            <section className="booking-block booking-recap">
-              <h2>Antes de enviar</h2>
-              <dl className="recap-list">
-                <div>
-                  <dt>Productos</dt>
-                  <dd>{draft.items.length}</dd>
-                </div>
-                <div>
-                  <dt>Entrega</dt>
-                  <dd>{formatDeliveryDate(draft.deliveryDate)}</dd>
-                </div>
-                <div>
-                  <dt>Hora de recogida</dt>
-                  <dd>a partir de las {preview.deliveryTimeLabel}</dd>
-                </div>
-                <div>
-                  <dt>Total</dt>
-                  <dd>${draft.totalPrice.toLocaleString('es-CO')}</dd>
-                </div>
-              </dl>
-            </section>
-          )}
-
-        {/* ---------- Ubicación para recoger ---------- */}
-        <section className="booking-block booking-pickup dot-edges">
-          <h2>Todos los pedidos son para recoger en el local</h2>
-          <p className="booking-pickup-address">{BUSINESS.addressLine}</p>
-          <p className="booking-pickup-sub">
-            {BUSINESS.city} · Estación de metro más cercana: {BUSINESS.nearestMetro}
-          </p>
-          <a className="btn btn-accent" href={BUSINESS.mapsUrl} target="_blank" rel="noreferrer">
-            Abrir en Google Maps
-          </a>
-        </section>
-
-        <div className="checkout-bar">
-          <div className="checkout-bar-inner">
-            <div className="checkout-total">
-              <span className="checkout-total-label">Total</span>
-              <span className="checkout-total-amount">
-                ${draft.totalPrice.toLocaleString('es-CO')}
-              </span>
-            </div>
-            <button
-              type="button"
-              className="btn btn-primary checkout-send"
-              disabled={!canSubmit}
-              onClick={handleSubmit}
-            >
-              {submitting ? 'Enviando...' : 'Enviar por WhatsApp'}
-            </button>
-          </div>
-          {errorMessage && <p className="warning checkout-error">{errorMessage}</p>}
-        </div>
+        <BookingCheckout catalogHref={catalogHref} />
       </main>
 
       <SiteFooter />

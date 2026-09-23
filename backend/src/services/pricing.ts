@@ -54,10 +54,11 @@ export function isValidRelleno(relleno: string): boolean {
   return RELLENOS_BASICOS.includes(relleno) || RELLENOS_PREMIUM.includes(relleno);
 }
 
-// Deposit rule (Aug 2026 rework): an order with exactly one item, and that item
-// a minicake (promo variant), requires 100% up front. Everything else — 2+
-// items, or a single torta por porciones, or a free/custom line — requires 50%.
-export function computeRequiredPaymentPercent(items: { isPromoMinicake: boolean }[]): number {
-  if (items.length === 1 && items[0].isPromoMinicake) return 100;
+// Deposit rule: an order with exactly one item, and that item's size asks for
+// full payment when it goes alone (the minicake — legacy promo variant, or a
+// catalog v2 CakeSize with requiresFullPayment), requires 100% up front.
+// Everything else — 2+ items, a single bigger torta, a free/custom line — 50%.
+export function computeRequiredPaymentPercent(items: { fullPaymentIfAlone: boolean }[]): number {
+  if (items.length === 1 && items[0].fullPaymentIfAlone) return 100;
   return 50;
 }

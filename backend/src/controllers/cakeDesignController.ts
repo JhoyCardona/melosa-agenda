@@ -4,6 +4,11 @@ import { AuthRequest } from '../middleware/authMiddleware';
 
 const prisma = new PrismaClient();
 
+// Catalog saves run several queries in one transaction; Prisma's default 5s cap
+// was hit from a dev machine in Colombia talking to Neon in us-east (each
+// round trip adds up). Admin-only, low traffic — a longer cap is harmless.
+const TX_OPTIONS = { timeout: 15000, maxWait: 10000 };
+
 // Backs the admin "Modificar / agregar diseños" screen (catalog v2). A design
 // is a name + customization flags; each of its colors (ProductDesignImage) has
 // a photo and its own configuration: allowed flavors, allowed shapes, and the
@@ -176,7 +181,7 @@ export async function createCakeDesign(req: AuthRequest, res: Response) {
       });
       if (imageLimits) await writeImageLimits(tx, created.id, imageLimits);
       return created;
-    });
+    }, TX_OPTIONS);
     res.status(201).json(design);
   } catch (error) {
     if (error instanceof UnknownSizeError) return res.status(400).json({ error: 'Alguno de los tamaños ya no existe; recarga la página' });
@@ -211,7 +216,7 @@ export async function updateCakeDesign(req: AuthRequest, res: Response) {
       const updated = await tx.productDesign.update({ where: { id }, data });
       if (imageLimits) await writeImageLimits(tx, id, imageLimits);
       return updated;
-    });
+    }, TX_OPTIONS);
     res.json(design);
   } catch (error) {
     if (error instanceof UnknownSizeError) return res.status(400).json({ error: 'Alguno de los tamaños ya no existe; recarga la página' });
@@ -239,7 +244,7 @@ export async function createDesignColor(req: AuthRequest, res: Response) {
       });
       await refreshCover(tx, designId);
       return created;
-    });
+    }, TX_OPTIONS);
     res.status(201).json(colorDto(color));
   } catch (error) {
     if (isUniqueViolation(error)) return res.status(409).json({ error: 'Este diseño ya tiene un color con ese nombre' });
@@ -267,7 +272,7 @@ export async function updateDesignColor(req: AuthRequest, res: Response) {
       const updated = await tx.productDesignImage.update({ where: { id: colorId }, data, include: COLOR_INCLUDE });
       await refreshCover(tx, updated.productDesignId);
       return updated;
-    });
+    }, TX_OPTIONS);
     res.json(colorDto(color));
   } catch (error) {
     if (isNotFound(error)) return res.status(404).json({ error: 'Color no encontrado' });
@@ -285,7 +290,7 @@ export async function deleteDesignColor(req: AuthRequest, res: Response) {
     await prisma.$transaction(async (tx) => {
       const deleted = await tx.productDesignImage.delete({ where: { id: colorId } });
       await refreshCover(tx, deleted.productDesignId);
-    });
+    }, TX_OPTIONS);
     res.status(204).send();
   } catch (error) {
     if (isNotFound(error)) return res.status(404).json({ error: 'Color no encontrado' });
@@ -343,7 +348,7 @@ export async function saveColorConfig(req: AuthRequest, res: Response) {
         },
         include: COLOR_INCLUDE,
       });
-    });
+    }, TX_OPTIONS);
     res.json(colorDto(color));
   } catch (error) {
     if (isNotFound(error)) return res.status(404).json({ error: 'Color no encontrado' });

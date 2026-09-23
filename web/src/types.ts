@@ -72,9 +72,13 @@ export interface DeliveryPreview {
 
 export type ItemCategory = 'CAKE' | 'ALFAJOR_CAKE' | 'ALFAJOR_UNIT' | 'CUPCAKE' | 'DESSERT';
 
-// One configured product line in the in-progress order. Carries a snapshot of the
-// design/variant so the cart can render without re-fetching the catalog.
-export interface CartItem {
+// One configured product line in the in-progress order. Carries a snapshot so
+// the cart can render without re-fetching the catalog. Two shapes:
+//  - LegacyCartItem: the variant-based catalog (today only the alfajor
+//    minicake). No `kind` — carts saved before catalog v2 have none.
+//  - CakeCartItem: a catalog v2 cake (color + size + flavors + shape ids).
+export interface LegacyCartItem {
+  kind?: 'legacy';
   key: string;
   designId: string;
   designName: string;
@@ -96,6 +100,79 @@ export interface CartItem {
   // Client's WhatsApp reference photo ("quiero algo así"). Separate from
   // customImageUrl, which is edible-print artwork.
   referenceImageUrl?: string;
+}
+
+export interface CakeCartItem {
+  kind: 'cake';
+  key: string;
+  designId: string;
+  designName: string;
+  designImageUrl: string | null;
+  colorId: string;
+  color: string;
+  sizeId: string;
+  sizeLabel: string;
+  portions: number;
+  bizcochoId: string;
+  bizcochoName: string;
+  rellenoId: string;
+  rellenoName: string;
+  shapeId: string;
+  shapeName: string;
+  // Snapshot of the price/minutes shown when added; the server re-prices.
+  price: number;
+  prepMinutes: number;
+  customText?: string;
+  customImageUrls?: string[];
+}
+
+export type CartItem = LegacyCartItem | CakeCartItem;
+
+export function isCakeItem(item: CartItem): item is CakeCartItem {
+  return item.kind === 'cake';
+}
+
+// ─── Catalog v2: public cake catalog (GET /public-orders/cake-catalog) ───
+
+export interface PublicCakeSize {
+  sizeId: string;
+  label: string;
+  portions: number;
+  prepMinutes: number;
+  price: number;
+}
+
+export interface PublicCakeColor {
+  id: string;
+  colorName: string;
+  imageUrl: string;
+  sizes: PublicCakeSize[];
+  bizcochoIds: string[];
+  rellenoIds: string[];
+  shapes: { id: string; name: string }[];
+}
+
+export interface PublicCakeDesign {
+  id: string;
+  name: string;
+  allowsCustomImage: boolean;
+  requiresCustomImage: boolean;
+  allowsCustomText: boolean;
+  customTextMaxLength: number;
+  imageLimits: Record<string, number>;
+  colors: PublicCakeColor[];
+}
+
+export interface PublicCakeFlavor {
+  id: string;
+  name: string;
+  kind: FlavorKind;
+  surcharges: Record<string, number>;
+}
+
+export interface PublicCakeCatalog {
+  designs: PublicCakeDesign[];
+  flavors: PublicCakeFlavor[];
 }
 
 // ─── Catalog v2: global cake settings (GET /cake-settings, admin only) ───

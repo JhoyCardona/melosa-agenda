@@ -53,8 +53,12 @@ async function reEnqueueOrder(tx: Prisma.TransactionClient, orderId: string): Pr
     where: { id: orderId },
     include: { items: { include: { variant: true } } },
   });
-  // Custom lines (no catalog variant) don't consume timeline minutes.
-  const rawDurationMin = order.items.reduce((sum, i) => sum + (i.variant?.prepMinutes ?? 0), 0);
+  // Catalog v2 lines carry their minutes frozen in prepMinutesAtOrder; legacy
+  // lines read the variant. Custom lines (neither) don't consume timeline minutes.
+  const rawDurationMin = order.items.reduce(
+    (sum, i) => sum + (i.prepMinutesAtOrder ?? i.variant?.prepMinutes ?? 0),
+    0
+  );
   const dateStr = dateStrOf(order.deliveryDate);
   const slot = await reserveDeliverySlot(tx, dateStr, rawDurationMin);
   await tx.order.update({
@@ -164,7 +168,7 @@ export async function createOrder(req: AuthRequest, res: Response) {
       customImageUrl: string | null;
       customText: string | null;
       referenceImageUrl: string | null;
-      isPromoMinicake: boolean;
+      fullPaymentIfAlone: boolean;
     }
     const lines: BuiltLine[] = [];
 
@@ -220,7 +224,7 @@ export async function createOrder(req: AuthRequest, res: Response) {
           customImageUrl: item.customImageUrl || null,
           customText: item.customText || null,
           referenceImageUrl: item.referenceImageUrl || null,
-          isPromoMinicake: !!variant.enPromocion,
+          fullPaymentIfAlone: !!variant.enPromocion,
         });
       } else {
         if (!item.customName || !String(item.customName).trim()) {
@@ -266,7 +270,7 @@ export async function createOrder(req: AuthRequest, res: Response) {
           customImageUrl: item.customImageUrl || null,
           customText: item.customText || null,
           referenceImageUrl: item.referenceImageUrl || null,
-          isPromoMinicake: false,
+          fullPaymentIfAlone: false,
         });
       }
     }
@@ -274,7 +278,7 @@ export async function createOrder(req: AuthRequest, res: Response) {
     const totalPrice = lines.reduce((sum, l) => sum + l.priceAtOrder, 0);
     const rawDurationMin = lines.reduce((sum, l) => sum + l.prepMinutes, 0);
     const requiredPaymentPercent = computeRequiredPaymentPercent(
-      lines.map((l) => ({ isPromoMinicake: l.isPromoMinicake }))
+      lines.map((l) => ({ fullPaymentIfAlone: l.fullPaymentIfAlone }))
     );
     const hasDeposit = typeof depositPaid === 'number' && depositPaid > 0;
 
@@ -633,7 +637,7 @@ async function findDayImageItems(date: string) {
         ticketNumber: order.ticketNumber,
         clientName: order.clientName,
         productDesignName: item.productDesign?.name ?? item.customName ?? 'Personalizado',
-        variantLabel: item.variant?.label ?? '',
+        variantLabel: item.variant?.label ?? item.customSize ?? '',
         imageUrl,
       }));
     })

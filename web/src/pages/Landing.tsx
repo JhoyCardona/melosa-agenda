@@ -96,9 +96,12 @@ export default function Landing() {
               <p className="feature-notes-title">Tener en cuenta que:</p>
               <ol>
                 <li>
-                  Puedes elegir el sabor del bizcocho: Vainilla o Chocolate, y el relleno: Arequipe,
-                  Frutos rojos, Frutos amarillos, Caramelo salado, Chocolate o Fresas con crema, sin
-                  costo adicional.
+                  El precio de la promoción aplica para el tamaño MiniCake y puede variar según la
+                  decoración. Verás el precio exacto al armar tu pedido.
+                </li>
+                <li>
+                  Puedes elegir el sabor del bizcocho y del relleno. Algunos sabores tienen un costo
+                  adicional, que se muestra al escogerlos.
                 </li>
                 <li>Puedes modificar el texto o la imagen que lleva el diseño de ejemplo.</li>
                 <li>
@@ -110,7 +113,7 @@ export default function Landing() {
 
             <div className="btn-row">
               <Link to="/catalogo" className="btn btn-primary">
-                Ver minicakes
+                Ver diseños
               </Link>
               <a href="#como" className="btn btn-ghost">
                 Cómo pedir

@@ -12,6 +12,7 @@ import {
 } from '../services/pricing';
 import { MAX_CLIENT_NAME_LENGTH, MAX_NOTES_LENGTH, MAX_ADDRESS_LENGTH } from '../services/limits';
 import cloudinary from '../config/cloudinary';
+import { resolveCakeLines, isCakeLineInput, CakeLineError, type CakeLineInput } from '../services/cakeCatalog';
 
 const prisma = new PrismaClient();
 
@@ -60,6 +61,9 @@ const VALID_SHAPES = ['Redonda', 'Corazón'];
 // panel instead — also caps spam and "one order eats half the day" cases.
 const MAX_ITEMS_PER_PUBLIC_ORDER = 12;
 
+// A legacy-catalog line (the alfajor minicake, and the pre-v2 cake catalog).
+// Catalog v2 cake lines use CakeLineInput instead (colorId/sizeId/... ids, no
+// variantId) — told apart by the presence of variantId.
 interface PublicOrderItemInput {
   productDesignId: string;
   variantId: string;
@@ -140,9 +144,18 @@ export async function createPublicOrder(req: Request, res: Response) {
     });
   }
 
+  const legacyItems: PublicOrderItemInput[] = [];
+  const cakeItems: CakeLineInput[] = [];
+  for (const item of items as unknown[]) {
+    const variantId = (item as { variantId?: unknown } | null)?.variantId;
+    if (typeof variantId === 'string' && variantId) legacyItems.push(item as PublicOrderItemInput);
+    else if (isCakeLineInput(item)) cakeItems.push(item);
+    else return res.status(400).json({ error: 'Uno de los productos del pedido está incompleto' });
+  }
+
   try {
-    const variantIds = (items as PublicOrderItemInput[]).map((item) => item.variantId);
-    const designIds = (items as PublicOrderItemInput[]).map((item) => item.productDesignId);
+    const variantIds = legacyItems.map((item) => item.variantId);
+    const designIds = legacyItems.map((item) => item.productDesignId);
     const [variants, designs] = await Promise.all([
       prisma.productVariant.findMany({ where: { id: { in: variantIds } } }),
       prisma.productDesign.findMany({ where: { id: { in: designIds } }, include: { images: true } }),
@@ -155,7 +168,7 @@ export async function createPublicOrder(req: Request, res: Response) {
     // (defaulting to Arequipe when nothing is sent), every size of the alfajor
     // minicake is always Arequipe (its filling never changes), and an
     // empty/unknown shape falls back to "Redonda" (the form's own default).
-    const resolvedItems = (items as PublicOrderItemInput[]).map((item) => {
+    const resolvedItems = legacyItems.map((item) => {
       const variant = variantById.get(item.variantId);
       const design = variant ? designById.get(item.productDesignId) : undefined;
       const isAlfajor = design?.category === ItemCategory.ALFAJOR_CAKE;
@@ -228,18 +241,32 @@ export async function createPublicOrder(req: Request, res: Response) {
       }
     }
 
-    const totalPrice = resolvedItems.reduce(
-      (sum, { variant, effectiveRelleno }) =>
-        sum +
-        Number(variant!.price) +
-        rellenoSurcharge(effectiveRelleno, variant!.portions, variant!.enPromocion),
-      0
-    );
-    const rawDurationMin = resolvedItems.reduce((sum, { variant }) => sum + variant!.prepMinutes, 0);
-    // Exactly one item, a minicake -> 100%; everything else -> 50%.
-    const requiredPaymentPercent = computeRequiredPaymentPercent(
-      resolvedItems.map(({ variant }) => ({ isPromoMinicake: !!variant!.enPromocion }))
-    );
+    // Catalog v2 cakes: validated and priced from the live catalog.
+    let cakeLines;
+    try {
+      cakeLines = await resolveCakeLines(cakeItems);
+    } catch (error) {
+      if (error instanceof CakeLineError) return res.status(400).json({ error: error.message });
+      throw error;
+    }
+
+    const totalPrice =
+      resolvedItems.reduce(
+        (sum, { variant, effectiveRelleno }) =>
+          sum +
+          Number(variant!.price) +
+          rellenoSurcharge(effectiveRelleno, variant!.portions, variant!.enPromocion),
+        0
+      ) + cakeLines.reduce((sum, l) => sum + l.price, 0);
+    const rawDurationMin =
+      resolvedItems.reduce((sum, { variant }) => sum + variant!.prepMinutes, 0) +
+      cakeLines.reduce((sum, l) => sum + l.prepMinutes, 0);
+    // Exactly one item whose size asks for full payment alone (a minicake) ->
+    // 100%; everything else -> 50%.
+    const requiredPaymentPercent = computeRequiredPaymentPercent([
+      ...resolvedItems.map(({ variant }) => ({ fullPaymentIfAlone: !!variant!.enPromocion })),
+      ...cakeLines.map((l) => ({ fullPaymentIfAlone: l.fullPaymentIfAlone })),
+    ]);
 
     const order = await prisma.$transaction(async (tx) => {
       // Assigns the pickup slot and advances the day cursor, all-or-nothing with
@@ -266,7 +293,8 @@ export async function createPublicOrder(req: Request, res: Response) {
           requiredPaymentPercent,
           totalPrice,
           items: {
-            create: resolvedItems.map(
+            create: [
+              ...resolvedItems.map(
               ({ item, variant, design, effectiveRelleno, effectiveShape, effectiveColor, multiImage, effectiveImages }) => {
                 // Honour the design's flags even if the client posts these fields
                 // directly (the form already hides the inputs when not allowed).
@@ -287,7 +315,9 @@ export async function createPublicOrder(req: Request, res: Response) {
                   customText: design!.allowsCustomText ? item.customText?.trim() || null : null,
                 };
               }
-            ),
+              ),
+              ...cakeLines.map((l) => l.itemData),
+            ],
           },
         },
         include: { items: true },

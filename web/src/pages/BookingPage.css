@@ -380,3 +380,14 @@ img.config-photo:not(.config-photo-empty) {
   margin: 0;
   padding: 0 0 var(--space-3);
 }
+
+/* Live price of the cake being configured (catalog v2 booking page). */
+.cake-line-price {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--text-base);
+}
+
+.cake-line-price strong {
+  color: var(--color-primary);
+  font-size: var(--text-lg);
+}

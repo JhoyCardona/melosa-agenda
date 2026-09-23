@@ -4,6 +4,11 @@ import { AuthRequest } from '../middleware/authMiddleware';
 
 const prisma = new PrismaClient();
 
+// Catalog saves run several queries in one transaction; Prisma's default 5s cap
+// was hit from a dev machine in Colombia talking to Neon in us-east (each
+// round trip adds up). Admin-only, low traffic — a longer cap is harmless.
+const TX_OPTIONS = { timeout: 15000, maxWait: 10000 };
+
 // Backs the admin "Sabores, tamaños y formas" screen (catalog v2): the global
 // lists every cake design picks from. All routes are admin-only. New rows are
 // created inactive — gretica ticks "active" once a size/flavor is fully set up,
@@ -211,7 +216,7 @@ export async function createCakeFlavor(req: AuthRequest, res: Response) {
       const created = await tx.cakeFlavor.create({ data: { name, kind } });
       await writeSurcharges(tx, created.id, surcharges);
       return created;
-    });
+    }, TX_OPTIONS);
     res.status(201).json(flavor);
   } catch (error) {
     if (error instanceof UnknownSizeError) return res.status(400).json({ error: 'Uno de los tamaños del recargo no existe' });
@@ -243,7 +248,7 @@ export async function updateCakeFlavor(req: AuthRequest, res: Response) {
       const updated = await tx.cakeFlavor.update({ where: { id }, data });
       await writeSurcharges(tx, id, surcharges);
       return updated;
-    });
+    }, TX_OPTIONS);
     res.json(flavor);
   } catch (error) {
     if (error instanceof UnknownSizeError) return res.status(400).json({ error: 'Uno de los tamaños del recargo no existe' });

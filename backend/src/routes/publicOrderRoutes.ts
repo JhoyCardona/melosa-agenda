@@ -4,6 +4,7 @@ import { createPublicOrder, uploadPublicImage } from '../controllers/publicOrder
 import { getDeliveryPreview } from '../services/availability';
 import { isValidIsoDate } from '../utils/colombiaTime';
 import upload from '../config/multer';
+import { getPublicCakeCatalog } from '../services/cakeCatalog';
 
 const router = Router();
 
@@ -28,6 +29,17 @@ const uploadLimiter = rateLimit({
 });
 
 router.post('/', createOrderLimiter, createPublicOrder);
+
+// Catalog v2 cakes the public can book (designs + their complete colors, and
+// the active flavors with their per-size surcharges).
+router.get('/cake-catalog', async (req, res) => {
+  try {
+    res.json(await getPublicCakeCatalog());
+  } catch (error) {
+    console.error('Error cargando catálogo de tortas:', error);
+    res.status(500).json({ error: 'No se pudo cargar el catálogo. Intenta de nuevo.' });
+  }
+});
 router.post('/upload-image', uploadLimiter, upload.single('image'), uploadPublicImage);
 
 // Preview for the booking form: given the delivery date and how many minutes the

@@ -1,80 +1,31 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link /*, useSearchParams */ } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { getWithRetry } from '../api';
-import type { ProductDesign, ProductDesignImage } from '../types';
+import type { PublicCakeCatalog, PublicCakeDesign } from '../types';
 import { useAdminAuth } from '../context/AdminAuth';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import DesignCarousel from '../components/DesignCarousel';
 import './CatalogPage.css';
 
-// Hides the ~44 legacy one-photo-per-design rows from before the color-picker
-// rework (still in the DB, never deleted, just superseded — all nameless). A
-// design with color images loaded shows; so does any named one-off design
-// (alfajor, memory cake, ...) even with no colors of its own to pick.
-const ONLY_COLOR_DESIGNS = true;
-
-function minVariantPrice(design: ProductDesign): number | null {
-  if (design.variants.length === 0) return null;
-  return Math.min(...design.variants.map((v) => Number(v.price)));
-}
-
-// The minicake price = the price of the promo (2 porciones) variant. That's what
-// the price filter buckets by; falls back to the cheapest variant if a design
-// somehow has no promo variant.
-function minicakePrice(design: ProductDesign): number | null {
-  const promo = design.variants.filter((v) => v.enPromocion).map((v) => Number(v.price));
-  if (promo.length > 0) return Math.min(...promo);
-  return minVariantPrice(design);
-}
-
-// Photos the card carousel cycles through. A color design uses its color photos;
-// a design with options (gatitos: 1/2/3 gatos) uses one photo per option, most
-// expensive first — more cats cost more, so that reads 3 → 2 → 1 gatos. One photo
-// per option even when the option also exists in other sizes.
-function carouselImages(design: ProductDesign): ProductDesignImage[] {
-  if (!design.variants.some((v) => v.optionLabel)) return design.images;
-  const seen = new Set<string>();
-  return [...design.variants]
-    .sort((a, b) => Number(b.price) - Number(a.price))
-    .filter((v) => {
-      if (!v.optionLabel || !v.imageUrl || seen.has(v.optionLabel)) return false;
-      seen.add(v.optionLabel);
-      return true;
-    })
-    .map((v) => ({ id: v.id, colorName: v.optionLabel!, imageUrl: v.imageUrl! }));
-}
-
-// Minicake price tiers. The tabs are the only place the price is shown — the
-// cards don't repeat it.
-const PRICE_BUCKETS = [
-  { id: '28000', label: '$28.000', test: (p: number) => p === 28000 },
-  // === 30000 (not >=) now that $31.000 is its own tab — matches exactly one
-  // tier. p===29000 would fall through both tabs, but that price no longer
-  // exists in the catalog (the $29.000 tier was renamed to $30.000).
-  { id: '30000', label: '$30.000', test: (p: number) => p === 30000 },
-  // >= 31000 on purpose: 31000+/ is gretica's folder for one-off special
-  // designs (memory cake, and whatever she adds there next) — not a single
-  // fixed price point.
-  { id: '31000plus', label: '$31.000', test: (p: number) => p >= 31000 },
-];
-const DEFAULT_BUCKET = '28000';
-
+// Cake catalog (catalog v2). One card per design, cycling through its color
+// photos. No prices or price filters here on purpose: the price depends on the
+// size (and a little on the flavors), and the client sees it while building the
+// order. Other product families (alfajores, cupcakes, postres) will get their
+// own catalogs; the alfajor minicake is booked from the Landing's own button.
 export default function CatalogPage() {
   const { isAdmin } = useAdminAuth();
-  // const [searchParams] = useSearchParams();
-  const [designs, setDesigns] = useState<ProductDesign[]>([]);
+  const [designs, setDesigns] = useState<PublicCakeDesign[]>([]);
   const [loading, setLoading] = useState(true);
   const [slow, setSlow] = useState(false);
   const [error, setError] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [bucketId, setBucketId] = useState(DEFAULT_BUCKET);
 
   const loadCatalog = useCallback(() => {
     setLoading(true);
     setSlow(false);
     setError(false);
-    getWithRetry<ProductDesign[]>('/product-designs', { onSlow: () => setSlow(true) })
-      .then((data) => setDesigns(data))
+    getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog', { onSlow: () => setSlow(true) })
+      .then((data) => setDesigns(data.designs))
       .catch((err) => {
         console.error('Error cargando catálogo:', err);
         setError(true);
@@ -84,28 +35,6 @@ export default function CatalogPage() {
         setSlow(false);
       });
   }, []);
-
-  // Same catalog, two entry points. From "Ver minicakes" (no param) the price
-  // tabs show and filter by the minicake price. From "Ver el catálogo de tortas"
-  // (?ver=tortas) the tabs are hidden — those prices are minicake prices, they
-  // don't mean anything for a 5+ porciones order — and every design is listed.
-  //
-  // Tortas 5+ deshabilitadas temporalmente (sin precios reales todavía, ver
-  // CLAUDE.md / Landing.tsx). Para reactivar: descomentar la línea de abajo y el
-  // import/hook de useSearchParams arriba.
-  // const grandes = searchParams.get('ver') === 'tortas';
-  const grandes = false;
-
-  const activeBucket = PRICE_BUCKETS.find((b) => b.id === bucketId) ?? PRICE_BUCKETS[0];
-  const colorDesigns = ONLY_COLOR_DESIGNS
-    ? designs.filter((d) => d.images.length > 0 || d.name !== '')
-    : designs;
-  const visibleDesigns = grandes
-    ? colorDesigns
-    : colorDesigns.filter((d) => {
-        const price = minicakePrice(d);
-        return price !== null && activeBucket.test(price);
-      });
 
   useEffect(() => {
     loadCatalog();
@@ -118,43 +47,17 @@ export default function CatalogPage() {
 
       <main className="section">
         <div className="section-inner">
-          <p className="eyebrow">{grandes ? 'Tortas de 5 porciones o más' : 'Catálogo'}</p>
+          <p className="eyebrow">Catálogo de tortas</p>
           <h1>Elige tu diseño</h1>
           {isAdmin && (
-            <Link to="/admin/catalogo" className="btn btn-ghost catalog-admin-cta">
-              Editar catálogo
+            <Link to="/admin/tortas/disenos" className="btn btn-ghost catalog-admin-cta">
+              Editar diseños
             </Link>
           )}
-          {/* Texto original (para cuando se reactiven tortas de 5+ porciones):
           <p className="section-lead">
-            Toca un diseño para empezar tu pedido. Cada diseño se hace en minicake de 2 porciones y
-            en tamaños de 5, 10, 15 y 20 porciones: el tamaño y el precio los eliges en el siguiente
-            paso.
+            Toca un diseño para empezar tu pedido. En el siguiente paso eliges el color, el tamaño y los
+            sabores, y ves el precio.
           </p>
-          */}
-          <p className="section-lead">
-            Toca un diseño para empezar tu pedido. Por ahora agendamos solo en minicake de 2
-            porciones.
-          </p>
-
-          {!loading && !error && designs.length > 0 && !grandes && (
-            <div className="price-tabs" role="group" aria-label="Filtrar minicakes por precio">
-              {PRICE_BUCKETS.map((b) => (
-                <button
-                  key={b.id}
-                  type="button"
-                  className={`price-tab ${b.id === bucketId ? 'price-tab-active' : ''}`}
-                  aria-pressed={b.id === bucketId}
-                  onClick={() => {
-                    setBucketId(b.id);
-                    setSelectedId(null);
-                  }}
-                >
-                  {b.label}
-                </button>
-              ))}
-            </div>
-          )}
 
           {loading && (
             <p className="muted">
@@ -174,16 +77,10 @@ export default function CatalogPage() {
           {!loading && !error && designs.length === 0 && (
             <p className="muted">Pronto vamos a subir nuestros diseños acá.</p>
           )}
-          {!loading && !error && designs.length > 0 && visibleDesigns.length === 0 && !grandes && (
-            <p className="muted">No hay diseños en {activeBucket.label} por ahora. Prueba otro precio.</p>
-          )}
-          {!loading && !error && designs.length > 0 && visibleDesigns.length === 0 && grandes && (
-            <p className="muted">Pronto vamos a subir más diseños acá.</p>
-          )}
 
-          {visibleDesigns.length > 0 && (
+          {designs.length > 0 && (
             <ul className="catalog-grid">
-              {visibleDesigns.map((design) => {
+              {designs.map((design) => {
                 const isSelected = selectedId === design.id;
                 return (
                   <li key={design.id} className={`catalog-card ${isSelected ? 'is-selected' : ''}`}>
@@ -194,23 +91,16 @@ export default function CatalogPage() {
                       onClick={() => setSelectedId(isSelected ? null : design.id)}
                     >
                       <DesignCarousel
-                        images={carouselImages(design)}
-                        fallbackImageUrl={design.imageUrl}
-                        alt={design.name || 'Diseño de minicake'}
+                        images={design.colors.map((c) => ({ id: c.id, colorName: c.colorName, imageUrl: c.imageUrl }))}
+                        fallbackImageUrl={design.colors[0]?.imageUrl ?? null}
+                        alt={design.name}
                       />
                     </button>
 
                     <div className="catalog-card-body">
-                      {/* Designs have no name and no price on the card — the photo is
-                          the identity, and the price tabs above already say the price.
-                          A title only shows if one was set (e.g. a legacy design). */}
-                      {design.name && <h3>{design.name}</h3>}
-
+                      <h3>{design.name}</h3>
                       {isSelected && (
-                        <Link
-                          to={`/agendar/${design.id}${grandes ? '?ver=tortas' : ''}`}
-                          className="btn btn-primary catalog-card-cta"
-                        >
+                        <Link to={`/tortas/${design.id}`} className="btn btn-primary catalog-card-cta">
                           Quiero esta
                         </Link>
                       )}
