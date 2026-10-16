@@ -199,9 +199,11 @@ function DesignForm({
   onSaved: (id: string) => Promise<void>;
 }) {
   const [name, setName] = useState(design?.name ?? '');
-  const [allowsCustomImage, setAllowsCustomImage] = useState(design?.allowsCustomImage ?? false);
+  // A new design allows both image and text by default (most do); the
+  // checkboxes below are phrased as the opt-out ("NO permite…").
+  const [allowsCustomImage, setAllowsCustomImage] = useState(design?.allowsCustomImage ?? true);
   const [requiresCustomImage, setRequiresCustomImage] = useState(design?.requiresCustomImage ?? false);
-  const [allowsCustomText, setAllowsCustomText] = useState(design?.allowsCustomText ?? false);
+  const [allowsCustomText, setAllowsCustomText] = useState(design?.allowsCustomText ?? true);
   const [maxLength, setMaxLength] = useState(String(design?.customTextMaxLength ?? 20));
   // Per-size cap on print images, as digit strings while typing ('' = 1).
   const [imageLimits, setImageLimits] = useState<Record<string, string>>(() =>
@@ -258,13 +260,13 @@ function DesignForm({
       <label className="cs-check">
         <input
           type="checkbox"
-          checked={allowsCustomImage}
+          checked={!allowsCustomImage}
           onChange={(e) => {
-            setAllowsCustomImage(e.target.checked);
+            setAllowsCustomImage(!e.target.checked);
             setSaved('');
           }}
         />
-        Permite imagen personalizada (para imprimir)
+        NO permite imagen personalizada
       </label>
       {allowsCustomImage && (
         <label className="cs-check cs-indent">
@@ -305,13 +307,13 @@ function DesignForm({
       <label className="cs-check">
         <input
           type="checkbox"
-          checked={allowsCustomText}
+          checked={!allowsCustomText}
           onChange={(e) => {
-            setAllowsCustomText(e.target.checked);
+            setAllowsCustomText(!e.target.checked);
             setSaved('');
           }}
         />
-        Permite texto personalizado
+        NO permite texto personalizado
       </label>
       {allowsCustomText && (
         <div className="cs-indent">

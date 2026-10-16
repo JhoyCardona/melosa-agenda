@@ -124,6 +124,9 @@ export interface CakeCartItem {
   prepMinutes: number;
   customText?: string;
   customImageUrls?: string[];
+  // Set only when customImageUrls has at least one image; its surcharge is
+  // already inside `price`.
+  printImageType?: PrintImageType;
 }
 
 export type CartItem = LegacyCartItem | CakeCartItem;
@@ -133,6 +136,8 @@ export function isCakeItem(item: CartItem): item is CakeCartItem {
 }
 
 // ─── Catalog v2: public cake catalog (GET /public-orders/cake-catalog) ───
+
+export type PrintImageType = 'NON_EDIBLE' | 'EDIBLE';
 
 export interface PublicCakeSize {
   sizeId: string;
@@ -173,6 +178,8 @@ export interface PublicCakeFlavor {
 export interface PublicCakeCatalog {
   designs: PublicCakeDesign[];
   flavors: PublicCakeFlavor[];
+  // Per-cake surcharge for adding print image(s), by print type.
+  printImagePrices: Record<PrintImageType, number>;
 }
 
 // ─── Catalog v2: global cake settings (GET /cake-settings, admin only) ───

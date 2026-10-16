@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api, { getWithRetry } from '../api';
-import type { CakeCartItem, PublicCakeCatalog, PublicCakeColor, PublicCakeSize } from '../types';
+import type { CakeCartItem, PrintImageType, PublicCakeCatalog, PublicCakeColor, PublicCakeSize } from '../types';
 import { isCakeItem } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
@@ -10,7 +10,8 @@ import { MAX_ITEMS, newKey } from '../bookingShared';
 import './BookingPage.css';
 
 // Booking page for a catalog v2 cake: pick color → size → bizcocho → relleno →
-// shape (+ text / print images when the design allows), with the live price,
+// shape (+ text / print images when the design allows; adding images costs a
+// per-cake surcharge by print type), with the live price,
 // then the shared checkout. The server re-validates and re-prices everything.
 
 const CATALOG_HREF = '/catalogo';
@@ -20,17 +21,24 @@ function pesos(n: number): string {
 }
 
 // Price of one cake as configured: this color's size price + the chosen
-// flavors' surcharges for that size.
+// flavors' surcharges for that size + the print-image surcharge, if any.
 function linePrice(
   catalog: PublicCakeCatalog,
   size: PublicCakeSize,
   bizcochoId: string,
-  rellenoId: string
+  rellenoId: string,
+  printImageType?: PrintImageType
 ): number {
   const extra = (flavorId: string) =>
     catalog.flavors.find((f) => f.id === flavorId)?.surcharges[size.sizeId] ?? 0;
-  return size.price + extra(bizcochoId) + extra(rellenoId);
+  const imageExtra = printImageType ? catalog.printImagePrices[printImageType] : 0;
+  return size.price + extra(bizcochoId) + extra(rellenoId) + imageExtra;
 }
+
+const PRINT_TYPE_LABELS: Record<PrintImageType, string> = {
+  NON_EDIBLE: 'No comestible',
+  EDIBLE: 'Comestible',
+};
 
 // Is a saved cart line still valid against the live catalog, at the same price?
 function stillValid(catalog: PublicCakeCatalog, item: CakeCartItem): boolean {
@@ -40,7 +48,8 @@ function stillValid(catalog: PublicCakeCatalog, item: CakeCartItem): boolean {
   if (!color || !size) return false;
   if (!color.bizcochoIds.includes(item.bizcochoId) || !color.rellenoIds.includes(item.rellenoId)) return false;
   if (!color.shapes.some((s) => s.id === item.shapeId)) return false;
-  return linePrice(catalog, size, item.bizcochoId, item.rellenoId) === item.price;
+  const printType = item.customImageUrls?.length ? item.printImageType ?? 'NON_EDIBLE' : undefined;
+  return linePrice(catalog, size, item.bizcochoId, item.rellenoId, printType) === item.price;
 }
 
 export default function CakeBookingPage() {
@@ -62,6 +71,8 @@ export default function CakeBookingPage() {
   const [shapeId, setShapeId] = useState('');
   const [customText, setCustomText] = useState('');
   const [customImages, setCustomImages] = useState<string[]>([]);
+  // Every added image starts as non-edible; the client can switch to edible.
+  const [printType, setPrintType] = useState<PrintImageType>('NON_EDIBLE');
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageError, setImageError] = useState('');
   const [justAdded, setJustAdded] = useState(false);
@@ -113,8 +124,11 @@ export default function CakeBookingPage() {
   const maxImages = design && size ? design.imageLimits[size.sizeId] ?? 1 : 1;
   // A smaller size can lower the cap; extra images beyond it are just not sent.
   const images = customImages.slice(0, maxImages);
+  // The surcharge only applies once there's at least one image.
+  const linePrintType = design?.allowsCustomImage && images.length > 0 ? printType : undefined;
 
-  const price = catalog && size && bizcocho && relleno ? linePrice(catalog, size, bizcocho.id, relleno.id) : null;
+  const price =
+    catalog && size && bizcocho && relleno ? linePrice(catalog, size, bizcocho.id, relleno.id, linePrintType) : null;
   const cartFull = draft.items.length >= MAX_ITEMS;
   const needsImage = !!design?.allowsCustomImage && design.requiresCustomImage && images.length === 0;
 
@@ -176,10 +190,12 @@ export default function CakeBookingPage() {
       price,
       prepMinutes: size.prepMinutes,
       customText: design.allowsCustomText ? customText.trim() || undefined : undefined,
-      customImageUrls: design.allowsCustomImage && images.length > 0 ? images : undefined,
+      customImageUrls: linePrintType ? images : undefined,
+      printImageType: linePrintType,
     });
     setCustomText('');
     setCustomImages([]);
+    setPrintType('NON_EDIBLE');
     setImageError('');
     setJustAdded(true);
     window.setTimeout(() => setJustAdded(false), 2500);
@@ -318,13 +334,17 @@ export default function CakeBookingPage() {
             </>
           )}
 
-          {design.allowsCustomImage && (
+          {design.allowsCustomImage && catalog && (
             <>
               <label className="field-label">
                 {maxImages > 1
-                  ? `Imágenes para imprimir (hasta ${maxImages}${design.requiresCustomImage ? ', mínimo 1' : ''})`
-                  : `Imagen para imprimir ${design.requiresCustomImage ? '(obligatoria)' : '(opcional)'}`}
+                  ? `Agregar imágenes (hasta ${maxImages}${design.requiresCustomImage ? ', mínimo 1' : ''})`
+                  : `Agregar imagen ${design.requiresCustomImage ? '(obligatoria)' : '(opcional)'}`}
               </label>
+              <p className="field-hint">
+                Desde +{pesos(catalog.printImagePrices.NON_EDIBLE)} por torta
+                {maxImages > 1 ? ', sin importar cuántas imágenes subas' : ''}.
+              </p>
               {design.requiresCustomImage && (
                 <p className="field-hint">
                   No editamos ni diseñamos la imagen: súbela lista para imprimir tal como la quieres en la torta.
@@ -360,6 +380,23 @@ export default function CakeBookingPage() {
                     </div>
                   ))}
                 </div>
+              )}
+              {images.length > 0 && (
+                <>
+                  <label className="field-label">Tipo de imagen</label>
+                  <div className="pills">
+                    {(['NON_EDIBLE', 'EDIBLE'] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className={`pill ${t === printType ? 'pill-active' : ''}`}
+                        onClick={() => setPrintType(t)}
+                      >
+                        {PRINT_TYPE_LABELS[t]} (+{pesos(catalog.printImagePrices[t])})
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
             </>
           )}

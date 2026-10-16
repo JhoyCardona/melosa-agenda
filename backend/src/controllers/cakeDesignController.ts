@@ -175,7 +175,10 @@ export async function createCakeDesign(req: AuthRequest, res: Response) {
         data: {
           name,
           category: ItemCategory.CAKE,
-          allowsCustomText: false,
+          // Most designs take a print image and a text, so both default to
+          // allowed; the admin screen opts a design out with "NO permite…".
+          allowsCustomImage: true,
+          allowsCustomText: true,
           ...flags.data,
         },
       });

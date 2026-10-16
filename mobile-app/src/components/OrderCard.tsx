@@ -26,6 +26,9 @@ interface OrderItem {
   // Client's WhatsApp reference photo ("quiero algo así"). Not the same as
   // customImageUrl (edible-print artwork) — shown as its own block.
   referenceImageUrl: string | null;
+  // What the print image(s) go on (web booking choice). Null on older orders
+  // and on lines with no print image.
+  printImageType?: 'NON_EDIBLE' | 'EDIBLE' | null;
   customText: string | null;
   shape: string | null;
   // The color the client picked (BookingPage's color picker), used to find the
@@ -282,7 +285,12 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
                 {printImageUrls.length > 0 && (
                   <>
                     <Text style={styles.detailLine}>
-                      {printImageUrls.length > 1 ? 'Imágenes para imprimir:' : 'Imagen para imprimir:'}
+                      {printImageUrls.length > 1 ? 'Imágenes para imprimir' : 'Imagen para imprimir'}
+                      {item.printImageType === 'EDIBLE'
+                        ? ' (COMESTIBLE):'
+                        : item.printImageType === 'NON_EDIBLE'
+                          ? ' (no comestible):'
+                          : ':'}
                     </Text>
                     <View style={styles.printThumbRow}>
                       {printImageUrls.map((url, i) => (

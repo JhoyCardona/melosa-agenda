@@ -10,7 +10,7 @@ import {
   isValidMinicakeRelleno,
   DEFAULT_MINICAKE_RELLENO,
 } from '../services/pricing';
-import { MAX_CLIENT_NAME_LENGTH, MAX_NOTES_LENGTH, MAX_ADDRESS_LENGTH } from '../services/limits';
+import { MAX_CLIENT_NAME_LENGTH, MAX_ADDRESS_LENGTH } from '../services/limits';
 import cloudinary from '../config/cloudinary';
 import { resolveCakeLines, isCakeLineInput, CakeLineError, type CakeLineInput } from '../services/cakeCatalog';
 
@@ -80,8 +80,10 @@ interface PublicOrderItemInput {
 
 // Public, no-auth endpoint clients use to book their own order from the web form.
 // Lands as AWAITING_PAYMENT/WEB_PUBLIC with its payment deadline already set.
+// Web orders carry no free-text notes (Oct 2026 decision: the client books the
+// cake as shown, no extra specifications) — a posted `notes` is ignored.
 export async function createPublicOrder(req: Request, res: Response) {
-  const { clientName, clientPhone, deliveryDate, deliveryAddress, notes, items } = req.body;
+  const { clientName, clientPhone, deliveryDate, deliveryAddress, items } = req.body;
 
   if (!clientName || !clientPhone || !deliveryDate) {
     return res.status(400).json({
@@ -93,9 +95,6 @@ export async function createPublicOrder(req: Request, res: Response) {
     return res.status(400).json({
       error: `El nombre no puede pasar de ${MAX_CLIENT_NAME_LENGTH} caracteres.`,
     });
-  }
-  if (notes && String(notes).trim().length > MAX_NOTES_LENGTH) {
-    return res.status(400).json({ error: `Las notas no pueden pasar de ${MAX_NOTES_LENGTH} caracteres.` });
   }
   if (deliveryAddress && String(deliveryAddress).trim().length > MAX_ADDRESS_LENGTH) {
     return res.status(400).json({
@@ -286,7 +285,6 @@ export async function createPublicOrder(req: Request, res: Response) {
           deliveryStartMinutes: slot.startMinutes,
           deliveryDurationMin: slot.durationMin,
           deliveryAddress: deliveryAddress ? String(deliveryAddress).trim() : null,
-          notes: notes ? String(notes).trim() : null,
           source: 'WEB_PUBLIC',
           status: OrderStatus.AWAITING_PAYMENT,
           paymentDueDate: computePaymentDueDate(deliveryDate, pickupMinutes),

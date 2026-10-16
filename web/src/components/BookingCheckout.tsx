@@ -6,7 +6,6 @@ import { useOrderDraft } from '../context/OrderDraft';
 import { waLink, BUSINESS } from '../config';
 import {
   MAX_CLIENT_NAME,
-  MAX_NOTES,
   cartItemSummary,
   earliestDeliveryDateString,
   formatDeliveryDate,
@@ -89,7 +88,6 @@ export default function BookingCheckout({ catalogHref }: { catalogHref: string }
         // Keep only digits and a leading +, but accept any country's number.
         clientPhone: normalizedPhone,
         deliveryDate: draft.deliveryDate,
-        notes: draft.notes.trim() || undefined,
         items: draft.items.map(toOrderLine),
       });
 
@@ -240,13 +238,6 @@ export default function BookingCheckout({ catalogHref }: { catalogHref: string }
           type="tel"
           value={draft.clientPhone}
           onChange={(e) => draft.patch({ clientPhone: e.target.value })}
-        />
-
-        <label className="field-label">Especificaciones (opcional)</label>
-        <textarea
-          maxLength={MAX_NOTES}
-          value={draft.notes}
-          onChange={(e) => draft.patch({ notes: e.target.value })}
         />
       </section>
 

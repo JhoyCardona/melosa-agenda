@@ -11,7 +11,6 @@ interface OrderDraft {
   deliveryDate: string;
   clientName: string;
   clientPhone: string;
-  notes: string;
 }
 
 const EMPTY: OrderDraft = {
@@ -19,7 +18,6 @@ const EMPTY: OrderDraft = {
   deliveryDate: '',
   clientName: '',
   clientPhone: '',
-  notes: '',
 };
 
 const STORAGE_KEY = 'melosa_order_draft';
@@ -40,7 +38,13 @@ function loadDraft(): OrderDraft {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return EMPTY;
     const parsed = JSON.parse(raw) as Partial<OrderDraft>;
-    return { ...EMPTY, ...parsed, items: Array.isArray(parsed.items) ? parsed.items : [] };
+    return {
+      ...EMPTY,
+      deliveryDate: parsed.deliveryDate ?? '',
+      clientName: parsed.clientName ?? '',
+      clientPhone: parsed.clientPhone ?? '',
+      items: Array.isArray(parsed.items) ? parsed.items : [],
+    };
   } catch {
     return EMPTY;
   }

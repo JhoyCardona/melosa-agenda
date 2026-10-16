@@ -638,6 +638,7 @@ async function findDayImageItems(date: string) {
         clientName: order.clientName,
         productDesignName: item.productDesign?.name ?? item.customName ?? 'Personalizado',
         variantLabel: item.variant?.label ?? item.customSize ?? '',
+        printImageType: item.printImageType,
         imageUrl,
       }));
     })
@@ -696,7 +697,11 @@ export async function downloadDayGalleryZip(req: AuthRequest, res: Response) {
       const buffer = Buffer.from(await response.arrayBuffer());
 
       const extension = image.imageUrl.split('.').pop()?.split('?')[0] || 'jpg';
-      const safeName = image.clientName.replace(/[^a-zA-Z0-9]+/g, '-');
+      // Print type goes in the name too, so edible vs non-edible is obvious
+      // while printing (null on lines booked before the choice existed).
+      const typeTag =
+        image.printImageType === 'EDIBLE' ? '-COMESTIBLE' : image.printImageType === 'NON_EDIBLE' ? '-no-comestible' : '';
+      const safeName = image.clientName.replace(/[^a-zA-Z0-9]+/g, '-') + typeTag;
       let fileName = `ticket-${image.ticketNumber}-${safeName}.${extension}`;
       let suffix = 2;
       while (usedNames.has(fileName)) {

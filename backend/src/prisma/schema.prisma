@@ -69,6 +69,11 @@ model OrderItem {
   // the day's print ZIP (findDayImageItems). referenceImageUrl is for the baker's
   // eyes only and stays out of the print gallery.
   referenceImageUrl  String?
+  // What the print image(s) go on, chosen by the client at booking time:
+  // NON_EDIBLE (default, cheap topper) or EDIBLE (edible sheet). Each costs a
+  // per-cake surcharge already included in priceAtOrder. Null when the line
+  // carries no print image, and on every pre-Oct-2026 row.
+  printImageType     PrintImageType?
   // Shape snapshot — for a catalog line this is now the client's own pick at
   // add-to-cart time (Redonda/Corazón), not inherited from ProductDesign.shape
   // (that field only matters for designs outside this color-picker flow).
@@ -227,6 +232,11 @@ model DesignImageLimit {
   maxImages Int
 
   @@id([designId, sizeId])
+}
+
+enum PrintImageType {
+  NON_EDIBLE
+  EDIBLE
 }
 
 enum FlavorKind {

@@ -1,4 +1,4 @@
-import { PrismaClient, ItemCategory, FlavorKind, Prisma } from '@prisma/client';
+import { PrismaClient, ItemCategory, FlavorKind, PrintImageType, Prisma } from '@prisma/client';
 
 // Catalog v2 (cakes): what the public can book, and the server-side check +
 // pricing of one booked cake. Both the public catalog endpoint and the order
@@ -6,6 +6,15 @@ import { PrismaClient, ItemCategory, FlavorKind, Prisma } from '@prisma/client';
 // drift apart — and the client's own price is never trusted.
 
 const prisma = new PrismaClient();
+
+// Surcharge (pesos) for adding print image(s) to one cake, by what they're
+// printed on. Charged once per cake, however many images that cake carries.
+// Served with the public catalog so the booking page shows the same numbers
+// the order endpoint charges.
+export const PRINT_IMAGE_PRICES: Record<PrintImageType, number> = {
+  NON_EDIBLE: 1000,
+  EDIBLE: 14000,
+};
 
 // v2 designs: CAKE, not archived, and no legacy ProductVariant rows.
 export const V2_DESIGN_WHERE: Prisma.ProductDesignWhereInput = {
@@ -86,6 +95,7 @@ export async function getPublicCakeCatalog() {
 
   return {
     designs: catalog,
+    printImagePrices: PRINT_IMAGE_PRICES,
     // Surcharges per size so the page can show the live price; a size missing
     // from the map costs 0 extra.
     flavors: flavors.map((f) => ({
@@ -106,6 +116,7 @@ export interface CakeLineInput {
   shapeId: string;
   customText?: string;
   customImageUrls?: string[];
+  printImageType?: string;
 }
 
 export function isCakeLineInput(v: unknown): v is CakeLineInput {
@@ -145,6 +156,7 @@ export interface ResolvedCakeLine {
     customText: string | null;
     customImageUrl: string | null;
     customImageUrls: string[];
+    printImageType: PrintImageType | null;
   };
 }
 
@@ -198,8 +210,19 @@ export async function resolveCakeLines(lines: CakeLineInput[]): Promise<Resolved
       throw new CakeLineError(`El texto personalizado no puede pasar de ${design.customTextMaxLength} letras.`);
     }
 
+    // Non-edible unless the client explicitly picked edible.
+    const printImageType =
+      images.length === 0
+        ? null
+        : line.printImageType === PrintImageType.EDIBLE
+          ? PrintImageType.EDIBLE
+          : PrintImageType.NON_EDIBLE;
+
     const price =
-      Number(sizePrice.price) + surcharge(bizcocho.id, sizePrice.sizeId) + surcharge(relleno.id, sizePrice.sizeId);
+      Number(sizePrice.price) +
+      surcharge(bizcocho.id, sizePrice.sizeId) +
+      surcharge(relleno.id, sizePrice.sizeId) +
+      (printImageType ? PRINT_IMAGE_PRICES[printImageType] : 0);
     const prepMinutes = sizePrice.size.prepMinutes;
     // Same storage split as the legacy multi-image variant: a size that allows
     // several images keeps them all in customImageUrls, otherwise the single
@@ -225,6 +248,7 @@ export async function resolveCakeLines(lines: CakeLineInput[]): Promise<Resolved
         customText: text,
         customImageUrl: multiImage ? null : images[0] ?? null,
         customImageUrls: multiImage ? images : [],
+        printImageType,
       },
     };
   });

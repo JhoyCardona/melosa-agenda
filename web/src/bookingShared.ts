@@ -7,7 +7,6 @@ import { isCakeItem } from './types';
 // Mirrors the backend cap (createPublicOrder). Bigger orders go through WhatsApp.
 export const MAX_ITEMS = 12;
 export const MAX_CLIENT_NAME = 120;
-export const MAX_NOTES = 500;
 
 export const flavorLabels: Record<Flavor, string> = { VAINILLA: 'Vainilla', CHOCOLATE: 'Chocolate', ALFAJOR: 'Alfajor' };
 
@@ -78,7 +77,8 @@ export function cartItemSummary(i: CartItem): string {
   return (
     parts.filter(Boolean).join(' · ') +
     (i.customText ? ` · "${i.customText}"` : '') +
-    (images === 1 ? ' · con imagen' : images > 1 ? ` · ${images} imágenes` : '')
+    (images === 1 ? ' · con imagen' : images > 1 ? ` · ${images} imágenes` : '') +
+    (isCakeItem(i) && images > 0 ? (i.printImageType === 'EDIBLE' ? ' comestible' : ' no comestible') : '')
   );
 }
 
@@ -94,6 +94,7 @@ export function toOrderLine(i: CartItem) {
       shapeId: i.shapeId,
       customText: i.customText,
       customImageUrls: i.customImageUrls,
+      printImageType: i.printImageType,
     };
   }
   return {
