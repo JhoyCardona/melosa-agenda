@@ -4,7 +4,7 @@ import { createPublicOrder, uploadPublicImage } from '../controllers/publicOrder
 import { getDeliveryPreview } from '../services/availability';
 import { isValidIsoDate } from '../utils/colombiaTime';
 import upload from '../config/multer';
-import { getPublicCakeCatalog } from '../services/cakeCatalog';
+import { getPublicCakeCatalog, PRINT_IMAGE_PRICES } from '../services/cakeCatalog';
 
 const router = Router();
 
@@ -39,6 +39,11 @@ router.get('/cake-catalog', async (req, res) => {
     console.error('Error cargando catálogo de tortas:', error);
     res.status(500).json({ error: 'No se pudo cargar el catálogo. Intenta de nuevo.' });
   }
+});
+// Print-image surcharges for booking pages that don't load the cake catalog
+// (the alfajor minicake's page).
+router.get('/print-image-prices', (req, res) => {
+  res.json(PRINT_IMAGE_PRICES);
 });
 router.post('/upload-image', uploadLimiter, upload.single('image'), uploadPublicImage);
 

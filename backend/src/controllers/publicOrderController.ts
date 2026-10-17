@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient, Flavor, ItemCategory, OrderStatus } from '@prisma/client';
+import { PrismaClient, Flavor, ItemCategory, OrderStatus, PrintImageType } from '@prisma/client';
 import { isBusinessDay } from '../utils/colombianHolidays';
 import { computePaymentDueDate, earliestPublicDeliveryDate, isValidIsoDate } from '../utils/colombiaTime';
 import { reserveDeliverySlot, minutesToLabel, isNotEnoughRoomError, isDateBlocked } from '../services/availability';
@@ -12,7 +12,13 @@ import {
 } from '../services/pricing';
 import { MAX_CLIENT_NAME_LENGTH, MAX_ADDRESS_LENGTH } from '../services/limits';
 import cloudinary from '../config/cloudinary';
-import { resolveCakeLines, isCakeLineInput, CakeLineError, type CakeLineInput } from '../services/cakeCatalog';
+import {
+  resolveCakeLines,
+  isCakeLineInput,
+  CakeLineError,
+  PRINT_IMAGE_PRICES,
+  type CakeLineInput,
+} from '../services/cakeCatalog';
 
 const prisma = new PrismaClient();
 
@@ -76,6 +82,7 @@ interface PublicOrderItemInput {
   customText?: string;
   shape?: string;
   color?: string;
+  printImageType?: string;
 }
 
 // Public, no-auth endpoint clients use to book their own order from the web form.
@@ -187,7 +194,31 @@ export async function createPublicOrder(req: Request, res: Response) {
         : item.customImageUrl
           ? [item.customImageUrl]
           : [];
-      return { item, variant, design, effectiveRelleno, effectiveShape, effectiveColor, multiImage, effectiveImages };
+      // Same per-cake print surcharge as catalog v2 cakes: non-edible unless
+      // the client picked edible, and nothing when there's no (allowed) image.
+      const printImageType =
+        design?.allowsCustomImage && effectiveImages.length > 0
+          ? item.printImageType === PrintImageType.EDIBLE
+            ? PrintImageType.EDIBLE
+            : PrintImageType.NON_EDIBLE
+          : null;
+      const linePrice = variant
+        ? Number(variant.price) +
+          rellenoSurcharge(effectiveRelleno, variant.portions, variant.enPromocion) +
+          (printImageType ? PRINT_IMAGE_PRICES[printImageType] : 0)
+        : 0;
+      return {
+        item,
+        variant,
+        design,
+        effectiveRelleno,
+        effectiveShape,
+        effectiveColor,
+        multiImage,
+        effectiveImages,
+        printImageType,
+        linePrice,
+      };
     });
 
     for (const {
@@ -250,13 +281,8 @@ export async function createPublicOrder(req: Request, res: Response) {
     }
 
     const totalPrice =
-      resolvedItems.reduce(
-        (sum, { variant, effectiveRelleno }) =>
-          sum +
-          Number(variant!.price) +
-          rellenoSurcharge(effectiveRelleno, variant!.portions, variant!.enPromocion),
-        0
-      ) + cakeLines.reduce((sum, l) => sum + l.price, 0);
+      resolvedItems.reduce((sum, { linePrice }) => sum + linePrice, 0) +
+      cakeLines.reduce((sum, l) => sum + l.price, 0);
     const rawDurationMin =
       resolvedItems.reduce((sum, { variant }) => sum + variant!.prepMinutes, 0) +
       cakeLines.reduce((sum, l) => sum + l.prepMinutes, 0);
@@ -293,16 +319,25 @@ export async function createPublicOrder(req: Request, res: Response) {
           items: {
             create: [
               ...resolvedItems.map(
-              ({ item, variant, design, effectiveRelleno, effectiveShape, effectiveColor, multiImage, effectiveImages }) => {
+              ({
+                item,
+                variant,
+                design,
+                effectiveRelleno,
+                effectiveShape,
+                effectiveColor,
+                multiImage,
+                effectiveImages,
+                printImageType,
+                linePrice,
+              }) => {
                 // Honour the design's flags even if the client posts these fields
                 // directly (the form already hides the inputs when not allowed).
                 const imagesAllowed = design!.allowsCustomImage;
                 return {
                   productDesignId: item.productDesignId,
                   variantId: item.variantId,
-                  priceAtOrder:
-                    Number(variant!.price) +
-                    rellenoSurcharge(effectiveRelleno, variant!.portions, variant!.enPromocion),
+                  priceAtOrder: linePrice,
                   pointsAtOrder: variant!.points,
                   flavor: item.flavor,
                   shape: effectiveShape,
@@ -310,6 +345,7 @@ export async function createPublicOrder(req: Request, res: Response) {
                   relleno: effectiveRelleno,
                   customImageUrl: imagesAllowed && !multiImage ? effectiveImages[0] ?? null : null,
                   customImageUrls: imagesAllowed && multiImage ? effectiveImages : [],
+                  printImageType,
                   customText: design!.allowsCustomText ? item.customText?.trim() || null : null,
                 };
               }

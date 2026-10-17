@@ -1,12 +1,21 @@
 // Helpers shared by the booking pages (legacy/alfajor and catalog v2 cakes)
 // and their common checkout block.
 
-import type { CartItem, Flavor } from './types';
+import type { CartItem, Flavor, PrintImageType } from './types';
 import { isCakeItem } from './types';
 
 // Mirrors the backend cap (createPublicOrder). Bigger orders go through WhatsApp.
 export const MAX_ITEMS = 12;
 export const MAX_CLIENT_NAME = 120;
+
+export const PRINT_TYPE_LABELS: Record<PrintImageType, string> = {
+  NON_EDIBLE: 'No comestible',
+  EDIBLE: 'Comestible',
+};
+
+export function pesos(n: number): string {
+  return `$${n.toLocaleString('es-CO')}`;
+}
 
 export const flavorLabels: Record<Flavor, string> = { VAINILLA: 'Vainilla', CHOCOLATE: 'Chocolate', ALFAJOR: 'Alfajor' };
 
@@ -78,7 +87,7 @@ export function cartItemSummary(i: CartItem): string {
     parts.filter(Boolean).join(' · ') +
     (i.customText ? ` · "${i.customText}"` : '') +
     (images === 1 ? ' · con imagen' : images > 1 ? ` · ${images} imágenes` : '') +
-    (isCakeItem(i) && images > 0 ? (i.printImageType === 'EDIBLE' ? ' comestible' : ' no comestible') : '')
+    (images > 0 && i.printImageType ? (i.printImageType === 'EDIBLE' ? ' comestible' : ' no comestible') : '')
   );
 }
 
@@ -107,5 +116,6 @@ export function toOrderLine(i: CartItem) {
     customText: i.customText,
     customImageUrl: i.customImageUrl,
     customImageUrls: i.customImageUrls,
+    printImageType: i.printImageType,
   };
 }

@@ -1,10 +1,17 @@
 import { Request, Response } from 'express';
-import { PrismaClient, ItemCategory } from '@prisma/client';
+import { PrismaClient, ItemCategory, Prisma } from '@prisma/client';
 import { AuthRequest } from '../middleware/authMiddleware';
 
 const prisma = new PrismaClient();
 
 const VALID_CATEGORIES = Object.values(ItemCategory);
+
+// Smallest size first. A variant with no portion count (an old minicake row)
+// goes first; points only breaks ties between legacy rows.
+const VARIANT_ORDER: Prisma.ProductVariantOrderByWithRelationInput[] = [
+  { portions: { sort: 'asc', nulls: 'first' } },
+  { points: 'asc' },
+];
 
 interface VariantInput {
   label: string;
@@ -23,7 +30,7 @@ export async function listAllProductDesigns(req: AuthRequest, res: Response) {
     const designs = await prisma.productDesign.findMany({
       // Archived designs are retired (kept only for order history).
       where: { archivedAt: null },
-      include: { variants: { orderBy: { points: 'asc' } }, images: { orderBy: { colorName: 'asc' } } },
+      include: { variants: { orderBy: VARIANT_ORDER }, images: { orderBy: { colorName: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -127,8 +134,17 @@ function validatePositivePrice(value: unknown): string | null {
 // Fase 6: edit an existing design's own fields (not its variants).
 export async function updateProductDesign(req: AuthRequest, res: Response) {
   const id = req.params.id as string;
-  const { name, category, shape, imageUrl, allowsCustomImage, allowsCustomText } = req.body;
+  const { name, category, shape, imageUrl, allowsCustomImage, allowsCustomText, customTextMaxLength } = req.body;
 
+  if (
+    customTextMaxLength !== undefined &&
+    (typeof customTextMaxLength !== 'number' ||
+      !Number.isInteger(customTextMaxLength) ||
+      customTextMaxLength < 1 ||
+      customTextMaxLength > 200)
+  ) {
+    return res.status(400).json({ error: 'El máximo de letras debe ser un entero entre 1 y 200' });
+  }
   if (category !== undefined && !VALID_CATEGORIES.includes(category)) {
     return res.status(400).json({ error: `category debe ser una de: ${VALID_CATEGORIES.join(', ')}` });
   }
@@ -149,8 +165,9 @@ export async function updateProductDesign(req: AuthRequest, res: Response) {
         ...(imageUrl !== undefined && { imageUrl: imageUrl || null }),
         ...(allowsCustomImage !== undefined && { allowsCustomImage: !!allowsCustomImage }),
         ...(allowsCustomText !== undefined && { allowsCustomText: !!allowsCustomText }),
+        ...(customTextMaxLength !== undefined && { customTextMaxLength }),
       },
-      include: { variants: { orderBy: { points: 'asc' } } },
+      include: { variants: { orderBy: VARIANT_ORDER } },
     });
     res.json(design);
   } catch (error) {
@@ -190,13 +207,17 @@ export async function addProductVariant(req: AuthRequest, res: Response) {
   const designId = req.params.id as string;
   const { label, price, points, prepMinutes, portions, enPromocion } = req.body;
 
-  if (!label || price === undefined || points === undefined) {
-    return res.status(400).json({ error: 'label, price y points son requeridos' });
+  // points is the retired scheduling unit (prepMinutes replaced it), so it's
+  // optional; a size added from the alfajor screen simply stores 0.
+  if (!label || !String(label).trim() || price === undefined) {
+    return res.status(400).json({ error: 'label y price son requeridos' });
   }
   const priceErr = validatePositivePrice(price);
   if (priceErr) return res.status(400).json({ error: priceErr });
-  const pointsErr = validatePositiveInt(points, 'points');
-  if (pointsErr) return res.status(400).json({ error: pointsErr });
+  if (points !== undefined) {
+    const pointsErr = validatePositiveInt(points, 'points');
+    if (pointsErr) return res.status(400).json({ error: pointsErr });
+  }
   if (prepMinutes !== undefined) {
     const err = validatePrepMinutes(prepMinutes);
     if (err) return res.status(400).json({ error: err });
@@ -213,9 +234,9 @@ export async function addProductVariant(req: AuthRequest, res: Response) {
     const variant = await prisma.productVariant.create({
       data: {
         productDesignId: designId,
-        label,
+        label: String(label).trim(),
         price,
-        points,
+        points: points ?? 0,
         ...(prepMinutes !== undefined && { prepMinutes }),
         ...(portions !== undefined && { portions }),
         enPromocion: !!enPromocion,
@@ -319,7 +340,7 @@ export async function listProductDesigns(req: Request, res: Response) {
         archivedAt: null,
         variants: { some: {} },
       },
-      include: { variants: { orderBy: { points: 'asc' } }, images: { orderBy: { colorName: 'asc' } } },
+      include: { variants: { orderBy: VARIANT_ORDER }, images: { orderBy: { colorName: 'asc' } } },
       orderBy: { name: 'asc' },
     });
 

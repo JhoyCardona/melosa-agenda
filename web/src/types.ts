@@ -100,6 +100,8 @@ export interface LegacyCartItem {
   // Client's WhatsApp reference photo ("quiero algo así"). Separate from
   // customImageUrl, which is edible-print artwork.
   referenceImageUrl?: string;
+  // Set only when the line has print image(s); its surcharge is inside `price`.
+  printImageType?: PrintImageType;
 }
 
 export interface CakeCartItem {

@@ -10,6 +10,8 @@ import AdminPanelPage from './pages/AdminPanelPage';
 import CakeModulePage from './pages/CakeModulePage';
 import CakeSettingsPage from './pages/CakeSettingsPage';
 import CakeDesignsPage from './pages/CakeDesignsPage';
+import AlfajorModulePage from './pages/AlfajorModulePage';
+import AlfajorCakePage from './pages/AlfajorCakePage';
 import ScrollToTop from './components/ScrollToTop';
 
 export default function App() {
@@ -31,6 +33,8 @@ export default function App() {
         <Route path="/admin/tortas" element={<CakeModulePage />} />
         <Route path="/admin/tortas/sabores-tamanos" element={<CakeSettingsPage />} />
         <Route path="/admin/tortas/disenos" element={<CakeDesignsPage />} />
+        <Route path="/admin/alfajores" element={<AlfajorModulePage />} />
+        <Route path="/admin/alfajores/torta" element={<AlfajorCakePage />} />
       </Routes>
     </>
   );

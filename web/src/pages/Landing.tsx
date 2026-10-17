@@ -44,13 +44,22 @@ export default function Landing() {
   // catalog instead of hardcoded, since the id changes if the design is ever
   // recreated. Falls back to /catalogo if the fetch fails.
   const [alfajorDesignId, setAlfajorDesignId] = useState<string | null>(null);
+  // The section shows the photo loaded in the admin ("Torta de alfajor"), so
+  // the client sees the real decoration. undefined = still loading (keeps a
+  // placeholder instead of flashing an outdated photo); the bundled photo is
+  // only a fallback when the fetch fails or no photo is set.
+  const [alfajorPhoto, setAlfajorPhoto] = useState<string | undefined>(undefined);
   useEffect(() => {
     getWithRetry<ProductDesign[]>('/product-designs')
       .then((data) => {
         const alfajor = data.find((d) => d.category === 'ALFAJOR_CAKE');
         if (alfajor) setAlfajorDesignId(alfajor.id);
+        setAlfajorPhoto(alfajor?.imageUrl || minicakeAlfajor);
       })
-      .catch((err) => console.error('Error cargando diseño de alfajor:', err));
+      .catch((err) => {
+        console.error('Error cargando diseño de alfajor:', err);
+        setAlfajorPhoto(minicakeAlfajor);
+      });
   }, []);
 
   return (
@@ -129,12 +138,16 @@ export default function Landing() {
             <h2>Minicake de alfajor</h2>
 
             <div className="feature">
-              <img
-                className="feature-photo"
-                src={minicakeAlfajor}
-                alt="Minicake de alfajor, decoración clásica de dulce de leche"
-                loading="lazy"
-              />
+              {alfajorPhoto ? (
+                <img
+                  className="feature-photo"
+                  src={alfajorPhoto}
+                  alt="Minicake de alfajor, decoración clásica de dulce de leche"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="feature-photo feature-photo-loading" aria-hidden="true" />
+              )}
             </div>
 
             <p className="section-lead alfajor-copy">

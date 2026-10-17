@@ -6,7 +6,7 @@ import { isCakeItem } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import BookingCheckout from '../components/BookingCheckout';
-import { MAX_ITEMS, newKey } from '../bookingShared';
+import { MAX_ITEMS, PRINT_TYPE_LABELS, newKey, pesos } from '../bookingShared';
 import './BookingPage.css';
 
 // Booking page for a catalog v2 cake: pick color → size → bizcocho → relleno →
@@ -15,10 +15,6 @@ import './BookingPage.css';
 // then the shared checkout. The server re-validates and re-prices everything.
 
 const CATALOG_HREF = '/catalogo';
-
-function pesos(n: number): string {
-  return `$${n.toLocaleString('es-CO')}`;
-}
 
 // Price of one cake as configured: this color's size price + the chosen
 // flavors' surcharges for that size + the print-image surcharge, if any.
@@ -34,11 +30,6 @@ function linePrice(
   const imageExtra = printImageType ? catalog.printImagePrices[printImageType] : 0;
   return size.price + extra(bizcochoId) + extra(rellenoId) + imageExtra;
 }
-
-const PRINT_TYPE_LABELS: Record<PrintImageType, string> = {
-  NON_EDIBLE: 'No comestible',
-  EDIBLE: 'Comestible',
-};
 
 // Is a saved cart line still valid against the live catalog, at the same price?
 function stillValid(catalog: PublicCakeCatalog, item: CakeCartItem): boolean {

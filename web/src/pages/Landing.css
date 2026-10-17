@@ -123,6 +123,11 @@
 /* Same lights (.dot-edges, index.css) as .pickup, but on the caramel/dulce de
    leche tone instead of red — dark text (inherited from body) reads fine on
    it, unlike .pickup's white-on-red. */
+.feature-photo-loading {
+  aspect-ratio: 4 / 5;
+  background: var(--color-bg-soft);
+}
+
 .alfajor-section {
   background: var(--color-alfajor-bg);
 }

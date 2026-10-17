@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams /*, useSearchParams */ } from 'react-router-dom';
 import api, { getWithRetry } from '../api';
-import type { CakeShape, Flavor, ProductDesign } from '../types';
+import type { CakeShape, Flavor, PrintImageType, ProductDesign } from '../types';
 import { CAKE_SHAPES, isCakeItem } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import RellenoSelect from '../components/RellenoSelect';
 import BookingCheckout from '../components/BookingCheckout';
 import { rellenoSurcharge } from '../config';
-import { MAX_ITEMS, flavorLabels, newKey } from '../bookingShared';
+import { MAX_ITEMS, PRINT_TYPE_LABELS, flavorLabels, newKey, pesos } from '../bookingShared';
 import './BookingPage.css';
 
 const FLAVORS: Flavor[] = ['VAINILLA', 'CHOCOLATE'];
@@ -69,15 +69,27 @@ export default function BookingPage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageError, setImageError] = useState('');
   const [justAdded, setJustAdded] = useState(false);
+  // Every added image starts as non-edible; the client can switch to edible.
+  const [printType, setPrintType] = useState<PrintImageType>('NON_EDIBLE');
+  // Per-cake print surcharges, from the server. Until they load (or if the
+  // request fails) the image option stays hidden rather than showing a price
+  // the server might not charge.
+  const [printPrices, setPrintPrices] = useState<Record<PrintImageType, number> | null>(null);
 
 
   const design = designs.find((d) => d.id === designId);
   const variant = design?.variants.find((v) => v.id === variantId);
 
   useEffect(() => {
-    getWithRetry<ProductDesign[]>('/product-designs', { onSlow: () => setCatalogSlow(true) })
-      .then((data) => {
+    Promise.all([
+      getWithRetry<ProductDesign[]>('/product-designs', { onSlow: () => setCatalogSlow(true) }),
+      // Needed to re-check saved lines that carry a print surcharge; a failure
+      // here just means those lines get dropped as stale, like a price change.
+      getWithRetry<Record<PrintImageType, number>>('/public-orders/print-image-prices').catch(() => null),
+    ])
+      .then(([data, prices]) => {
         setDesigns(data);
+        setPrintPrices(prices);
         // Reconcile the stored cart against the fresh catalog, once. A line whose
         // design or variant is gone, or whose price changed, would otherwise
         // fail on submit with an unhelpful error — drop it and warn instead.
@@ -88,7 +100,10 @@ export default function BookingPage() {
           const d = byId.get(i.designId);
           const v = d?.variants.find((x) => x.id === i.variantId);
           if (!d || !v) return false;
-          const expected = Number(v.price) + rellenoSurcharge(i.relleno, v.portions, v.enPromocion);
+          const hasImages = !!i.customImageUrl || (i.customImageUrls?.length ?? 0) > 0;
+          const imageExtra = hasImages && i.printImageType ? prices?.[i.printImageType] ?? NaN : 0;
+          const expected =
+            Number(v.price) + rellenoSurcharge(i.relleno, v.portions, v.enPromocion) + imageExtra;
           return Math.round(expected) === Math.round(i.price);
         });
         if (kept.length !== draft.items.length) {
@@ -131,6 +146,7 @@ export default function BookingPage() {
     setCustomText('');
     setCustomImages([]);
     setImageError('');
+    setPrintType('NON_EDIBLE');
   }, [design, grandes]);
 
   // The picked color swaps the displayed photo; falls back to the design's
@@ -231,10 +247,17 @@ export default function BookingPage() {
   }
 
   const cartFull = draft.items.length >= MAX_ITEMS;
+  // The print surcharge applies once there's at least one image.
+  const linePrintType = design?.allowsCustomImage && customImages.length > 0 ? printType : undefined;
+  const linePrice =
+    variant && printPrices
+      ? Number(variant.price) +
+        rellenoSurcharge(relleno, variant.portions, variant.enPromocion) +
+        (linePrintType ? printPrices[linePrintType] : 0)
+      : null;
 
   function handleAddItem() {
-    if (!design || !variant || !relleno || cartFull) return;
-    const surcharge = rellenoSurcharge(relleno, variant.portions, variant.enPromocion);
+    if (!design || !variant || !relleno || cartFull || linePrice === null) return;
     const multiImage = variant.maxCustomImages > 1;
     draft.addItem({
       kind: 'legacy',
@@ -244,7 +267,7 @@ export default function BookingPage() {
       designImageUrl: displayedImageUrl,
       variantId: variant.id,
       variantLabel: variant.label,
-      price: Number(variant.price) + surcharge,
+      price: linePrice,
       points: variant.points,
       prepMinutes: variant.prepMinutes,
       flavor,
@@ -254,9 +277,11 @@ export default function BookingPage() {
       customText: customText.trim() || undefined,
       customImageUrl: !multiImage ? customImages[0] || undefined : undefined,
       customImageUrls: multiImage && customImages.length > 0 ? customImages : undefined,
+      printImageType: linePrintType,
     });
     setCustomText('');
     setCustomImages([]);
+    setPrintType('NON_EDIBLE');
     setImageError('');
     setJustAdded(true);
     window.setTimeout(() => setJustAdded(false), 2500);
@@ -422,13 +447,17 @@ export default function BookingPage() {
             </>
           )}
 
-          {design.allowsCustomImage && variant && (
+          {design.allowsCustomImage && variant && printPrices && (
             <>
               <label className="field-label">
                 {variant.maxCustomImages > 1
-                  ? `Imágenes para imprimir (hasta ${variant.maxCustomImages}${design.requiresCustomImage ? ', mínimo 1' : ''})`
-                  : `Imagen para imprimir ${design.requiresCustomImage ? '(obligatoria)' : '(opcional)'}`}
+                  ? `Agregar imágenes (hasta ${variant.maxCustomImages}${design.requiresCustomImage ? ', mínimo 1' : ''})`
+                  : `Agregar imagen ${design.requiresCustomImage ? '(obligatoria)' : '(opcional)'}`}
               </label>
+              <p className="field-hint">
+                Desde +{pesos(printPrices.NON_EDIBLE)} por torta
+                {variant.maxCustomImages > 1 ? ', sin importar cuántas imágenes subas' : ''}.
+              </p>
               {design.requiresCustomImage && (
                 <p className="field-hint">
                   No editamos ni diseñamos la imagen: súbela lista para imprimir tal como la quieres en la
@@ -469,7 +498,30 @@ export default function BookingPage() {
                   ))}
                 </div>
               )}
+              {customImages.length > 0 && (
+                <>
+                  <label className="field-label">Tipo de imagen</label>
+                  <div className="pills">
+                    {(['NON_EDIBLE', 'EDIBLE'] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className={`pill ${t === printType ? 'pill-active' : ''}`}
+                        onClick={() => setPrintType(t)}
+                      >
+                        {PRINT_TYPE_LABELS[t]} (+{pesos(printPrices[t])})
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </>
+          )}
+
+          {linePrice !== null && (
+            <p className="cake-line-price">
+              Precio de esta torta: <strong>{pesos(linePrice)}</strong>
+            </p>
           )}
 
           <button
@@ -478,6 +530,7 @@ export default function BookingPage() {
             onClick={handleAddItem}
             disabled={
               !variant ||
+              linePrice === null ||
               !relleno ||
               uploadingImage ||
               cartFull ||
