@@ -13,6 +13,7 @@ import {
 } from '../services/pricing';
 import { MAX_CLIENT_NAME_LENGTH, MAX_NOTES_LENGTH, MAX_ADDRESS_LENGTH } from '../services/limits';
 import { withCreditBalance, creditBalance } from '../services/clientCredit';
+import { resolveCakeLines, isCakeLineInput, CakeLineError, type ResolvedCakeLine } from '../services/cakeCatalog';
 
 const prisma = new PrismaClient();
 
@@ -179,6 +180,10 @@ export async function createOrder(req: AuthRequest, res: Response) {
       fullPaymentIfAlone: boolean;
     }
     const lines: BuiltLine[] = [];
+    // Catalog v2 cakes (colorId/sizeId/... ids): validated and priced exactly
+    // like the public web. The design photo already shows the cake, so no
+    // reference photo is required — one can still be attached.
+    const cakeInputs: OrderItemInput[] = [];
 
     // A cake line must carry the client's reference photo, unless the admin
     // explicitly waived it (skipReference) for a plain / "surprise me" cake.
@@ -186,6 +191,10 @@ export async function createOrder(req: AuthRequest, res: Response) {
       !item.referenceImageUrl && !item.skipReference;
 
     for (const item of items as OrderItemInput[]) {
+      if (!item.variantId && isCakeLineInput(item)) {
+        cakeInputs.push(item);
+        continue;
+      }
       if (item.variantId) {
         const variant = variantById.get(item.variantId);
         if (!variant || (item.productDesignId && variant.productDesignId !== item.productDesignId)) {
@@ -283,11 +292,22 @@ export async function createOrder(req: AuthRequest, res: Response) {
       }
     }
 
-    const totalPrice = lines.reduce((sum, l) => sum + l.priceAtOrder, 0);
-    const rawDurationMin = lines.reduce((sum, l) => sum + l.prepMinutes, 0);
-    const requiredPaymentPercent = computeRequiredPaymentPercent(
-      lines.map((l) => ({ fullPaymentIfAlone: l.fullPaymentIfAlone }))
-    );
+    let cakeLines: ResolvedCakeLine[];
+    try {
+      cakeLines = await resolveCakeLines(cakeInputs as Parameters<typeof resolveCakeLines>[0]);
+    } catch (error) {
+      if (error instanceof CakeLineError) return res.status(400).json({ error: error.message });
+      throw error;
+    }
+
+    const totalPrice =
+      lines.reduce((sum, l) => sum + l.priceAtOrder, 0) + cakeLines.reduce((sum, l) => sum + l.price, 0);
+    const rawDurationMin =
+      lines.reduce((sum, l) => sum + l.prepMinutes, 0) + cakeLines.reduce((sum, l) => sum + l.prepMinutes, 0);
+    const requiredPaymentPercent = computeRequiredPaymentPercent([
+      ...lines.map((l) => ({ fullPaymentIfAlone: l.fullPaymentIfAlone })),
+      ...cakeLines,
+    ]);
     const hasDeposit = typeof depositPaid === 'number' && depositPaid > 0;
 
     const order = await prisma.$transaction(async (tx) => {
@@ -320,7 +340,8 @@ export async function createOrder(req: AuthRequest, res: Response) {
             ? { status: OrderStatus.DEPOSIT_PAID, depositPaid }
             : { paymentDueDate: computePaymentDueDate(deliveryDate, pickupMinutes) }),
           items: {
-            create: lines.map((l) => ({
+            create: [
+              ...lines.map((l) => ({
               productDesignId: l.productDesignId,
               variantId: l.variantId,
               priceAtOrder: l.priceAtOrder,
@@ -335,6 +356,11 @@ export async function createOrder(req: AuthRequest, res: Response) {
               customText: l.customText,
               referenceImageUrl: l.referenceImageUrl,
             })),
+              ...cakeLines.map((l, i) => ({
+                ...l.itemData,
+                referenceImageUrl: cakeInputs[i].referenceImageUrl || null,
+              })),
+            ],
           },
         },
         include: { items: { include: { productDesign: { include: { images: true } }, variant: true } } },

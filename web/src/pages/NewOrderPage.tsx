@@ -1,24 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import api from '../api';
-import type { Flavor, ProductDesign } from '../types';
+import api, { getWithRetry } from '../api';
+import type { CakeSettings, PrintImageType, PublicCakeCatalog, PublicCakeDesign } from '../types';
 import { useAdminAuth } from '../context/AdminAuth';
 import PasswordPrompt from '../components/PasswordPrompt';
-import RellenoSelect from '../components/RellenoSelect';
-import { rellenoSurcharge } from '../config';
+import { PRINT_TYPE_LABELS } from '../bookingShared';
 import './adminLegacy.css';
 
+// A cake from the new catalog (designs → colors → size / bizcocho / relleno /
+// shape). Priced by the server exactly like the public web.
 interface CatalogLine {
   kind: 'catalog';
   key: string;
   designId: string;
-  variantId: string;
-  flavor: Flavor;
-  relleno: string;
+  colorId: string;
+  sizeId: string;
+  bizcochoId: string;
+  rellenoId: string;
+  shapeId: string;
   customText: string;
   customImageUrl: string;
-  // Client's WhatsApp reference photo. skipReference lets the admin waive it for
-  // a plain / "surprise me" cake.
+  printImageType: PrintImageType;
+  // Optional for catalog cakes (the design photo already shows the cake).
   referenceImageUrl: string;
   skipReference: boolean;
 }
@@ -45,6 +48,22 @@ function newKey(): string {
   return `l-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+// Price of a catalog cake as configured — same formula as the public booking
+// page (size price + flavor surcharges + print-image surcharge).
+function catalogLinePrice(catalog: PublicCakeCatalog, l: CatalogLine): number | null {
+  const design = catalog.designs.find((d) => d.id === l.designId);
+  const size = design?.colors.find((c) => c.id === l.colorId)?.sizes.find((s) => s.sizeId === l.sizeId);
+  if (!size) return null;
+  const extra = (flavorId: string) => catalog.flavors.find((f) => f.id === flavorId)?.surcharges[size.sizeId] ?? 0;
+  const image = l.customImageUrl ? catalog.printImagePrices[l.printImageType] : 0;
+  return size.price + extra(l.bizcochoId) + extra(l.rellenoId) + image;
+}
+
+// Accent/case-insensitive search ("album" finds "Álbum de Recuerdos").
+function normalize(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 // "15:30" -> 930 minutes from midnight. Empty -> null.
 function timeToMinutes(t: string): number | null {
   const m = /^(\d{2}):(\d{2})$/.exec(t);
@@ -56,7 +75,10 @@ export default function NewOrderPage() {
   const navigate = useNavigate();
   const { isAdmin } = useAdminAuth();
 
-  const [designs, setDesigns] = useState<ProductDesign[]>([]);
+  const [catalog, setCatalog] = useState<PublicCakeCatalog | null>(null);
+  // Sizes / flavors / shapes from "Sabores, tamaños y formas", offered as lists
+  // on free lines (names only — the price there is whatever the admin types).
+  const [settings, setSettings] = useState<CakeSettings | null>(null);
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
@@ -79,42 +101,43 @@ export default function NewOrderPage() {
       navigate('/admin', { replace: true });
       return;
     }
-    api
-      .get<ProductDesign[]>('/product-designs/all')
-      .then((res) => setDesigns(res.data))
+    getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog')
+      .then(setCatalog)
       .catch(() => setError('No se pudo cargar el catálogo'));
+    api
+      .get<CakeSettings>('/cake-settings')
+      .then((res) => setSettings(res.data))
+      .catch(() => setError('No se pudieron cargar los sabores y tamaños'));
   }, [isAdmin, navigate]);
 
   const total = useMemo(() => {
     return lines.reduce((sum, l) => {
       if (l.kind === 'free') return sum + (Number(l.price) || 0);
-      const design = designs.find((d) => d.id === l.designId);
-      const variant = design?.variants.find((v) => v.id === l.variantId);
-      if (!variant) return sum;
-      return sum + Number(variant.price) + rellenoSurcharge(l.relleno, variant.portions, variant.enPromocion);
+      return sum + ((catalog && catalogLinePrice(catalog, l)) || 0);
     }, 0);
-  }, [lines, designs]);
+  }, [lines, catalog]);
 
-  function patchLine(key: string, patch: Partial<CatalogLine> & Partial<FreeLine>) {
+  function patchLine(key: string, patch: Partial<Omit<CatalogLine, 'kind'>> & Partial<Omit<FreeLine, 'kind'>>) {
     setLines((prev) => prev.map((l) => (l.key === key ? ({ ...l, ...patch } as Line) : l)));
   }
   function removeLine(key: string) {
     setLines((prev) => prev.filter((l) => l.key !== key));
   }
   function addCatalogLine() {
-    const first = designs[0];
-    const firstVariant = first?.variants[0];
     setLines((prev) => [
       ...prev,
       {
         kind: 'catalog',
         key: newKey(),
-        designId: first?.id ?? '',
-        variantId: firstVariant?.id ?? '',
-        flavor: 'VAINILLA',
-        relleno: firstVariant?.enPromocion ? 'Arequipe' : '',
+        designId: '',
+        colorId: '',
+        sizeId: '',
+        bizcochoId: '',
+        rellenoId: '',
+        shapeId: '',
         customText: '',
         customImageUrl: '',
+        printImageType: 'NON_EDIBLE',
         referenceImageUrl: '',
         skipReference: false,
       },
@@ -157,12 +180,11 @@ export default function NewOrderPage() {
     }
   }
 
-  // A cake line needs the client's reference photo. Catalog lines only when the
-  // design is a CAKE (desserts / alfajores don't); free lines always (they're
-  // custom cakes). "Sin foto de referencia" (skipReference) waives it.
+  // Free lines (custom cakes) need the client's reference photo, unless "Sin
+  // foto de referencia" (skipReference) waives it. Catalog cakes don't: the
+  // design photo already is the reference.
   function lineNeedsReference(l: Line): boolean {
-    if (l.kind === 'free') return true;
-    return designs.find((d) => d.id === l.designId)?.category === 'CAKE';
+    return l.kind === 'free';
   }
   function lineReferenceOk(l: Line): boolean {
     return !lineNeedsReference(l) || !!l.referenceImageUrl || l.skipReference;
@@ -189,8 +211,13 @@ export default function NewOrderPage() {
       }
       if (l.kind === 'catalog') {
         if (!l.designId) reasons.push(`${label}: falta elegir el diseño`);
-        if (!l.variantId) reasons.push(`${label}: falta elegir el tamaño`);
-        if (!l.relleno.trim()) reasons.push(`${label}: falta el relleno`);
+        else if (!l.colorId || !l.sizeId || !l.bizcochoId || !l.rellenoId || !l.shapeId) {
+          reasons.push(`${label}: falta elegir color, tamaño, sabores o forma`);
+        }
+        const design = catalog?.designs.find((d) => d.id === l.designId);
+        if (design?.allowsCustomImage && design.requiresCustomImage && !l.customImageUrl) {
+          reasons.push(`${label}: este diseño necesita la imagen para imprimir`);
+        }
       } else {
         if (!l.customName.trim()) reasons.push(`${label}: falta la descripción`);
         if (l.price === '' || Number(l.price) < 0) reasons.push(`${label}: falta el precio`);
@@ -202,7 +229,7 @@ export default function NewOrderPage() {
     });
     return reasons;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientName, clientPhone, deliveryDate, pickupMinutes, lines, designs]);
+  }, [clientName, clientPhone, deliveryDate, pickupMinutes, lines, catalog]);
 
   const canSubmit = missingReasons.length === 0 && !submitting;
 
@@ -264,13 +291,15 @@ export default function NewOrderPage() {
           l.kind === 'catalog'
             ? {
                 productDesignId: l.designId,
-                variantId: l.variantId,
-                flavor: l.flavor,
-                relleno: l.relleno.trim(),
+                colorId: l.colorId,
+                sizeId: l.sizeId,
+                bizcochoId: l.bizcochoId,
+                rellenoId: l.rellenoId,
+                shapeId: l.shapeId,
                 customText: l.customText.trim() || undefined,
-                customImageUrl: l.customImageUrl || undefined,
+                customImageUrls: l.customImageUrl ? [l.customImageUrl] : undefined,
+                printImageType: l.customImageUrl ? l.printImageType : undefined,
                 referenceImageUrl: l.referenceImageUrl || undefined,
-                skipReference: l.skipReference || undefined,
               }
             : {
                 customName: l.customName.trim(),
@@ -403,71 +432,7 @@ export default function NewOrderPage() {
             )}
 
             {l.kind === 'catalog' ? (
-              <>
-                <label className="admin-field-label">Diseño</label>
-                <p className="muted">Los diseños no tienen nombre, se reconocen por foto — igual que hace el cliente.</p>
-                <div className="design-picker" role="radiogroup" aria-label="Elegir diseño del catálogo">
-                  {designs.map((d) => {
-                    const isSelected = d.id === l.designId;
-                    return (
-                      <button
-                        key={d.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={isSelected}
-                        className={`design-picker-item ${isSelected ? 'is-selected' : ''}`}
-                        onClick={() => {
-                          const v = d.variants[0];
-                          patchLine(l.key, {
-                            designId: d.id,
-                            variantId: v?.id ?? '',
-                            relleno: v?.enPromocion ? 'Arequipe' : '',
-                          });
-                        }}
-                      >
-                        {d.imageUrl ? (
-                          <img src={d.imageUrl} alt={d.name || ''} loading="lazy" />
-                        ) : (
-                          <span className="design-picker-noimg">Sin foto</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-                <select
-                  value={l.variantId}
-                  onChange={(e) => {
-                    const v = designs.find((d) => d.id === l.designId)?.variants.find((x) => x.id === e.target.value);
-                    patchLine(l.key, { variantId: e.target.value, relleno: v?.enPromocion ? 'Arequipe' : '' });
-                  }}
-                >
-                  {designs
-                    .find((d) => d.id === l.designId)
-                    ?.variants.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.label} — ${Number(v.price).toLocaleString('es-CO')}
-                      </option>
-                    ))}
-                </select>
-                <select
-                  value={l.flavor}
-                  onChange={(e) => patchLine(l.key, { flavor: e.target.value as Flavor })}
-                >
-                  <option value="VAINILLA">Vainilla</option>
-                  <option value="CHOCOLATE">Chocolate</option>
-                </select>
-                {(() => {
-                  const variant = designs.find((d) => d.id === l.designId)?.variants.find((v) => v.id === l.variantId);
-                  return variant ? (
-                    <RellenoSelect
-                      portions={variant.portions}
-                      isPromo={variant.enPromocion}
-                      value={l.relleno}
-                      onChange={(relleno) => patchLine(l.key, { relleno })}
-                    />
-                  ) : null;
-                })()}
-              </>
+              catalog && <CatalogLineEditor catalog={catalog} line={l} onChange={(patch) => patchLine(l.key, patch)} />
             ) : (
               <>
                 <input
@@ -482,29 +447,33 @@ export default function NewOrderPage() {
                   value={l.price}
                   onChange={(e) => patchLine(l.key, { price: e.target.value })}
                 />
-                <input
-                  type="text"
-                  placeholder="Porciones (ej: 20 porciones)"
+                <PickOrType
+                  label="Tamaño"
+                  options={settings?.sizes.filter((x) => x.active).map((x) => x.label) ?? []}
                   value={l.customSize}
-                  onChange={(e) => patchLine(l.key, { customSize: e.target.value })}
+                  placeholder="Ej: 20 porciones"
+                  onChange={(v) => patchLine(l.key, { customSize: v })}
                 />
-                <input
-                  type="text"
-                  placeholder="Forma (ej: Corazón)"
+                <PickOrType
+                  label="Forma"
+                  options={settings?.shapes.filter((x) => x.active).map((x) => x.name) ?? []}
                   value={l.shape}
-                  onChange={(e) => patchLine(l.key, { shape: e.target.value })}
+                  placeholder="Ej: Corazón"
+                  onChange={(v) => patchLine(l.key, { shape: v })}
                 />
-                <input
-                  type="text"
-                  placeholder="Sabor de torta"
+                <PickOrType
+                  label="Sabor del bizcocho"
+                  options={settings?.bizcochos.filter((x) => x.active).map((x) => x.name) ?? []}
                   value={l.customFlavor}
-                  onChange={(e) => patchLine(l.key, { customFlavor: e.target.value })}
+                  placeholder="Sabor de torta"
+                  onChange={(v) => patchLine(l.key, { customFlavor: v })}
                 />
-                <input
-                  type="text"
-                  placeholder="Relleno"
+                <PickOrType
+                  label="Relleno"
+                  options={settings?.rellenos.filter((x) => x.active).map((x) => x.name) ?? []}
                   value={l.relleno}
-                  onChange={(e) => patchLine(l.key, { relleno: e.target.value })}
+                  placeholder="Relleno"
+                  onChange={(v) => patchLine(l.key, { relleno: v })}
                 />
               </>
             )}
@@ -515,7 +484,7 @@ export default function NewOrderPage() {
               value={l.customText}
               onChange={(e) => patchLine(l.key, { customText: e.target.value })}
             />
-            <label className="admin-field-label">Imagen para imprimir en papel comestible (opcional)</label>
+            <label className="admin-field-label">Imagen para imprimir (opcional)</label>
             <input
               type="file"
               accept="image/*"
@@ -527,10 +496,29 @@ export default function NewOrderPage() {
             />
             {uploadingSlot === `${l.key}|customImageUrl` && <p className="muted">Subiendo...</p>}
             {l.customImageUrl && <img className="design-preview" src={l.customImageUrl} alt="" />}
+            {l.kind === 'catalog' && l.customImageUrl && catalog && (
+              <div className="np-pills">
+                {(['NON_EDIBLE', 'EDIBLE'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`np-pill ${l.printImageType === t ? 'is-selected' : ''}`}
+                    onClick={() => patchLine(l.key, { printImageType: t })}
+                  >
+                    {PRINT_TYPE_LABELS[t]} (+${catalog.printImagePrices[t].toLocaleString('es-CO')})
+                  </button>
+                ))}
+              </div>
+            )}
+            {l.kind === 'catalog' && catalog && (
+              <p className="np-line-price">
+                Precio: ${(catalogLinePrice(catalog, l) ?? 0).toLocaleString('es-CO')}
+              </p>
+            )}
           </div>
         ))}
 
-        <button type="button" className="secondary-button" onClick={addCatalogLine} disabled={designs.length === 0}>
+        <button type="button" className="secondary-button" onClick={addCatalogLine} disabled={!catalog}>
           + Producto del catálogo
         </button>{' '}
         <button type="button" className="secondary-button" onClick={addFreeLine}>
@@ -607,5 +595,210 @@ export default function NewOrderPage() {
         />
       )}
     </div>
+  );
+}
+
+// Catalog cake: pick the design (photo grid + search), then its color (photos),
+// then size / bizcocho / relleno / shape. Picking a design or color fills every
+// other pick with its first valid option, so a line is never half-invalid.
+function CatalogLineEditor({
+  catalog,
+  line,
+  onChange,
+}: {
+  catalog: PublicCakeCatalog;
+  line: CatalogLine;
+  onChange: (patch: Partial<Omit<CatalogLine, 'kind'>>) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [picking, setPicking] = useState(!line.designId);
+  const design = catalog.designs.find((d) => d.id === line.designId);
+  const color = design?.colors.find((c) => c.id === line.colorId);
+
+  function pickColor(d: PublicCakeDesign, colorId: string) {
+    const c = d.colors.find((x) => x.id === colorId) ?? d.colors[0];
+    onChange({
+      designId: d.id,
+      colorId: c.id,
+      sizeId: c.sizes[0]?.sizeId ?? '',
+      bizcochoId: c.bizcochoIds[0] ?? '',
+      rellenoId: c.rellenoIds[0] ?? '',
+      shapeId: c.shapes[0]?.id ?? '',
+      ...(d.allowsCustomImage ? {} : { customImageUrl: '' }),
+    });
+  }
+
+  if (picking || !design) {
+    const q = normalize(search.trim());
+    const shown = q ? catalog.designs.filter((d) => normalize(d.name).includes(q)) : catalog.designs;
+    return (
+      <>
+        <label className="admin-field-label">Diseño</label>
+        <input type="search" placeholder="Buscar diseño por nombre" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="design-picker np-design-picker" role="radiogroup" aria-label="Elegir diseño">
+          {shown.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              role="radio"
+              aria-checked={d.id === line.designId}
+              className={`np-design ${d.id === line.designId ? 'is-selected' : ''}`}
+              onClick={() => {
+                pickColor(d, d.colors[0].id);
+                setPicking(false);
+              }}
+            >
+              <img src={d.colors[0].imageUrl} alt="" loading="lazy" />
+              <span>{d.name}</span>
+            </button>
+          ))}
+          {shown.length === 0 && <p className="muted">Ningún diseño se llama así.</p>}
+        </div>
+      </>
+    );
+  }
+
+  const flavor = (id: string) => catalog.flavors.find((f) => f.id === id);
+  const surcharge = (id: string) => {
+    const extra = color && line.sizeId ? flavor(id)?.surcharges[line.sizeId] ?? 0 : 0;
+    return extra > 0 ? ` (+$${extra.toLocaleString('es-CO')})` : '';
+  };
+
+  return (
+    <>
+      <div className="np-chosen">
+        <img src={color?.imageUrl ?? design.colors[0].imageUrl} alt="" />
+        <div>
+          <strong>{design.name}</strong>
+          <button type="button" className="secondary-button" style={{ marginTop: 6 }} onClick={() => setPicking(true)}>
+            Cambiar diseño
+          </button>
+        </div>
+      </div>
+
+      {design.colors.length > 1 && (
+        <>
+          <label className="admin-field-label">Color</label>
+          <div className="np-colors">
+            {design.colors.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className={`np-design np-color ${c.id === line.colorId ? 'is-selected' : ''}`}
+                onClick={() => pickColor(design, c.id)}
+              >
+                <img src={c.imageUrl} alt="" loading="lazy" />
+                <span>{c.colorName}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {color && (
+        <>
+          <PillGroup
+            label="Tamaño"
+            options={color.sizes.map((s) => ({ id: s.sizeId, text: `${s.label} — $${s.price.toLocaleString('es-CO')}` }))}
+            value={line.sizeId}
+            onChange={(sizeId) => onChange({ sizeId })}
+          />
+          <PillGroup
+            label="Sabor del bizcocho"
+            options={color.bizcochoIds.map((id) => ({ id, text: (flavor(id)?.name ?? '') + surcharge(id) }))}
+            value={line.bizcochoId}
+            onChange={(bizcochoId) => onChange({ bizcochoId })}
+          />
+          <PillGroup
+            label="Relleno"
+            options={color.rellenoIds.map((id) => ({ id, text: (flavor(id)?.name ?? '') + surcharge(id) }))}
+            value={line.rellenoId}
+            onChange={(rellenoId) => onChange({ rellenoId })}
+          />
+          <PillGroup
+            label="Forma"
+            options={color.shapes.map((s) => ({ id: s.id, text: s.name }))}
+            value={line.shapeId}
+            onChange={(shapeId) => onChange({ shapeId })}
+          />
+        </>
+      )}
+    </>
+  );
+}
+
+function PillGroup({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { id: string; text: string }[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <>
+      <label className="admin-field-label">{label}</label>
+      <div className="np-pills">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            className={`np-pill ${o.id === value ? 'is-selected' : ''}`}
+            onClick={() => onChange(o.id)}
+          >
+            {o.text}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+// Free-line field: pick from the configured list, or "Otro…" to type anything.
+function PickOrType({
+  label,
+  options,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  const OTHER = '__otro__';
+  const [typing, setTyping] = useState(value !== '' && !options.includes(value));
+  return (
+    <>
+      <label className="admin-field-label">{label}</label>
+      <select
+        value={typing ? OTHER : value}
+        onChange={(e) => {
+          if (e.target.value === OTHER) {
+            setTyping(true);
+            onChange('');
+          } else {
+            setTyping(false);
+            onChange(e.target.value);
+          }
+        }}
+      >
+        <option value="">Elegir…</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+        <option value={OTHER}>Otro (escribir)</option>
+      </select>
+      {typing && (
+        <input type="text" placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} autoFocus />
+      )}
+    </>
   );
 }
