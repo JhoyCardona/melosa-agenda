@@ -53,6 +53,25 @@ interface GalleryImage {
 
 type Tab = 'resumen' | 'detalle' | 'galeria';
 
+// Cancelling an order with money paid: ask whether that money stays as the
+// client's saldo a favor (e.g. they asked to cancel by WhatsApp) or is simply
+// kept (e.g. they never finished paying). Money is never refunded either way.
+function askCreditThen(paid: number, cancel: (creditDeposit: boolean) => void) {
+  if (paid <= 0) {
+    cancel(false);
+    return;
+  }
+  Alert.alert(
+    '¿Dejar el abono como saldo a favor?',
+    `El cliente pagó $${paid.toLocaleString()}. Si lo dejas como saldo a favor, lo puede usar en un próximo pedido.`,
+    [
+      { text: 'Volver', style: 'cancel' },
+      { text: 'No, solo cancelar', onPress: () => cancel(false) },
+      { text: 'Sí, dejar saldo', onPress: () => cancel(true) },
+    ]
+  );
+}
+
 export default function DayDetailScreen() {
   const { date } = useLocalSearchParams<{ date: string }>();
   const [tab, setTab] = useState<Tab>('resumen');
@@ -157,9 +176,9 @@ export default function DayDetailScreen() {
     }
   }
 
-  async function handleCancel(orderId: string) {
+  async function handleCancel(orderId: string, creditDeposit: boolean) {
     try {
-      await api.patch(`/orders/${orderId}`, { status: 'CANCELLED' });
+      await api.patch(`/orders/${orderId}`, { status: 'CANCELLED', creditDeposit });
       await loadData('refresh');
     } catch (error) {
       Alert.alert('Error', 'No se pudo cancelar el pedido');
@@ -268,7 +287,11 @@ export default function DayDetailScreen() {
                   onApplyCredit={() => handleApplyCredit(order.id)}
                   actions={[
                     { label: 'Completar', onPress: () => handleMarkCompleted(order.id) },
-                    { label: 'Cancelar', onPress: () => handleCancel(order.id) },
+                    {
+                      label: 'Cancelar',
+                      onPress: () =>
+                        askCreditThen(Number(order.depositPaid), (credit) => handleCancel(order.id, credit)),
+                    },
                     { label: 'Eliminar', onPress: () => handleDelete(order.id), destructive: true },
                   ]}
                 />

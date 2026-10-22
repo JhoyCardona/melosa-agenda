@@ -780,6 +780,9 @@ export async function getNotifications(req: AuthRequest, res: Response) {
 export async function updateOrder(req: AuthRequest, res: Response) {
   const orderId = req.params.orderId as string;
   const { clientName, clientPhone, deliveryDate, deliveryAddress, notes, totalPrice, depositPaid, status } = req.body;
+  // Cancelling from the agenda: gretica chose (when asked) to keep what the
+  // client paid as saldo a favor for a future order, instead of just keeping it.
+  const creditDeposit = req.body.creditDeposit === true;
 
   if (status && !VALID_STATUSES.includes(status)) {
     return res.status(400).json({
@@ -876,6 +879,19 @@ export async function updateOrder(req: AuthRequest, res: Response) {
           ...(paymentDueDate !== undefined && { paymentDueDate }),
         },
       });
+
+      const cancellingNow = status === OrderStatus.CANCELLED && !wasAlreadyCancelled;
+      const paidAmount = Number(updated.depositPaid);
+      if (cancellingNow && creditDeposit && paidAmount > 0) {
+        await tx.clientCredit.create({
+          data: {
+            clientPhone: updated.clientPhone,
+            amount: paidAmount,
+            reason: `Saldo a favor: Melosa canceló el pedido #${updated.ticketNumber}`,
+            orderId: updated.id,
+          },
+        });
+      }
 
       // Moving the order to another day: append it to the new day's queue. The
       // old day's slot is left as a gap (the cursor never moves back) and the

@@ -23,6 +23,25 @@ interface Order {
 // in the last 3 days — gretica has no push notifications, so they surface here.
 type Tab = 'porVencer' | 'vencidos' | 'cambios';
 
+// Cancelling an order with money paid: ask whether that money stays as the
+// client's saldo a favor (e.g. they asked to cancel by WhatsApp) or is simply
+// kept (e.g. they never finished paying). Money is never refunded either way.
+function askCreditThen(paid: number, cancel: (creditDeposit: boolean) => void) {
+  if (paid <= 0) {
+    cancel(false);
+    return;
+  }
+  Alert.alert(
+    '¿Dejar el abono como saldo a favor?',
+    `El cliente pagó $${paid.toLocaleString()}. Si lo dejas como saldo a favor, lo puede usar en un próximo pedido.`,
+    [
+      { text: 'Volver', style: 'cancel' },
+      { text: 'No, solo cancelar', onPress: () => cancel(false) },
+      { text: 'Sí, dejar saldo', onPress: () => cancel(true) },
+    ]
+  );
+}
+
 export default function NotificationsScreen() {
   const [tab, setTab] = useState<Tab>('vencidos');
   const [porVencer, setPorVencer] = useState<Order[]>([]);
@@ -61,9 +80,9 @@ export default function NotificationsScreen() {
     }
   }
 
-  async function handleCancelWithAmount(orderId: string, depositAmount: number) {
+  async function handleCancelWithAmount(orderId: string, depositAmount: number, creditDeposit: boolean) {
     try {
-      await api.patch(`/orders/${orderId}`, { status: 'CANCELLED', depositPaid: depositAmount });
+      await api.patch(`/orders/${orderId}`, { status: 'CANCELLED', depositPaid: depositAmount, creditDeposit });
       await load('refresh');
     } catch (error) {
       Alert.alert('Error', 'No se pudo cancelar el pedido');
@@ -143,7 +162,11 @@ export default function NotificationsScreen() {
                 : (status, depositAmount) => handlePaymentUpdate(order.id, status, depositAmount)
             }
             onApplyCredit={() => handleApplyCredit(order.id)}
-            onCancelWithAmount={tab === 'vencidos' ? (amount) => handleCancelWithAmount(order.id, amount) : undefined}
+            onCancelWithAmount={
+              tab === 'vencidos'
+                ? (amount) => askCreditThen(amount, (credit) => handleCancelWithAmount(order.id, amount, credit))
+                : undefined
+            }
           />
         ))
       )}
