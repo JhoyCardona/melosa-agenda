@@ -35,10 +35,60 @@ model Order {
   status                 OrderStatus @default(AWAITING_PAYMENT)
   source                 OrderSource @default(MANUAL)
   notifiedAt             DateTime?
+  // Secret for the client's private "modificar mi pedido" link, sent inside the
+  // WhatsApp message they send at booking time. Opening it still asks for the
+  // phone + ticket. Null on orders created before Oct 2026 and on admin orders,
+  // which can't be self-managed.
+  accessToken            String?     @unique
+  // Last time the client changed or cancelled this order from that link — the
+  // agenda flags it as "Modificado por el cliente".
+  modifiedByClientAt     DateTime?
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
 
-  items OrderItem[]
+  items   OrderItem[]
+  changes OrderChange[]
+}
+
+// Audit trail of every client-side modification / cancellation: what the order
+// looked like before and after, so gretica can see exactly what changed.
+model OrderChange {
+  id        String          @id @default(uuid())
+  orderId   String
+  order     Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actor     ChangeActor
+  kind      OrderChangeKind
+  before    Json
+  after     Json
+  createdAt DateTime        @default(now())
+
+  @@index([orderId])
+}
+
+enum ChangeActor {
+  CLIENT
+  ADMIN
+}
+
+enum OrderChangeKind {
+  MODIFIED
+  CANCELLED
+}
+
+// Saldo a favor, as a ledger keyed by phone: + when a client cancels with money
+// paid or lowers an already-paid total, − when gretica applies it to a new
+// order. Money is never refunded. A client's balance = SUM(amount).
+model ClientCredit {
+  id          String   @id @default(uuid())
+  clientPhone String
+  amount      Decimal
+  reason      String
+  // Ticket the movement came from (or was applied to). Kept as a plain link
+  // so the ledger survives an order being deleted.
+  orderId     String?
+  createdAt   DateTime @default(now())
+
+  @@index([clientPhone])
 }
 
 model OrderItem {

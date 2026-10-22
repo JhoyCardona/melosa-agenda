@@ -99,11 +99,16 @@ export interface ReservedSlot {
 // - With explicitStartMin: place at a fixed start (used when seeding the backlog
 //   of orders Melosa already promised times for). The cursor still only moves
 //   forward — never back.
+// - With capAtClose: never fails for lack of room. If the order doesn't fit at
+//   the end of the queue it's placed to END exactly at closing time, overlapping
+//   whatever is already there (accepted). Only for a client modifying an order
+//   that stays on its own date — they already held a place that day.
 export async function reserveDeliverySlot(
   tx: TransactionClient,
   dateStr: string,
   durationMin: number,
-  explicitStartMin?: number
+  explicitStartMin?: number,
+  capAtClose = false
 ): Promise<ReservedSlot> {
   const rounded = ceilToStep(Math.max(0, durationMin));
   const date = dayDateValue(dateStr);
@@ -117,10 +122,13 @@ export async function reserveDeliverySlot(
   const existing = await tx.daySchedule.findUnique({ where: { date } });
   const cursor = existing?.cursorMinutes ?? OPEN_MINUTE;
 
-  const start = explicitStartMin ?? cursor;
+  let start = explicitStartMin ?? cursor;
+  if (capAtClose && explicitStartMin === undefined && start + rounded > CLOSE_MINUTE) {
+    start = Math.max(OPEN_MINUTE, CLOSE_MINUTE - rounded);
+  }
   const end = start + rounded;
 
-  if (start < OPEN_MINUTE || end > CLOSE_MINUTE) {
+  if (start < OPEN_MINUTE || (end > CLOSE_MINUTE && !capAtClose)) {
     throw new Error(
       `Ese día ${NOT_ENOUGH_ROOM} para tu pedido (entregamos hasta las ${minutesToLabel(
         CLOSE_MINUTE

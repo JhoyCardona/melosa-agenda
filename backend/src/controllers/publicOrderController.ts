@@ -1,24 +1,13 @@
 import { Request, Response } from 'express';
-import { PrismaClient, Flavor, ItemCategory, OrderStatus, PrintImageType } from '@prisma/client';
+import { randomBytes } from 'crypto';
+import { PrismaClient, OrderStatus } from '@prisma/client';
 import { isBusinessDay } from '../utils/colombianHolidays';
 import { computePaymentDueDate, earliestPublicDeliveryDate, isValidIsoDate } from '../utils/colombiaTime';
 import { reserveDeliverySlot, minutesToLabel, isNotEnoughRoomError, isDateBlocked } from '../services/availability';
-import {
-  rellenoSurcharge,
-  computeRequiredPaymentPercent,
-  isValidRelleno,
-  isValidMinicakeRelleno,
-  DEFAULT_MINICAKE_RELLENO,
-} from '../services/pricing';
-import { MAX_CLIENT_NAME_LENGTH, MAX_ADDRESS_LENGTH } from '../services/limits';
+import { computeRequiredPaymentPercent } from '../services/pricing';
+import { MAX_CLIENT_NAME_LENGTH, MAX_ADDRESS_LENGTH, MAX_ITEMS_PER_PUBLIC_ORDER } from '../services/limits';
 import cloudinary from '../config/cloudinary';
-import {
-  resolveCakeLines,
-  isCakeLineInput,
-  CakeLineError,
-  PRINT_IMAGE_PRICES,
-  type CakeLineInput,
-} from '../services/cakeCatalog';
+import { resolvePublicLines, PublicOrderInputError } from '../services/publicOrderLines';
 
 const prisma = new PrismaClient();
 
@@ -59,30 +48,10 @@ export async function uploadPublicImage(req: Request, res: Response) {
   }
 }
 
-const VALID_FLAVORS = Object.values(Flavor);
-// Shape is now a client pick at add-to-cart time (color-picker rework), not a
-// fixed ProductDesign field — "Redonda" is the default the form preselects.
-const VALID_SHAPES = ['Redonda', 'Corazón'];
-// A self-service web order bigger than this should go through WhatsApp / the admin
-// panel instead — also caps spam and "one order eats half the day" cases.
-const MAX_ITEMS_PER_PUBLIC_ORDER = 12;
-
-// A legacy-catalog line (the alfajor minicake, and the pre-v2 cake catalog).
-// Catalog v2 cake lines use CakeLineInput instead (colorId/sizeId/... ids, no
-// variantId) — told apart by the presence of variantId.
-interface PublicOrderItemInput {
-  productDesignId: string;
-  variantId: string;
-  flavor: Flavor;
-  relleno: string;
-  customImageUrl?: string;
-  // Only used for a variant with maxCustomImages > 1 (the memory cake and
-  // similar) — customImageUrl alone covers the ordinary case.
-  customImageUrls?: string[];
-  customText?: string;
-  shape?: string;
-  color?: string;
-  printImageType?: string;
+// Secret for the client's private "modificar mi pedido" link: 144 random bits,
+// URL-safe. Unguessable, unlike the sequential ticket number.
+export function newAccessToken(): string {
+  return randomBytes(18).toString('base64url');
 }
 
 // Public, no-auth endpoint clients use to book their own order from the web form.
@@ -150,148 +119,13 @@ export async function createPublicOrder(req: Request, res: Response) {
     });
   }
 
-  const legacyItems: PublicOrderItemInput[] = [];
-  const cakeItems: CakeLineInput[] = [];
-  for (const item of items as unknown[]) {
-    const variantId = (item as { variantId?: unknown } | null)?.variantId;
-    if (typeof variantId === 'string' && variantId) legacyItems.push(item as PublicOrderItemInput);
-    else if (isCakeLineInput(item)) cakeItems.push(item);
-    else return res.status(400).json({ error: 'Uno de los productos del pedido está incompleto' });
-  }
-
   try {
-    const variantIds = legacyItems.map((item) => item.variantId);
-    const designIds = legacyItems.map((item) => item.productDesignId);
-    const [variants, designs] = await Promise.all([
-      prisma.productVariant.findMany({ where: { id: { in: variantIds } } }),
-      prisma.productDesign.findMany({ where: { id: { in: designIds } }, include: { images: true } }),
-    ]);
-    const variantById = new Map(variants.map((v) => [v.id, v]));
-    const designById = new Map(designs.map((d) => [d.id, d]));
-
-    // effectiveRelleno/effectiveShape are decided here, not fully trusted from
-    // the client: a promo (minicake) variant picks from RELLENOS_MINICAKE
-    // (defaulting to Arequipe when nothing is sent), every size of the alfajor
-    // minicake is always Arequipe (its filling never changes), and an
-    // empty/unknown shape falls back to "Redonda" (the form's own default).
-    const resolvedItems = legacyItems.map((item) => {
-      const variant = variantById.get(item.variantId);
-      const design = variant ? designById.get(item.productDesignId) : undefined;
-      const isAlfajor = design?.category === ItemCategory.ALFAJOR_CAKE;
-      const posted = item.relleno?.trim() || '';
-      const effectiveRelleno = isAlfajor
-        ? DEFAULT_MINICAKE_RELLENO
-        : variant?.enPromocion
-          ? posted || DEFAULT_MINICAKE_RELLENO
-          : posted;
-      const effectiveShape = item.shape?.trim() || 'Redonda';
-      const effectiveColor = item.color?.trim() || undefined;
-      // A variant with maxCustomImages > 1 (the memory cake and similar) uses
-      // customImageUrls; the ordinary single-image case ignores it entirely.
-      const multiImage = (variant?.maxCustomImages ?? 1) > 1;
-      const effectiveImages = multiImage
-        ? (item.customImageUrls ?? []).filter((url) => typeof url === 'string' && url.trim())
-        : item.customImageUrl
-          ? [item.customImageUrl]
-          : [];
-      // Same per-cake print surcharge as catalog v2 cakes: non-edible unless
-      // the client picked edible, and nothing when there's no (allowed) image.
-      const printImageType =
-        design?.allowsCustomImage && effectiveImages.length > 0
-          ? item.printImageType === PrintImageType.EDIBLE
-            ? PrintImageType.EDIBLE
-            : PrintImageType.NON_EDIBLE
-          : null;
-      const linePrice = variant
-        ? Number(variant.price) +
-          rellenoSurcharge(effectiveRelleno, variant.portions, variant.enPromocion) +
-          (printImageType ? PRINT_IMAGE_PRICES[printImageType] : 0)
-        : 0;
-      return {
-        item,
-        variant,
-        design,
-        effectiveRelleno,
-        effectiveShape,
-        effectiveColor,
-        multiImage,
-        effectiveImages,
-        printImageType,
-        linePrice,
-      };
-    });
-
-    for (const {
-      item,
-      variant,
-      design,
-      effectiveRelleno,
-      effectiveShape,
-      effectiveColor,
-      multiImage,
-      effectiveImages,
-    } of resolvedItems) {
-      if (!variant || variant.productDesignId !== item.productDesignId) {
-        return res.status(404).json({ error: 'Uno de los productos seleccionados no existe' });
-      }
-      if (!item.flavor || !VALID_FLAVORS.includes(item.flavor)) {
-        return res.status(400).json({ error: `flavor debe ser uno de: ${VALID_FLAVORS.join(', ')}` });
-      }
-      if (!effectiveRelleno) {
-        return res.status(400).json({ error: 'relleno es requerido' });
-      }
-      const isMinicake = variant.enPromocion && design?.category !== ItemCategory.ALFAJOR_CAKE;
-      if (!(isMinicake ? isValidMinicakeRelleno(effectiveRelleno) : isValidRelleno(effectiveRelleno))) {
-        return res.status(400).json({ error: `relleno no reconocido: "${effectiveRelleno}"` });
-      }
-      if (!VALID_SHAPES.includes(effectiveShape)) {
-        return res.status(400).json({ error: `shape debe ser uno de: ${VALID_SHAPES.join(', ')}` });
-      }
-      if (effectiveColor && design && design.images.length > 0) {
-        const knownColor = design.images.some((img) => img.colorName === effectiveColor);
-        if (!knownColor) {
-          return res.status(400).json({ error: `color no reconocido para ese diseño: "${effectiveColor}"` });
-        }
-      }
-      if (design?.requiresCustomImage && effectiveImages.length === 0) {
-        return res.status(400).json({
-          error: 'Este diseño necesita que subas una imagen para imprimir.',
-        });
-      }
-      if (multiImage && variant && effectiveImages.length > variant.maxCustomImages) {
-        return res.status(400).json({
-          error: `Este tamaño admite hasta ${variant.maxCustomImages} imágenes.`,
-        });
-      }
-      const maxTextLength = design?.customTextMaxLength ?? 20;
-      if ((item.customText?.trim().length ?? 0) > maxTextLength) {
-        return res.status(400).json({
-          error: `El texto personalizado no puede pasar de ${maxTextLength} letras.`,
-        });
-      }
-    }
-
-    // Catalog v2 cakes: validated and priced from the live catalog.
-    let cakeLines;
-    try {
-      cakeLines = await resolveCakeLines(cakeItems);
-    } catch (error) {
-      if (error instanceof CakeLineError) return res.status(400).json({ error: error.message });
-      throw error;
-    }
-
-    const totalPrice =
-      resolvedItems.reduce((sum, { linePrice }) => sum + linePrice, 0) +
-      cakeLines.reduce((sum, l) => sum + l.price, 0);
-    const rawDurationMin =
-      resolvedItems.reduce((sum, { variant }) => sum + variant!.prepMinutes, 0) +
-      cakeLines.reduce((sum, l) => sum + l.prepMinutes, 0);
+    const lines = await resolvePublicLines(items);
+    const totalPrice = lines.reduce((sum, l) => sum + l.price, 0);
+    const rawDurationMin = lines.reduce((sum, l) => sum + l.prepMinutes, 0);
     // Exactly one item whose size asks for full payment alone (a minicake) ->
     // 100%; everything else -> 50%.
-    const requiredPaymentPercent = computeRequiredPaymentPercent([
-      ...resolvedItems.map(({ variant }) => ({ fullPaymentIfAlone: !!variant!.enPromocion })),
-      ...cakeLines.map((l) => ({ fullPaymentIfAlone: l.fullPaymentIfAlone })),
-    ]);
+    const requiredPaymentPercent = computeRequiredPaymentPercent(lines);
 
     const order = await prisma.$transaction(async (tx) => {
       // Assigns the pickup slot and advances the day cursor, all-or-nothing with
@@ -316,43 +150,8 @@ export async function createPublicOrder(req: Request, res: Response) {
           paymentDueDate: computePaymentDueDate(deliveryDate, pickupMinutes),
           requiredPaymentPercent,
           totalPrice,
-          items: {
-            create: [
-              ...resolvedItems.map(
-              ({
-                item,
-                variant,
-                design,
-                effectiveRelleno,
-                effectiveShape,
-                effectiveColor,
-                multiImage,
-                effectiveImages,
-                printImageType,
-                linePrice,
-              }) => {
-                // Honour the design's flags even if the client posts these fields
-                // directly (the form already hides the inputs when not allowed).
-                const imagesAllowed = design!.allowsCustomImage;
-                return {
-                  productDesignId: item.productDesignId,
-                  variantId: item.variantId,
-                  priceAtOrder: linePrice,
-                  pointsAtOrder: variant!.points,
-                  flavor: item.flavor,
-                  shape: effectiveShape,
-                  color: effectiveColor ?? null,
-                  relleno: effectiveRelleno,
-                  customImageUrl: imagesAllowed && !multiImage ? effectiveImages[0] ?? null : null,
-                  customImageUrls: imagesAllowed && multiImage ? effectiveImages : [],
-                  printImageType,
-                  customText: design!.allowsCustomText ? item.customText?.trim() || null : null,
-                };
-              }
-              ),
-              ...cakeLines.map((l) => l.itemData),
-            ],
-          },
+          accessToken: newAccessToken(),
+          items: { create: lines.map((l) => l.itemData) },
         },
         include: { items: true },
       });
@@ -363,6 +162,9 @@ export async function createPublicOrder(req: Request, res: Response) {
       deliveryTimeLabel: minutesToLabel(order.deliveryStartMinutes + order.deliveryDurationMin),
     });
   } catch (error) {
+    if (error instanceof PublicOrderInputError) {
+      return res.status(error.status).json({ error: error.message });
+    }
     console.error('Error creando pedido público:', error);
 
     // "Day is full" is the only expected failure mode here — surface it as 409.

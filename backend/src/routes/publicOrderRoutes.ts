@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { createPublicOrder, uploadPublicImage } from '../controllers/publicOrderController';
+import {
+  openManagedOrder,
+  previewOrderChange,
+  modifyManagedOrder,
+  cancelManagedOrder,
+} from '../controllers/orderManageController';
 import { getDeliveryPreview } from '../services/availability';
 import { isValidIsoDate } from '../utils/colombiaTime';
 import upload from '../config/multer';
@@ -29,6 +35,24 @@ const uploadLimiter = rateLimit({
 });
 
 router.post('/', createOrderLimiter, createPublicOrder);
+
+// "Modificar mi pedido" (private link + phone + ticket). Only failed lookups
+// count — 5 wrong phone/ticket guesses per 15 minutes — so a real client
+// previewing several changes is never locked out, but nobody can brute-force
+// someone else's order.
+const manageLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  requestWasSuccessful: (req, res) => res.statusCode !== 404,
+  skipSuccessfulRequests: true,
+  message: { error: 'Demasiados intentos. Espera 15 minutos e intenta de nuevo.' },
+});
+router.post('/manage/open', manageLimiter, openManagedOrder);
+router.post('/manage/preview', manageLimiter, previewOrderChange);
+router.post('/manage/modify', manageLimiter, modifyManagedOrder);
+router.post('/manage/cancel', manageLimiter, cancelManagedOrder);
 
 // Catalog v2 cakes the public can book (designs + their complete colors, and
 // the active flavors with their per-size surcharges).
