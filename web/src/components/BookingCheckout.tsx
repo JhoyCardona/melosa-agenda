@@ -105,6 +105,7 @@ export default function BookingCheckout({ catalogHref }: { catalogHref: string }
           `Tel: ${normalizedPhone}\n\n` +
           `Ticket #${response.data.ticketNumber}\n\n` +
           `${breakdown}\n\n` +
+          `Día: ${formatDeliveryDate(draft.deliveryDate)}\n` +
           `Hora: ${response.data.deliveryTimeLabel ?? 'por confirmar'} (Esta es la hora mínima de entrega de mi pedido)\n\n` +
           `Total: $${Number(response.data.totalPrice).toLocaleString('es-CO')}\n\n` +
           `Este es el resumen de mi pedido, quiero proceder con el pago.`
