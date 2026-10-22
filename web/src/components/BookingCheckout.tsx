@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import type { DeliveryPreview } from '../types';
@@ -71,13 +71,22 @@ export default function BookingCheckout({ catalogHref }: { catalogHref: string }
     !!draft.clientPhone.trim() &&
     !submitting;
 
+  // Set once the order exists. The booking form is swapped for a confirmation
+  // with the ticket and a real WhatsApp link, so the client always has a way to
+  // reach us even if the automatic jump to WhatsApp doesn't happen.
+  const [sent, setSent] = useState<{ ticketNumber: number; waHref: string } | null>(null);
+  const sentRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (sent) sentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [sent]);
+
   async function handleSubmit() {
     setErrorMessage('');
     setSubmitting(true);
-    // Opened synchronously, still inside the click handler's own gesture —
-    // browsers block a popup opened after an `await`, so this blank tab is
-    // the placeholder we redirect once the order actually exists.
-    const whatsappTab = window.open('', '_blank');
+    // No placeholder popup here: iOS Safari would switch to the blank tab
+    // mid-request, and when it was closed on an error the booking tab came back
+    // reloaded — the error message gone, the client stuck with "nothing happens".
+    // Everything now stays in this one tab.
     try {
       const name = draft.clientName.trim();
       const normalizedPhone = draft.clientPhone.replace(/[^\d+]/g, '');
@@ -101,21 +110,33 @@ export default function BookingCheckout({ catalogHref }: { catalogHref: string }
           `Este es el resumen de mi pedido, quiero proceder con el pago.`
       );
       draft.reset();
-      if (whatsappTab) {
-        whatsappTab.location.href = waHref;
-      } else {
-        // Popup blocked anyway — fall back to navigating this tab.
-        window.location.href = waHref;
-      }
+      setSent({ ticketNumber: response.data.ticketNumber, waHref });
+      // Same-tab navigation after an await is never popup-blocked; on a phone
+      // wa.me hands off to the WhatsApp app and this page stays behind it.
+      window.location.href = waHref;
     } catch (error) {
-      whatsappTab?.close();
       const message =
         (error as { response?: { data?: { error?: string } } })?.response?.data?.error ??
-        'No se pudo enviar el pedido. Intenta de nuevo.';
+        'No se pudo enviar el pedido. Revisa tu conexión e intenta de nuevo.';
       setErrorMessage(message);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (sent) {
+    return (
+      <section ref={sentRef} className="booking-block booking-sent">
+        <h2>¡Tu pedido quedó agendado!</h2>
+        <p>
+          Tu número de ticket es <strong>#{sent.ticketNumber}</strong>. Envíanos el resumen por
+          WhatsApp para continuar con el pago.
+        </p>
+        <a className="btn btn-primary" href={sent.waHref}>
+          Abrir WhatsApp
+        </a>
+      </section>
+    );
   }
 
   return (

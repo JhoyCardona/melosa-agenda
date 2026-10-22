@@ -29,6 +29,14 @@
   margin-bottom: var(--space-6);
 }
 
+.booking-sent {
+  text-align: center;
+}
+
+.booking-sent p {
+  margin-bottom: var(--space-4);
+}
+
 .booking-block h2 {
   font-family: var(--font-body);
   font-size: var(--text-lg);

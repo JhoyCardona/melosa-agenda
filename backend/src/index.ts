@@ -16,6 +16,11 @@ dotenv.config();
 
 const app = express();
 
+// Render puts a proxy in front of the app. Without this, req.ip is the proxy's
+// address, so the public rate limiters (5 orders / 15 min) count every client
+// in one shared bucket — a few bookings or retries anywhere lock everyone out.
+app.set('trust proxy', 1);
+
 app.use(cors());
 app.use(express.json());
 app.use('/api/auth', authRoutes);

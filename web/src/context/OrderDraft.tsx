@@ -66,7 +66,17 @@ export function OrderDraftProvider({ children }: { children: ReactNode }) {
     addItem: (item) => setDraft((d) => ({ ...d, items: [...d.items, item] })),
     removeItem: (key) => setDraft((d) => ({ ...d, items: d.items.filter((i) => i.key !== key) })),
     patch: (fields) => setDraft((d) => ({ ...d, ...fields })),
-    reset: () => setDraft(EMPTY),
+    reset: () => {
+      // Cleared right away, not via the effect above: checkout navigates to
+      // WhatsApp right after reset(), before that effect gets to run, and a
+      // client coming back would find the already-sent cart ready to resend.
+      try {
+        sessionStorage.removeItem(STORAGE_KEY);
+      } catch {
+        // Storage disabled — nothing persisted to clear.
+      }
+      setDraft(EMPTY);
+    },
     totalPrice: draft.items.reduce((sum, i) => sum + i.price, 0),
     totalMinutes: draft.items.reduce((sum, i) => sum + i.prepMinutes, 0),
   };
