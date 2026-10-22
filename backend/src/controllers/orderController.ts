@@ -12,8 +12,16 @@ import {
   DEFAULT_MINICAKE_RELLENO,
 } from '../services/pricing';
 import { MAX_CLIENT_NAME_LENGTH, MAX_NOTES_LENGTH, MAX_ADDRESS_LENGTH } from '../services/limits';
+import { withCreditBalance, creditBalance } from '../services/clientCredit';
 
 const prisma = new PrismaClient();
+
+// What the agenda's order cards need: lines with their design photos, plus the
+// client's own change history ("modificar mi pedido"), oldest first.
+const AGENDA_INCLUDE = {
+  items: { include: { productDesign: { include: { images: true } }, variant: true } },
+  changes: { orderBy: { createdAt: 'asc' } },
+} satisfies Prisma.OrderInclude;
 
 const VALID_STATUSES = Object.values(OrderStatus);
 const VALID_FLAVORS = Object.values(Flavor);
@@ -436,7 +444,7 @@ export async function getOrderById(req: AuthRequest, res: Response) {
 
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      include: { items: { include: { productDesign: { include: { images: true } }, variant: true } } },
+      include: AGENDA_INCLUDE,
     });
 
     if (!order) {
@@ -464,14 +472,14 @@ export async function getOrderByTicket(req: AuthRequest, res: Response) {
 
     const order = await prisma.order.findUnique({
       where: { ticketNumber },
-      include: { items: { include: { productDesign: { include: { images: true } }, variant: true } } },
+      include: AGENDA_INCLUDE,
     });
 
     if (!order) {
       return res.status(404).json({ error: 'No existe un pedido con ese número de ticket' });
     }
 
-    res.json(order);
+    res.json((await withCreditBalance([order]))[0]);
   } catch (error) {
     console.error('Error buscando pedido por ticket:', error);
     res.status(500).json({ error: 'Error al buscar el pedido' });
@@ -508,11 +516,11 @@ export async function listOrders(req: AuthRequest, res: Response) {
 
     const orders = await prisma.order.findMany({
       where,
-      include: { items: { include: { productDesign: { include: { images: true } }, variant: true } } },
+      include: AGENDA_INCLUDE,
       orderBy: [{ deliveryDate: 'asc' }, { deliveryStartMinutes: 'asc' }],
     });
 
-    res.json(orders);
+    res.json(await withCreditBalance(orders));
   } catch (error) {
     console.error('Error listando pedidos:', error);
     res.status(500).json({ error: 'Error al listar pedidos' });
@@ -731,9 +739,12 @@ export async function getNotifications(req: AuthRequest, res: Response) {
     await markExpiredOrders();
 
     const dueSoonCutoff = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-    const include = { items: { include: { productDesign: { include: { images: true } }, variant: true } } };
+    const include = AGENDA_INCLUDE;
+    // Orders a client changed or cancelled from their private link lately —
+    // gretica has no push notifications, so this is where she spots them.
+    const recentChangeCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
 
-    const [porVencer, vencidos] = await Promise.all([
+    const [porVencer, vencidos, modificados] = await Promise.all([
       prisma.order.findMany({
         where: {
           status: OrderStatus.AWAITING_PAYMENT,
@@ -748,9 +759,18 @@ export async function getNotifications(req: AuthRequest, res: Response) {
         include,
         orderBy: [{ deliveryDate: 'asc' }, { deliveryStartMinutes: 'asc' }],
       }),
+      prisma.order.findMany({
+        where: { modifiedByClientAt: { gte: recentChangeCutoff } },
+        include,
+        orderBy: { modifiedByClientAt: 'desc' },
+      }),
     ]);
 
-    res.json({ porVencer, vencidos });
+    res.json({
+      porVencer: await withCreditBalance(porVencer),
+      vencidos: await withCreditBalance(vencidos),
+      modificados: await withCreditBalance(modificados),
+    });
   } catch (error) {
     console.error('Error obteniendo notificaciones:', error);
     res.status(500).json({ error: 'Error al obtener las notificaciones' });
@@ -930,5 +950,49 @@ export async function deleteOrder(req: AuthRequest, res: Response) {
   } catch (error) {
     console.error('Error eliminando pedido:', error);
     res.status(500).json({ error: 'Error al eliminar el pedido' });
+  }
+}
+
+// POST /orders/:orderId/apply-credit — gretica uses the client's saldo a favor
+// to pay this order: as much as the balance covers, up to what's still owed.
+// Recorded as a negative ClientCredit row, so the ledger keeps the history.
+export async function applyClientCredit(req: AuthRequest, res: Response) {
+  const orderId = req.params.orderId as string;
+  try {
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
+    const payable: OrderStatus[] = [OrderStatus.AWAITING_PAYMENT, OrderStatus.DEPOSIT_PAID, OrderStatus.EXPIRED];
+    if (!payable.includes(order.status)) {
+      return res.status(400).json({ error: 'Este pedido no tiene pagos pendientes' });
+    }
+
+    const balance = await creditBalance(order.clientPhone);
+    const owed = Number(order.totalPrice) - Number(order.depositPaid);
+    const amount = Math.min(balance, owed);
+    if (amount <= 0) return res.status(400).json({ error: 'El cliente no tiene saldo a favor para usar' });
+
+    const newPaid = Number(order.depositPaid) + amount;
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.clientCredit.create({
+        data: {
+          clientPhone: order.clientPhone,
+          amount: -amount,
+          reason: `Usado como pago del pedido #${order.ticketNumber}`,
+          orderId: order.id,
+        },
+      });
+      return tx.order.update({
+        where: { id: order.id },
+        data: {
+          depositPaid: newPaid,
+          status: newPaid >= Number(order.totalPrice) ? OrderStatus.FULLY_PAID : OrderStatus.DEPOSIT_PAID,
+        },
+      });
+    });
+
+    res.json({ applied: amount, order: updated });
+  } catch (error) {
+    console.error('Error aplicando saldo a favor:', error);
+    res.status(500).json({ error: 'No se pudo aplicar el saldo a favor' });
   }
 }

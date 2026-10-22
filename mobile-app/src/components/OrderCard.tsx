@@ -88,6 +88,52 @@ interface Order {
   status: string;
   notes: string | null;
   items: OrderItem[];
+  // Set when the client changed or cancelled it from their private web link.
+  modifiedByClientAt?: string | null;
+  changes?: OrderChange[];
+  // The client's saldo a favor (from cancelled orders / lowered totals), by phone.
+  clientCreditBalance?: number;
+}
+
+// One "modificar mi pedido" action by the client, with the order before/after.
+interface ChangeSnapshot {
+  status: string;
+  deliveryDate: string;
+  pickup: string;
+  totalPrice: number;
+  depositPaid: number;
+  items: { design: string | null; size: string | null; color: string | null }[];
+}
+interface OrderChange {
+  id: string;
+  kind: 'MODIFIED' | 'CANCELLED';
+  createdAt: string;
+  before: ChangeSnapshot;
+  after: ChangeSnapshot;
+}
+
+function money(n: number | string): string {
+  return `$${Number(n).toLocaleString()}`;
+}
+
+// "mié 28 oct · 3:30 p.m. · $75,000 · Memory Cake MiniCake (Blanco), …"
+function snapshotLine(s: ChangeSnapshot): string {
+  const date = new Date(`${s.deliveryDate}T12:00:00Z`);
+  const days = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const day = `${days[date.getUTCDay()]} ${date.getUTCDate()} ${months[date.getUTCMonth()]}`;
+  const items = s.items
+    .map((it) => [it.design, it.size].filter(Boolean).join(' ') + (it.color ? ` (${it.color})` : ''))
+    .join(', ');
+  return `${day} · ${s.pickup} · ${money(s.totalPrice)} · ${items}`;
+}
+
+// When the change happened, in Colombia time: "22 oct, 3:40 p.m."
+function changeWhen(iso: string): string {
+  const d = new Date(new Date(iso).getTime() - 5 * 60 * 60 * 1000);
+  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const h = d.getUTCHours();
+  return `${d.getUTCDate()} ${months[d.getUTCMonth()]}, ${h % 12 || 12}:${String(d.getUTCMinutes()).padStart(2, '0')} ${h >= 12 ? 'p.m.' : 'a.m.'}`;
 }
 
 // Payment status dot: red = no ha pagado nada, azul = abono, verde = pago completo.
@@ -106,6 +152,8 @@ interface OrderCardProps {
   // whatever amount the client actually transferred, since Melosa doesn't refund
   // partial payments (e.g. a minicake needs 100% but she got 20%, keeps it anyway).
   onCancelWithAmount?: (depositAmount: number) => void | Promise<void>;
+  // Uses the client's saldo a favor to pay this order (as much as it covers).
+  onApplyCredit?: () => void | Promise<void>;
 }
 
 function formatDeliveryDateTime(isoString: string): string {
@@ -141,7 +189,7 @@ function minutesToLabel(minutesFromMidnight: number): string {
   return `${hour}:${String(minute).padStart(2, '0')} ${meridiem}`;
 }
 
-export default function OrderCard({ order, actions = [], onPaymentUpdate, onCancelWithAmount }: OrderCardProps) {
+export default function OrderCard({ order, actions = [], onPaymentUpdate, onCancelWithAmount, onApplyCredit }: OrderCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [depositInput, setDepositInput] = useState('');
@@ -191,6 +239,14 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
   const showMarkDeposit = onPaymentUpdate && order.status !== 'DEPOSIT_PAID' && order.status !== 'FULLY_PAID' && order.status !== 'COMPLETED' && order.status !== 'CANCELLED';
   const showMarkFull = onPaymentUpdate && order.status !== 'FULLY_PAID' && order.status !== 'COMPLETED' && order.status !== 'CANCELLED';
   const showCancelWithAmount = onCancelWithAmount && order.status !== 'CANCELLED' && order.status !== 'COMPLETED';
+  const creditBalance = order.clientCreditBalance ?? 0;
+  const owed = Number(order.totalPrice) - Number(order.depositPaid);
+  const showApplyCredit =
+    onApplyCredit &&
+    creditBalance > 0 &&
+    owed > 0 &&
+    ['AWAITING_PAYMENT', 'DEPOSIT_PAID', 'EXPIRED'].includes(order.status);
+  const changedByClient = !!order.modifiedByClientAt;
 
   return (
     <>
@@ -212,6 +268,13 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
             <View style={[styles.paymentDot, { backgroundColor: paymentDotColor(order.status) }]} />
           )}
         </View>
+        {changedByClient && (
+          <View style={styles.clientChangeBadge}>
+            <Text style={styles.clientChangeBadgeText}>
+              {order.status === 'CANCELLED' ? 'CANCELADO POR EL CLIENTE' : 'MODIFICADO POR EL CLIENTE'}
+            </Text>
+          </View>
+        )}
         <Text style={styles.category}>
           {firstItem ? itemTitle(firstItem) : ''}
           {order.items.length > 1 ? ` + ${order.items.length - 1} más` : ''}
@@ -242,6 +305,45 @@ export default function OrderCard({ order, actions = [], onPaymentUpdate, onCanc
             ) : null}
             <Text style={styles.detailLine}>Anticipo pagado: ${Number(order.depositPaid).toLocaleString()}</Text>
             {order.notes ? <Text style={styles.detailLine}>Notas: {order.notes}</Text> : null}
+
+            {creditBalance > 0 && (
+              <View style={styles.creditBox}>
+                <Text style={styles.creditText}>Este cliente tiene {money(creditBalance)} a favor</Text>
+                {showApplyCredit && (
+                  <TouchableOpacity
+                    style={[styles.creditButton, busy && styles.buttonDisabled]}
+                    disabled={busy}
+                    onPress={() =>
+                      Alert.alert(
+                        'Usar saldo a favor',
+                        `Se usarán ${money(Math.min(creditBalance, owed))} del saldo del cliente como pago de este pedido.`,
+                        [
+                          { text: 'Cancelar', style: 'cancel' },
+                          { text: 'Usar saldo', onPress: () => runAction(onApplyCredit!) },
+                        ]
+                      )
+                    }
+                  >
+                    <Text style={styles.fullPaidText}>Usar saldo a favor ({money(Math.min(creditBalance, owed))})</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {order.changes && order.changes.length > 0 && (
+              <>
+                <Text style={styles.blockLabel}>Cambios hechos por el cliente</Text>
+                {order.changes.map((c) => (
+                  <View key={c.id} style={styles.changeCard}>
+                    <Text style={styles.changeTitle}>
+                      {changeWhen(c.createdAt)} · {c.kind === 'CANCELLED' ? 'Canceló el pedido' : 'Modificó el pedido'}
+                    </Text>
+                    <Text style={styles.changeLine}>Antes: {snapshotLine(c.before)}</Text>
+                    {c.kind === 'MODIFIED' && <Text style={styles.changeLine}>Ahora: {snapshotLine(c.after)}</Text>}
+                  </View>
+                ))}
+              </>
+            )}
 
             <Text style={styles.blockLabel}>Productos ({order.items.length})</Text>
 
@@ -448,4 +550,19 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.5 },
   fullPaidButton: { flex: 1, backgroundColor: '#2E7D32', borderRadius: 6, paddingVertical: 10, alignItems: 'center' },
   fullPaidText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  clientChangeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#F4DCD6',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 4,
+  },
+  clientChangeBadgeText: { color: '#C82333', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  creditBox: { backgroundColor: '#E8F5E9', borderRadius: 6, padding: 10, marginTop: 8 },
+  creditText: { fontSize: 13, fontWeight: '700', color: '#2E7D32' },
+  creditButton: { backgroundColor: '#2E7D32', borderRadius: 6, paddingVertical: 10, alignItems: 'center', marginTop: 8 },
+  changeCard: { borderLeftWidth: 3, borderLeftColor: '#C82333', paddingLeft: 8, marginBottom: 8 },
+  changeTitle: { fontSize: 13, fontWeight: '700', color: '#3E2723', marginBottom: 2 },
+  changeLine: { fontSize: 12, color: '#3E2723', marginBottom: 2 },
 });

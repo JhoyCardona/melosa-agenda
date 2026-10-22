@@ -12,6 +12,7 @@ import {
   updateOrder,
   updateOrderItem,
   deleteOrder,
+  applyClientCredit,
 } from '../controllers/orderController';
 import { authMiddleware } from '../middleware/authMiddleware';
 
@@ -19,6 +20,7 @@ const router = Router();
 
 router.post('/', authMiddleware, createOrder);
 router.post('/:orderId/items', authMiddleware, addOrderItem);
+router.post('/:orderId/apply-credit', authMiddleware, applyClientCredit);
 router.get('/day-summary', authMiddleware, getDaySummary);
 router.get('/day-gallery', authMiddleware, getDayGallery);
 router.get('/day-gallery/zip', authMiddleware, downloadDayGalleryZip);

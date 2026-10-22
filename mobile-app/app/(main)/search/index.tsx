@@ -41,6 +41,18 @@ export default function SearchByTicketScreen() {
     }
   }
 
+  // Pays this order with the client's saldo a favor (as much as it covers).
+  async function handleApplyCredit() {
+    if (!order) return;
+    try {
+      const { data } = await api.post(`/orders/${order.id}/apply-credit`);
+      Alert.alert('Saldo aplicado', `Se usaron $${Number(data.applied).toLocaleString()} del saldo a favor.`);
+      await handleSearch();
+    } catch (error: any) {
+      Alert.alert('Error', error?.response?.data?.error ?? 'No se pudo aplicar el saldo a favor');
+    }
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Buscar pedido por ticket</Text>
@@ -79,7 +91,7 @@ export default function SearchByTicketScreen() {
       )}
 
       {order && !loading && (
-        <OrderCard order={order} onPaymentUpdate={handlePaymentUpdate} />
+        <OrderCard order={order} onPaymentUpdate={handlePaymentUpdate} onApplyCredit={handleApplyCredit} />
       )}
     </ScrollView>
   );

@@ -146,6 +146,17 @@ export default function DayDetailScreen() {
     }
   }
 
+  // Pays this order with the client's saldo a favor (as much as it covers).
+  async function handleApplyCredit(orderId: string) {
+    try {
+      const { data } = await api.post(`/orders/${orderId}/apply-credit`);
+      Alert.alert('Saldo aplicado', `Se usaron $${Number(data.applied).toLocaleString()} del saldo a favor.`);
+      await loadData('refresh');
+    } catch (error: any) {
+      Alert.alert('Error', error?.response?.data?.error ?? 'No se pudo aplicar el saldo a favor');
+    }
+  }
+
   async function handleCancel(orderId: string) {
     try {
       await api.patch(`/orders/${orderId}`, { status: 'CANCELLED' });
@@ -254,6 +265,7 @@ export default function DayDetailScreen() {
                   key={order.id}
                   order={order as any}
                   onPaymentUpdate={(status, depositAmount) => handlePaymentUpdate(order.id, status, depositAmount)}
+                  onApplyCredit={() => handleApplyCredit(order.id)}
                   actions={[
                     { label: 'Completar', onPress: () => handleMarkCompleted(order.id) },
                     { label: 'Cancelar', onPress: () => handleCancel(order.id) },

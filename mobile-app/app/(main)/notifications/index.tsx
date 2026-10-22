@@ -19,12 +19,15 @@ interface Order {
   items: any[];
 }
 
-type Tab = 'porVencer' | 'vencidos';
+// "cambios" = orders a client modified or cancelled from their private web link
+// in the last 3 days — gretica has no push notifications, so they surface here.
+type Tab = 'porVencer' | 'vencidos' | 'cambios';
 
 export default function NotificationsScreen() {
   const [tab, setTab] = useState<Tab>('vencidos');
   const [porVencer, setPorVencer] = useState<Order[]>([]);
   const [vencidos, setVencidos] = useState<Order[]>([]);
+  const [cambios, setCambios] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
@@ -37,6 +40,7 @@ export default function NotificationsScreen() {
       const response = await api.get('/orders/notifications');
       setPorVencer(response.data.porVencer);
       setVencidos(response.data.vencidos);
+      setCambios(response.data.modificados ?? []);
     } catch (err) {
       console.error('Error cargando notificaciones:', err);
       setError(true);
@@ -66,7 +70,18 @@ export default function NotificationsScreen() {
     }
   }
 
-  const activeOrders = tab === 'porVencer' ? porVencer : vencidos;
+  // Pays this order with the client's saldo a favor (as much as it covers).
+  async function handleApplyCredit(orderId: string) {
+    try {
+      const { data } = await api.post(`/orders/${orderId}/apply-credit`);
+      Alert.alert('Saldo aplicado', `Se usaron $${Number(data.applied).toLocaleString()} del saldo a favor.`);
+      await load('refresh');
+    } catch (error: any) {
+      Alert.alert('Error', error?.response?.data?.error ?? 'No se pudo aplicar el saldo a favor');
+    }
+  }
+
+  const activeOrders = tab === 'porVencer' ? porVencer : tab === 'vencidos' ? vencidos : cambios;
 
   return (
     <ScrollView
@@ -95,6 +110,14 @@ export default function NotificationsScreen() {
             Vencidos{vencidos.length > 0 ? ` (${vencidos.length})` : ''}
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, tab === 'cambios' && styles.tabButtonActive]}
+          onPress={() => setTab('cambios')}
+        >
+          <Text style={[styles.tabText, tab === 'cambios' && styles.tabTextActive]}>
+            Cambios{cambios.length > 0 ? ` (${cambios.length})` : ''}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -103,14 +126,23 @@ export default function NotificationsScreen() {
         <ErrorRetry onRetry={() => load()} message="No se pudieron cargar las notificaciones." />
       ) : activeOrders.length === 0 ? (
         <Text style={styles.emptyText}>
-          {tab === 'porVencer' ? 'No hay pedidos por revisar o con pago próximo a vencer' : 'No hay pedidos vencidos sin pago'}
+          {tab === 'porVencer'
+            ? 'No hay pedidos por revisar o con pago próximo a vencer'
+            : tab === 'vencidos'
+              ? 'No hay pedidos vencidos sin pago'
+              : 'Ningún cliente ha cambiado o cancelado su pedido en los últimos 3 días'}
         </Text>
       ) : (
         activeOrders.map((order) => (
           <OrderCard
             key={order.id}
             order={order as any}
-            onPaymentUpdate={(status, depositAmount) => handlePaymentUpdate(order.id, status, depositAmount)}
+            onPaymentUpdate={
+              order.status === 'CANCELLED'
+                ? undefined
+                : (status, depositAmount) => handlePaymentUpdate(order.id, status, depositAmount)
+            }
+            onApplyCredit={() => handleApplyCredit(order.id)}
             onCancelWithAmount={tab === 'vencidos' ? (amount) => handleCancelWithAmount(order.id, amount) : undefined}
           />
         ))
