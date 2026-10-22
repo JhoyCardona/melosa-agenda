@@ -8,7 +8,7 @@ import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrom
 import RellenoSelect from '../components/RellenoSelect';
 import BookingCheckout from '../components/BookingCheckout';
 import { rellenoSurcharge } from '../config';
-import { MAX_ITEMS, PRINT_TYPE_LABELS, flavorLabels, newKey, pesos } from '../bookingShared';
+import { MAX_ITEMS, PRINT_TYPE_LABELS, PRINT_TYPE_HINT, flavorLabels, newKey, pesos } from '../bookingShared';
 import './BookingPage.css';
 
 const FLAVORS: Flavor[] = ['VAINILLA', 'CHOCOLATE'];
@@ -513,6 +513,7 @@ export default function BookingPage() {
                       </button>
                     ))}
                   </div>
+                  <p className="field-hint">{PRINT_TYPE_HINT}</p>
                 </>
               )}
             </>

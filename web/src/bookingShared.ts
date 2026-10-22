@@ -13,6 +13,11 @@ export const PRINT_TYPE_LABELS: Record<PrintImageType, string> = {
   EDIBLE: 'Comestible',
 };
 
+// Shown under the print-type pills: most clients don't know the difference,
+// and asking gretica by WhatsApp is exactly what the web is meant to avoid.
+export const PRINT_TYPE_HINT =
+  'No comestible: impresa en papel, se retira antes de comer. Comestible: impresa en papel de azúcar, se come con la torta.';
+
 export function pesos(n: number): string {
   return `$${n.toLocaleString('es-CO')}`;
 }

@@ -6,7 +6,7 @@ import { isCakeItem } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import BookingCheckout from '../components/BookingCheckout';
-import { MAX_ITEMS, PRINT_TYPE_LABELS, newKey, pesos } from '../bookingShared';
+import { MAX_ITEMS, PRINT_TYPE_LABELS, PRINT_TYPE_HINT, newKey, pesos } from '../bookingShared';
 import './BookingPage.css';
 
 // Booking page for a catalog v2 cake: pick color → size → bizcocho → relleno →
@@ -387,6 +387,7 @@ export default function CakeBookingPage() {
                       </button>
                     ))}
                   </div>
+                  <p className="field-hint">{PRINT_TYPE_HINT}</p>
                 </>
               )}
             </>
