@@ -252,7 +252,8 @@ function CustomizationForm({ design, busy, run }: { design: ProductDesign; busy:
       </label>
       {allowsCustomImage && (
         <p className="edit-hint cs-indent">
-          El cliente puede agregar una imagen, con recargo (no comestible o comestible, igual que en las tortas).
+          El cliente sube su imagen (con recargo, no comestible o comestible, igual que en las tortas) o marca
+          "No quiero imagen".
         </p>
       )}
       <label className="cs-check">

@@ -102,6 +102,8 @@ export interface LegacyCartItem {
   referenceImageUrl?: string;
   // Set only when the line has print image(s); its surcharge is inside `price`.
   printImageType?: PrintImageType;
+  // Client ticked "No quiero imágenes" on a design whose image is optional.
+  withoutImages?: boolean;
 }
 
 export interface CakeCartItem {
@@ -129,6 +131,8 @@ export interface CakeCartItem {
   // Set only when customImageUrls has at least one image; its surcharge is
   // already inside `price`.
   printImageType?: PrintImageType;
+  // Client ticked "No quiero imágenes" on a design whose image is optional.
+  withoutImages?: boolean;
 }
 
 export type CartItem = LegacyCartItem | CakeCartItem;

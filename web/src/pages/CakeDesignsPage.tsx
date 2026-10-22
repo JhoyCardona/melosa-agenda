@@ -257,30 +257,36 @@ function DesignForm({
         }}
       />
 
-      <label className="cs-check">
-        <input
-          type="checkbox"
-          checked={!allowsCustomImage}
-          onChange={(e) => {
-            setAllowsCustomImage(!e.target.checked);
-            setSaved('');
-          }}
-        />
-        NO permite imagen personalizada
-      </label>
-      {allowsCustomImage && (
-        <label className="cs-check cs-indent">
-          <input
-            type="checkbox"
-            checked={requiresCustomImage}
-            onChange={(e) => {
-              setRequiresCustomImage(e.target.checked);
-              setSaved('');
-            }}
-          />
-          La imagen es obligatoria (el cliente debe subir al menos 1)
-        </label>
-      )}
+      {/* Three states on the same two DB flags: none (allowsCustomImage
+          false), optional (allows, not required: the client must upload or
+          tick "No quiero imágenes"), required (no opt-out offered). */}
+      <label className="admin-field-label">Imágenes para imprimir</label>
+      {(
+        [
+          ['none', 'No lleva imagen', 'Al cliente no le aparece nada sobre imágenes.'],
+          ['optional', 'Opcional', 'El cliente sube su imagen o marca "No quiero imagen".'],
+          ['required', 'Obligatoria', 'El cliente tiene que subir al menos 1 imagen.'],
+        ] as const
+      ).map(([mode, label, hint]) => {
+        const current = !allowsCustomImage ? 'none' : requiresCustomImage ? 'required' : 'optional';
+        return (
+          <label key={mode} className="cs-check">
+            <input
+              type="radio"
+              name="image-mode"
+              checked={current === mode}
+              onChange={() => {
+                setAllowsCustomImage(mode !== 'none');
+                setRequiresCustomImage(mode === 'required');
+                setSaved('');
+              }}
+            />
+            <span>
+              {label} <span className="edit-hint">— {hint}</span>
+            </span>
+          </label>
+        );
+      })}
       {allowsCustomImage && sizes.length > 0 && (
         <div className="cs-indent">
           <label className="admin-field-label">Máximo de imágenes que puede subir el cliente, por tamaño</label>

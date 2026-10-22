@@ -110,7 +110,8 @@ a.cs-menu-item:hover {
   margin: 0;
 }
 
-.cs-check input[type='checkbox'] {
+.cs-check input[type='checkbox'],
+.cs-check input[type='radio'] {
   width: 20px;
   height: 20px;
   margin: 1px 0 0;

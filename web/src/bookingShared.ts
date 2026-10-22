@@ -92,6 +92,7 @@ export function cartItemSummary(i: CartItem): string {
     parts.filter(Boolean).join(' · ') +
     (i.customText ? ` · "${i.customText}"` : '') +
     (images === 1 ? ' · con imagen' : images > 1 ? ` · ${images} imágenes` : '') +
+    (i.withoutImages ? ' · sin imagen' : '') +
     (images > 0 && i.printImageType ? (i.printImageType === 'EDIBLE' ? ' comestible' : ' no comestible') : '')
   );
 }

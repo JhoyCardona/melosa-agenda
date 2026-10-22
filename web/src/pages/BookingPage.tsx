@@ -71,6 +71,8 @@ export default function BookingPage() {
   const [justAdded, setJustAdded] = useState(false);
   // Every added image starts as non-edible; the client can switch to edible.
   const [printType, setPrintType] = useState<PrintImageType>('NON_EDIBLE');
+  // "No quiero imágenes", only offered on designs whose image is optional.
+  const [noImages, setNoImages] = useState(false);
   // Per-cake print surcharges, from the server. Until they load (or if the
   // request fails) the image option stays hidden rather than showing a price
   // the server might not charge.
@@ -247,8 +249,13 @@ export default function BookingPage() {
   }
 
   const cartFull = draft.items.length >= MAX_ITEMS;
+  // Same rule as the catalog v2 cake page: an optional image still blocks
+  // "Agregar" until the client uploads or explicitly ticks "No quiero imágenes".
+  const imageOptional = !!design?.allowsCustomImage && !design.requiresCustomImage;
+  const skipImages = imageOptional && noImages;
+  const needsImage = !!design?.allowsCustomImage && !skipImages && customImages.length === 0;
   // The print surcharge applies once there's at least one image.
-  const linePrintType = design?.allowsCustomImage && customImages.length > 0 ? printType : undefined;
+  const linePrintType = design?.allowsCustomImage && !skipImages && customImages.length > 0 ? printType : undefined;
   const linePrice =
     variant && printPrices
       ? Number(variant.price) +
@@ -257,7 +264,7 @@ export default function BookingPage() {
       : null;
 
   function handleAddItem() {
-    if (!design || !variant || !relleno || cartFull || linePrice === null) return;
+    if (!design || !variant || !relleno || cartFull || needsImage || linePrice === null) return;
     const multiImage = variant.maxCustomImages > 1;
     draft.addItem({
       kind: 'legacy',
@@ -275,13 +282,15 @@ export default function BookingPage() {
       shape,
       color: color || undefined,
       customText: customText.trim() || undefined,
-      customImageUrl: !multiImage ? customImages[0] || undefined : undefined,
-      customImageUrls: multiImage && customImages.length > 0 ? customImages : undefined,
+      customImageUrl: !multiImage && linePrintType ? customImages[0] : undefined,
+      customImageUrls: multiImage && linePrintType ? customImages : undefined,
       printImageType: linePrintType,
+      withoutImages: skipImages || undefined,
     });
     setCustomText('');
     setCustomImages([]);
     setPrintType('NON_EDIBLE');
+    setNoImages(false);
     setImageError('');
     setJustAdded(true);
     window.setTimeout(() => setJustAdded(false), 2500);
@@ -450,70 +459,77 @@ export default function BookingPage() {
           {design.allowsCustomImage && variant && printPrices && (
             <>
               <label className="field-label">
-                {variant.maxCustomImages > 1
-                  ? `Agregar imágenes (hasta ${variant.maxCustomImages}${design.requiresCustomImage ? ', mínimo 1' : ''})`
-                  : `Agregar imagen ${design.requiresCustomImage ? '(obligatoria)' : '(opcional)'}`}
+                {variant.maxCustomImages > 1 ? `Tus imágenes (hasta ${variant.maxCustomImages})` : 'Tu imagen'}
               </label>
               <p className="field-hint">
-                Desde +{pesos(printPrices.NON_EDIBLE)} por torta
+                Esta torta lleva imagen impresa: súbela aquí, no la envíes por WhatsApp. Desde +
+                {pesos(printPrices.NON_EDIBLE)} por torta
                 {variant.maxCustomImages > 1 ? ', sin importar cuántas imágenes subas' : ''}.
               </p>
-              {design.requiresCustomImage && (
-                <p className="field-hint">
-                  No editamos ni diseñamos la imagen: súbela lista para imprimir tal como la quieres en la
-                  minicake.
-                </p>
+              {imageOptional && (
+                <label className="check-row">
+                  <input type="checkbox" checked={noImages} onChange={(e) => setNoImages(e.target.checked)} />
+                  No quiero {variant.maxCustomImages > 1 ? 'imágenes' : 'imagen'} (la hacemos con la misma
+                  decoración, sin imprimir nada)
+                </label>
               )}
-              <input
-                type="file"
-                accept="image/*"
-                multiple={variant.maxCustomImages > 1}
-                onChange={handleImageChange}
-                disabled={uploadingImage || customImages.length >= variant.maxCustomImages}
-              />
-              {variant.maxCustomImages > 1 && (
-                <p className="field-hint">
-                  {customImages.length}/{variant.maxCustomImages} imágenes.
-                </p>
-              )}
-              {uploadingImage && <p className="muted">Subiendo imagen...</p>}
-              {imageError && <p className="warning">{imageError}</p>}
-              {customImages.length > 0 && (
-                <div className={variant.maxCustomImages > 1 ? 'custom-images-grid' : 'custom-image-single'}>
-                  {customImages.map((url, i) => (
-                    <div key={url} className="custom-image-thumb">
-                      <img
-                        src={url}
-                        alt={variant.maxCustomImages > 1 ? `Imagen ${i + 1}` : 'Imagen personalizada'}
-                      />
-                      <button
-                        type="button"
-                        className="custom-image-remove"
-                        aria-label="Quitar imagen"
-                        onClick={() => removeImage(i)}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {customImages.length > 0 && (
+              {!skipImages && (
                 <>
-                  <label className="field-label">Tipo de imagen</label>
-                  <div className="pills">
-                    {(['NON_EDIBLE', 'EDIBLE'] as const).map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        className={`pill ${t === printType ? 'pill-active' : ''}`}
-                        onClick={() => setPrintType(t)}
-                      >
-                        {PRINT_TYPE_LABELS[t]} (+{pesos(printPrices[t])})
-                      </button>
-                    ))}
-                  </div>
-                  <p className="field-hint">{PRINT_TYPE_HINT}</p>
+                  <p className="field-hint">
+                    No editamos ni diseñamos la imagen: súbela lista para imprimir tal como la quieres en la torta.
+                  </p>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple={variant.maxCustomImages > 1}
+                    onChange={handleImageChange}
+                    disabled={uploadingImage || customImages.length >= variant.maxCustomImages}
+                  />
+                  {variant.maxCustomImages > 1 && (
+                    <p className="field-hint">
+                      {customImages.length}/{variant.maxCustomImages} imágenes.
+                    </p>
+                  )}
+                  {uploadingImage && <p className="muted">Subiendo imagen...</p>}
+                  {imageError && <p className="warning">{imageError}</p>}
+                  {customImages.length > 0 && (
+                    <div className={variant.maxCustomImages > 1 ? 'custom-images-grid' : 'custom-image-single'}>
+                      {customImages.map((url, i) => (
+                        <div key={url} className="custom-image-thumb">
+                          <img
+                            src={url}
+                            alt={variant.maxCustomImages > 1 ? `Imagen ${i + 1}` : 'Imagen personalizada'}
+                          />
+                          <button
+                            type="button"
+                            className="custom-image-remove"
+                            aria-label="Quitar imagen"
+                            onClick={() => removeImage(i)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {customImages.length > 0 && (
+                    <>
+                      <label className="field-label">Tipo de imagen</label>
+                      <div className="pills">
+                        {(['NON_EDIBLE', 'EDIBLE'] as const).map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            className={`pill ${t === printType ? 'pill-active' : ''}`}
+                            onClick={() => setPrintType(t)}
+                          >
+                            {PRINT_TYPE_LABELS[t]} (+{pesos(printPrices[t])})
+                          </button>
+                        ))}
+                      </div>
+                      <p className="field-hint">{PRINT_TYPE_HINT}</p>
+                </>
+              )}
                 </>
               )}
             </>
@@ -535,13 +551,17 @@ export default function BookingPage() {
               !relleno ||
               uploadingImage ||
               cartFull ||
-              (design.requiresCustomImage && customImages.length === 0)
+              needsImage
             }
           >
             Agregar al pedido
           </button>
-          {design.requiresCustomImage && customImages.length === 0 && (
-            <p className="field-hint">Sube tu imagen para poder agregar este producto.</p>
+          {needsImage && (
+            <p className="field-hint">
+              {imageOptional
+                ? `Sube tu imagen, o marca "No quiero ${variant?.maxCustomImages ?? 1 > 1 ? 'imágenes' : 'imagen'}", para poder agregar este producto.`
+                : 'Sube tu imagen para poder agregar este producto.'}
+            </p>
           )}
           {cartFull && (
             <p className="warning">
