@@ -5,6 +5,7 @@ import type { PublicCakeCatalog, PublicCakeDesign } from '../types';
 import { useAdminAuth } from '../context/AdminAuth';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import DesignCarousel from '../components/DesignCarousel';
+import EditBanner from '../components/EditBanner';
 import './CatalogPage.css';
 
 // Cake catalog (catalog v2). One card per design, cycling through its color
@@ -47,6 +48,7 @@ export default function CatalogPage() {
 
       <main className="section">
         <div className="section-inner">
+          <EditBanner />
           <p className="eyebrow">Catálogo de tortas</p>
           <h1>Elige tu diseño</h1>
           {isAdmin && (

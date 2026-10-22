@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import api, { getWithRetry } from '../api';
 import type { CakeCartItem, PrintImageType, PublicCakeCatalog, PublicCakeColor, PublicCakeSize } from '../types';
 import { isCakeItem } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import BookingCheckout from '../components/BookingCheckout';
-import { MAX_ITEMS, PRINT_TYPE_LABELS, PRINT_TYPE_HINT, newKey, pesos } from '../bookingShared';
+import EditBanner from '../components/EditBanner';
+import { MAX_ITEMS, PRINT_TYPE_LABELS, PRINT_TYPE_HINT, manageHref, newKey, pesos } from '../bookingShared';
 import './BookingPage.css';
 
 // Booking page for a catalog v2 cake: pick color → size → bizcocho → relleno →
@@ -47,6 +48,11 @@ export default function CakeBookingPage() {
   const { designId } = useParams();
   const navigate = useNavigate();
   const draft = useOrderDraft();
+  // ?editar=<cart key>: "Cambiar" on a line of the order being modified — the
+  // configurator opens with that line's picks and saving replaces it.
+  const [searchParams] = useSearchParams();
+  const editKey = searchParams.get('editar');
+  const editingItem = draft.items.find((i): i is CakeCartItem => i.key === editKey && isCakeItem(i));
 
   const [catalog, setCatalog] = useState<PublicCakeCatalog | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -77,7 +83,9 @@ export default function CakeBookingPage() {
         // Drop saved cake lines that no longer match the live catalog (design,
         // color, size or flavor gone, or price changed) instead of letting the
         // order fail on submit. Other kinds of lines are left to their own page.
-        const kept = draft.items.filter((i) => !isCakeItem(i) || stillValid(data, i));
+        // Lines kept from an order being modified keep their booked price, so
+        // they're not checked against today's catalog.
+        const kept = draft.items.filter((i) => !isCakeItem(i) || !!i.keepItemId || stillValid(data, i));
         if (kept.length !== draft.items.length) {
           draft.patch({ items: kept });
           setCartWasStale(true);
@@ -93,6 +101,35 @@ export default function CakeBookingPage() {
   }, []);
 
   const design = catalog?.designs.find((d) => d.id === designId);
+
+  // Load the line being changed into the configurator, once. Kept lines only
+  // know names (the order stores names, not ids), so match by either.
+  const prefilled = useRef(false);
+  useEffect(() => {
+    if (prefilled.current || !catalog || !design || !editingItem) return;
+    prefilled.current = true;
+    const it = editingItem;
+    const c = design.colors.find((x) => x.id === it.colorId) ?? design.colors.find((x) => x.colorName === it.color);
+    if (!c) return;
+    const flavorId = (id: string, name: string, kind: 'BIZCOCHO' | 'RELLENO') =>
+      catalog.flavors.find((f) => f.id === id)?.id ??
+      catalog.flavors.find((f) => f.kind === kind && f.name === name)?.id ??
+      '';
+    setColorId(c.id);
+    setSizeId((c.sizes.find((x) => x.sizeId === it.sizeId) ?? c.sizes.find((x) => x.label === it.sizeLabel))?.sizeId ?? '');
+    setBizcochoId(flavorId(it.bizcochoId, it.bizcochoName, 'BIZCOCHO'));
+    setRellenoId(flavorId(it.rellenoId, it.rellenoName, 'RELLENO'));
+    setShapeId((c.shapes.find((x) => x.id === it.shapeId) ?? c.shapes.find((x) => x.name === it.shapeName))?.id ?? '');
+    setCustomText(it.customText ?? '');
+    setCustomImages(it.customImageUrls ?? []);
+    setPrintType(it.printImageType ?? 'NON_EDIBLE');
+    // A kept line with no images on an optional-image design: the client had
+    // chosen "no quiero imágenes" (or booked before that checkbox existed).
+    setNoImages(
+      !!it.withoutImages ||
+        (!!it.keepItemId && !it.customImageUrls?.length && design.allowsCustomImage && !design.requiresCustomImage)
+    );
+  }, [catalog, design, editingItem]);
 
   // Unknown or no-longer-bookable design → back to the catalog.
   useEffect(() => {
@@ -127,7 +164,8 @@ export default function CakeBookingPage() {
 
   const price =
     catalog && size && bizcocho && relleno ? linePrice(catalog, size, bizcocho.id, relleno.id, linePrintType) : null;
-  const cartFull = draft.items.length >= MAX_ITEMS;
+  // Replacing a line being changed never grows the cart.
+  const cartFull = draft.items.length >= MAX_ITEMS && !editingItem;
   const needsImage = !!design?.allowsCustomImage && !skipImages && images.length === 0;
 
   function surchargeLabel(flavorId: string): string {
@@ -168,7 +206,7 @@ export default function CakeBookingPage() {
   function handleAddItem() {
     if (!design || !color || !size || !bizcocho || !relleno || !shape || price === null) return;
     if (cartFull || needsImage) return;
-    draft.addItem({
+    const item: CakeCartItem = {
       kind: 'cake',
       key: newKey(),
       designId: design.id,
@@ -191,7 +229,15 @@ export default function CakeBookingPage() {
       customImageUrls: linePrintType ? images : undefined,
       printImageType: linePrintType,
       withoutImages: skipImages || undefined,
-    });
+    };
+    // Modifying an order: save into it and go back to the order page.
+    if (draft.edit) {
+      if (editingItem) draft.replaceItem(editingItem.key, { ...item, wasEdited: true });
+      else draft.addItem(item);
+      navigate(manageHref(draft.edit.token));
+      return;
+    }
+    draft.addItem(item);
     setCustomText('');
     setCustomImages([]);
     setPrintType('NON_EDIBLE');
@@ -221,10 +267,11 @@ export default function CakeBookingPage() {
       <SiteHeader />
 
       <main className="booking-main">
+        <EditBanner />
         <Link to={CATALOG_HREF} className="booking-back">
           ← Volver al catálogo
         </Link>
-        <h1>Arma tu pedido</h1>
+        <h1>{editingItem ? 'Cambia tu torta' : 'Arma tu pedido'}</h1>
 
         {cartWasStale && (
           <p className="warning">
@@ -422,7 +469,7 @@ export default function CakeBookingPage() {
             onClick={handleAddItem}
             disabled={price === null || uploadingImage || cartFull || needsImage}
           >
-            Agregar al pedido
+            {editingItem ? 'Guardar cambios de esta torta' : draft.edit ? 'Agregar a mi pedido' : 'Agregar al pedido'}
           </button>
           {needsImage && (
             <p className="field-hint">
@@ -439,7 +486,7 @@ export default function CakeBookingPage() {
           {justAdded && !cartFull && <p className="added-flash">Agregado a tu pedido ✓</p>}
         </section>
 
-        <BookingCheckout catalogHref={CATALOG_HREF} />
+        {!draft.edit && <BookingCheckout catalogHref={CATALOG_HREF} />}
       </main>
 
       <SiteFooter />

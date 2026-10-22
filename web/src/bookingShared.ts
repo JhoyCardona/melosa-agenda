@@ -1,7 +1,7 @@
 // Helpers shared by the booking pages (legacy/alfajor and catalog v2 cakes)
 // and their common checkout block.
 
-import type { CartItem, Flavor, PrintImageType } from './types';
+import type { CakeShape, CartItem, Flavor, ManagedOrderView, PrintImageType } from './types';
 import { isCakeItem } from './types';
 
 // Mirrors the backend cap (createPublicOrder). Bigger orders go through WhatsApp.
@@ -99,6 +99,7 @@ export function cartItemSummary(i: CartItem): string {
 
 // The order payload line for either kind of cart item.
 export function toOrderLine(i: CartItem) {
+  if (i.keepItemId) return { keepItemId: i.keepItemId };
   if (isCakeItem(i)) {
     return {
       productDesignId: i.designId,
@@ -124,4 +125,57 @@ export function toOrderLine(i: CartItem) {
     customImageUrls: i.customImageUrls,
     printImageType: i.printImageType,
   };
+}
+
+// The lines of an order being modified, as cart items marked "keep as booked".
+// Catalog v2 lines carry no ids (the order only stores names); the configurator
+// matches them back by name when the client taps "Cambiar".
+export function cartItemsFromOrder(order: ManagedOrderView): CartItem[] {
+  return order.items.map((it): CartItem => {
+    const common = {
+      key: newKey(),
+      keepItemId: it.id,
+      designId: it.productDesignId ?? '',
+      designName: it.designName,
+      designImageUrl: it.designImageUrl,
+      price: it.price,
+      prepMinutes: it.prepMinutes,
+      customText: it.customText ?? undefined,
+      printImageType: it.printImageType ?? undefined,
+    };
+    if (it.kind === 'cake') {
+      return {
+        ...common,
+        kind: 'cake',
+        colorId: '',
+        color: it.color ?? '',
+        sizeId: '',
+        sizeLabel: it.sizeLabel ?? '',
+        portions: 0,
+        bizcochoId: '',
+        bizcochoName: it.bizcocho ?? '',
+        rellenoId: '',
+        rellenoName: it.relleno ?? '',
+        shapeId: '',
+        shapeName: it.shape ?? '',
+        customImageUrls: it.customImageUrls.length > 0 ? it.customImageUrls : undefined,
+      };
+    }
+    return {
+      ...common,
+      kind: 'legacy',
+      variantId: it.variantId ?? '',
+      variantLabel: it.sizeLabel ?? '',
+      points: 0,
+      flavor: it.flavor ?? 'VAINILLA',
+      relleno: it.relleno ?? '',
+      shape: (it.shape as CakeShape | null) ?? 'Redonda',
+      color: it.color ?? undefined,
+      customImageUrls: it.customImageUrls.length > 0 ? it.customImageUrls : undefined,
+    };
+  });
+}
+
+export function manageHref(token: string): string {
+  return `/mi-pedido/${token}`;
 }

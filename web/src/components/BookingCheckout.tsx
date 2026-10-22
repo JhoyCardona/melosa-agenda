@@ -10,6 +10,7 @@ import {
   earliestDeliveryDateString,
   formatDeliveryDate,
   itemsBreakdown,
+  manageHref,
   toOrderLine,
 } from '../bookingShared';
 
@@ -17,6 +18,8 @@ interface OrderResult {
   ticketNumber: number;
   totalPrice: string;
   deliveryTimeLabel?: string;
+  // Secret for the private "modificar mi pedido" link.
+  accessToken?: string;
 }
 
 // Everything after the product configurator, shared by both booking pages
@@ -108,7 +111,12 @@ export default function BookingCheckout({ catalogHref }: { catalogHref: string }
           `Día: ${formatDeliveryDate(draft.deliveryDate)}\n` +
           `Hora: ${response.data.deliveryTimeLabel ?? 'por confirmar'} (Esta es la hora mínima de entrega de mi pedido)\n\n` +
           `Total: $${Number(response.data.totalPrice).toLocaleString('es-CO')}\n\n` +
-          `Este es el resumen de mi pedido, quiero proceder con el pago.`
+          `Este es el resumen de mi pedido, quiero proceder con el pago.` +
+          // The link lives in the client's own WhatsApp chat from now on — it's
+          // the only way into "modificar mi pedido".
+          (response.data.accessToken
+            ? `\n\nEnlace para modificar mi pedido: ${window.location.origin}${manageHref(response.data.accessToken)}`
+            : '')
       );
       draft.reset();
       setSent({ ticketNumber: response.data.ticketNumber, waHref });
@@ -132,6 +140,10 @@ export default function BookingCheckout({ catalogHref }: { catalogHref: string }
         <p>
           Tu número de ticket es <strong>#{sent.ticketNumber}</strong>. Envíanos el resumen por
           WhatsApp para continuar con el pago.
+        </p>
+        <p className="field-hint">
+          Ese mensaje lleva un enlace privado para modificar tu pedido más adelante. No lo borres de tu
+          chat.
         </p>
         <a className="btn btn-primary" href={sent.waHref}>
           Abrir WhatsApp

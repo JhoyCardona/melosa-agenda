@@ -104,6 +104,11 @@ export interface LegacyCartItem {
   printImageType?: PrintImageType;
   // Client ticked "No quiero imágenes" on a design whose image is optional.
   withoutImages?: boolean;
+  // Set on a line of an order being modified that the client hasn't touched:
+  // it's sent back as { keepItemId } and the server keeps it exactly as booked.
+  // Editing the line replaces it with a fresh one (no keepItemId, wasEdited).
+  keepItemId?: string;
+  wasEdited?: boolean;
 }
 
 export interface CakeCartItem {
@@ -133,9 +138,62 @@ export interface CakeCartItem {
   printImageType?: PrintImageType;
   // Client ticked "No quiero imágenes" on a design whose image is optional.
   withoutImages?: boolean;
+  // Set on a line of an order being modified that the client hasn't touched:
+  // it's sent back as { keepItemId } and the server keeps it exactly as booked.
+  // Editing the line replaces it with a fresh one (no keepItemId, wasEdited).
+  keepItemId?: string;
+  wasEdited?: boolean;
 }
 
 export type CartItem = LegacyCartItem | CakeCartItem;
+
+// ─── "Modificar mi pedido" (POST /public-orders/manage/*) ───
+
+export interface ManagedOrderItem {
+  id: string;
+  kind: 'cake' | 'legacy';
+  productDesignId: string | null;
+  variantId: string | null;
+  designName: string;
+  designImageUrl: string | null;
+  sizeLabel: string | null;
+  color: string | null;
+  flavor: Flavor | null;
+  // Catalog v2 lines: bizcocho / relleno names as booked.
+  bizcocho: string | null;
+  relleno: string | null;
+  shape: string | null;
+  customText: string | null;
+  customImageUrls: string[];
+  printImageType: PrintImageType | null;
+  price: number;
+  prepMinutes: number;
+}
+
+export interface ManagedOrderView {
+  ticketNumber: number;
+  clientName: string;
+  deliveryDate: string;
+  deliveryTimeLabel: string;
+  status: string;
+  totalPrice: number;
+  depositPaid: number;
+  // Why it can't be changed anymore (cancelled, < 48h…), or null.
+  lockedReason: string | null;
+  items: ManagedOrderItem[];
+}
+
+// What a proposed change does (preview) or did (modify → `change`).
+export interface OrderChangeSummary {
+  deliveryDate: string;
+  deliveryTimeLabel: string;
+  previousTimeLabel: string;
+  previousTotal: number;
+  totalPrice: number;
+  paid: number;
+  owed: number;
+  credit: number;
+}
 
 export function isCakeItem(item: CartItem): item is CakeCartItem {
   return item.kind === 'cake';

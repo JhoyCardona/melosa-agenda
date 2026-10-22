@@ -206,6 +206,13 @@ html {
   border: 2px solid transparent;
 }
 
+/* Every disabled button reads as disabled (e.g. "Cancelar mi pedido" until
+   the no-refund checkbox is ticked). */
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .btn-primary {
   background: var(--color-primary);
   color: var(--color-on-primary);

@@ -7,8 +7,9 @@ import { useOrderDraft } from '../context/OrderDraft';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import RellenoSelect from '../components/RellenoSelect';
 import BookingCheckout from '../components/BookingCheckout';
+import EditBanner from '../components/EditBanner';
 import { rellenoSurcharge } from '../config';
-import { MAX_ITEMS, PRINT_TYPE_LABELS, PRINT_TYPE_HINT, flavorLabels, newKey, pesos } from '../bookingShared';
+import { MAX_ITEMS, PRINT_TYPE_LABELS, PRINT_TYPE_HINT, flavorLabels, manageHref, newKey, pesos } from '../bookingShared';
 import './BookingPage.css';
 
 const FLAVORS: Flavor[] = ['VAINILLA', 'CHOCOLATE'];
@@ -98,7 +99,8 @@ export default function BookingPage() {
         const byId = new Map(data.map((d) => [d.id, d]));
         // Catalog v2 cake lines are checked by their own page, not here.
         const kept = draft.items.filter((i) => {
-          if (isCakeItem(i)) return true;
+          // Lines kept from an order being modified keep their booked price.
+          if (isCakeItem(i) || i.keepItemId) return true;
           const d = byId.get(i.designId);
           const v = d?.variants.find((x) => x.id === i.variantId);
           if (!d || !v) return false;
@@ -287,6 +289,11 @@ export default function BookingPage() {
       printImageType: linePrintType,
       withoutImages: skipImages || undefined,
     });
+    // Modifying an order: the new line goes into it, back to the order page.
+    if (draft.edit) {
+      navigate(manageHref(draft.edit.token));
+      return;
+    }
     setCustomText('');
     setCustomImages([]);
     setPrintType('NON_EDIBLE');
@@ -318,6 +325,7 @@ export default function BookingPage() {
       <SiteHeader />
 
       <main className="booking-main">
+        <EditBanner />
         <Link to={catalogHref} className="booking-back">
           ← Volver al catálogo
         </Link>
@@ -571,7 +579,7 @@ export default function BookingPage() {
           {justAdded && !cartFull && <p className="added-flash">Agregado a tu pedido ✓</p>}
         </section>
 
-        <BookingCheckout catalogHref={catalogHref} />
+        {!draft.edit && <BookingCheckout catalogHref={catalogHref} />}
       </main>
 
       <SiteFooter />

@@ -3,6 +3,7 @@ import Landing from './pages/Landing';
 import CatalogPage from './pages/CatalogPage';
 import BookingPage from './pages/BookingPage';
 import CakeBookingPage from './pages/CakeBookingPage';
+import ManageOrderPage from './pages/ManageOrderPage';
 import AdminLoginPage from './pages/AdminLoginPage';
 import CatalogAdminPage from './pages/CatalogAdminPage';
 import NewOrderPage from './pages/NewOrderPage';
@@ -26,6 +27,8 @@ export default function App() {
         <Route path="/agendar" element={<Navigate to="/catalogo" replace />} />
         <Route path="/agendar/:designId" element={<BookingPage />} />
         <Route path="/tortas/:designId" element={<CakeBookingPage />} />
+        {/* Private link from the client's WhatsApp message. */}
+        <Route path="/mi-pedido/:token" element={<ManageOrderPage />} />
         <Route path="/admin" element={<AdminLoginPage />} />
         <Route path="/admin/catalogo" element={<CatalogAdminPage />} />
         <Route path="/admin/pedidos/nuevo" element={<NewOrderPage />} />
