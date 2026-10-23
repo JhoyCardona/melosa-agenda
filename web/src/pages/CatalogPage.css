@@ -7,12 +7,25 @@
   margin-top: var(--space-4);
 }
 
+/* Booking scope reminder, right under the intro paragraph. */
+.catalog-notice {
+  color: var(--color-primary);
+  font-weight: 700;
+  max-width: 60ch;
+  margin: calc(-1 * var(--space-4)) 0 var(--space-6);
+}
+
 /* ---------- Price filter tabs ---------- */
+.price-tabs-label {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  margin: 0 0 var(--space-2);
+}
+
 .price-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-6);
 }
 
 .price-tab {
