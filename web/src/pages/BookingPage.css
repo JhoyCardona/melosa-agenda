@@ -61,11 +61,21 @@
 }
 
 /* ---------- Configurator head ---------- */
+/* Big product photo on top, titles underneath. */
 .config-head {
   display: flex;
+  flex-direction: column;
   gap: var(--space-4);
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: var(--space-6);
+}
+
+.config-head .config-photo {
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--radius-md);
 }
 
 .config-photo {
