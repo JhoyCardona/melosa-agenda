@@ -31,8 +31,8 @@ const HERO_SLIDES: HeroSlide[] = [
 const STEPS = [
   'Elige el diseño y el tamaño que quieres.',
   'Escoge la fecha y la hora de entrega disponibles.',
-  'Deja tus datos y personaliza tu torta.',
-  'Confirma por WhatsApp y haz el abono. Listo, tu pedido queda agendado.',
+  'Deja tus datos y personaliza tu torta (solo texto y/o imagen).',
+  'Envía tu ticket y confirmación por WhatsApp y haz el abono. Listo, tu pedido queda agendado.',
 ];
 
 // The landing only teases one photo per section — the full range lives in the
@@ -82,60 +82,11 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* ---------- Promoción ---------- */}
-        <section className="section section-soft" id="promo">
+        {/* ---------- Minicake de alfajor ---------- */}
+        <section className="section alfajor-section dot-edges" id="promo">
           <div className="section-inner">
             <p className="eyebrow">En promoción</p>
-            <h2>Minicakes en promoción</h2>
-            <p className="section-lead">
-              Nuestra MiniCake es perfecta para 2 personas, ideal para un regalo especial o un
-              antojo en pareja. Entra a nuestro catálogo y mira los diseños que tenemos disponibles.
-            </p>
-
-            <div className="feature">
-              <img
-                className="feature-photo"
-                src={promoMinicake}
-                alt="MiniCake blanca con crema batida, rosas azules y mariposas moradas"
-                loading="lazy"
-              />
-            </div>
-
-            <div className="feature-notes">
-              <p className="feature-notes-title">Tener en cuenta que:</p>
-              <ol>
-                <li>
-                  El precio de la promoción aplica para el tamaño MiniCake y puede variar según la
-                  decoración. Verás el precio exacto al armar tu pedido.
-                </li>
-                <li>
-                  Puedes elegir el sabor del bizcocho y del relleno. Algunos sabores tienen un costo
-                  adicional, que se muestra al escogerlos.
-                </li>
-                <li>Puedes modificar el texto o la imagen que lleva el diseño de ejemplo.</li>
-                <li>
-                  Se agenda con el 100% del valor de la MiniCake. Si pides 2 o más, se agenda con
-                  el 50% del valor total del pedido.
-                </li>
-              </ol>
-            </div>
-
-            <div className="btn-row">
-              <Link to="/catalogo" className="btn btn-primary">
-                Ver diseños
-              </Link>
-              <a href="#como" className="btn btn-ghost">
-                Cómo pedir
-              </a>
-            </div>
-          </div>
-        </section>
-
-        {/* ---------- Minicake de alfajor ---------- */}
-        <section className="section alfajor-section dot-edges" id="alfajor">
-          <div className="section-inner">
-            <p className="eyebrow">También tenemos</p>
-            <h2>Minicake de alfajor</h2>
+            <h2>Promo de Minicake de alfajor</h2>
 
             <div className="feature">
               {alfajorPhoto ? (
@@ -160,6 +111,62 @@ export default function Landing() {
               <Link to={alfajorDesignId ? `/agendar/${alfajorDesignId}` : '/catalogo'} className="btn btn-primary">
                 Agendar
               </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* ---------- Nuestras cakes ---------- */}
+        <section className="section section-soft" id="cakes">
+          <div className="section-inner">
+            <p className="eyebrow">Nuestro catálogo</p>
+            <h2>Nuestras Cakes</h2>
+            <p className="section-sub">De MiniCake a tortas de 6, 10 porciones y más</p>
+            <p className="section-lead">
+              Nuestra MiniCake es perfecta para 2 personas, ideal para un regalo especial o un
+              antojo en pareja. Si necesitas más porciones, puedes elegir las que tenemos
+              disponibles al momento de agendar tu pedido. Entra a nuestro catálogo y mira los
+              diseños que tenemos disponibles.
+            </p>
+
+            <div className="feature">
+              <img
+                className="feature-photo"
+                src={promoMinicake}
+                alt="MiniCake blanca con crema batida, rosas azules y mariposas moradas"
+                loading="lazy"
+              />
+            </div>
+
+            <div className="feature-notes">
+              <p className="feature-notes-title">Tener en cuenta que:</p>
+              <p className="feature-notes-warning">
+                No estamos agendando pedidos personalizados, solo los diseños que se encuentran en
+                nuestro catálogo.
+              </p>
+              <ol>
+                <li>
+                  El precio final depende de la decoración y las porciones que decidas. Verás el
+                  precio exacto al armar tu pedido.
+                </li>
+                <li>
+                  Puedes elegir la forma, el sabor del bizcocho y del relleno. Algunos sabores
+                  tienen un costo adicional, que se muestra al escogerlos.
+                </li>
+                <li>Puedes modificar el texto o la imagen que lleva el diseño de ejemplo.</li>
+                <li>
+                  Se agenda con el 100% del valor de la MiniCake. Si pides 2 o más, se agenda con
+                  el 50% del valor total del pedido.
+                </li>
+              </ol>
+            </div>
+
+            <div className="btn-row">
+              <Link to="/catalogo" className="btn btn-primary">
+                Ver diseños
+              </Link>
+              <a href="#como" className="btn btn-ghost">
+                Cómo pedir
+              </a>
             </div>
           </div>
         </section>

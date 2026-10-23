@@ -12,7 +12,7 @@ import './SiteChrome.css';
 // Pauses on hover; static under prefers-reduced-motion (handled in CSS).
 const MARQUEE_COPIES = 4;
 const ANNOUNCEMENTS = [
-  '🍰 Minicakes en promo desde $28.000',
+  '🍰 Promo: Minicake de alfajor desde $28.000',
   '📅 Agenda tu pedido en línea',
   '🛍️ Pedidos para recoger en el local',
 ];
@@ -51,9 +51,9 @@ export function AnnouncementBar() {
 // work from sub-pages (/catalogo, /agendar): from the landing the browser just
 // scrolls, from elsewhere it navigates home and then scrolls.
 const NAV_LINKS = [
-  { hash: '#promo', label: 'Promoción Minicakes' },
+  { hash: '#promo', label: 'Promo Alfajor' },
+  { hash: '#cakes', label: 'Nuestras Cakes' },
   { hash: '#como', label: 'Cómo pedir' },
-  { hash: '#tortas', label: 'Tortas 5+ porciones' },
   { hash: '#ubicacion', label: 'Ubicación' },
 ];
 
