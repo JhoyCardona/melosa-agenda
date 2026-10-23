@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { PrismaClient, Prisma, OrderStatus, OrderSource, Flavor, ItemCategory } from '@prisma/client';
+import { PrismaClient, Prisma, OrderStatus, OrderSource, Flavor, ItemCategory, PrintImageType } from '@prisma/client';
 import archiver from 'archiver';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { computePaymentDueDate } from '../utils/colombiaTime';
@@ -51,6 +51,14 @@ interface OrderItemInput {
   // skipReference: true instead.
   referenceImageUrl?: string;
   skipReference?: boolean;
+  // What the print image goes on (free lines; the admin types the price herself,
+  // so no surcharge is added here).
+  printImageType?: PrintImageType;
+}
+
+// Non-edible unless edible was explicitly picked (same default as the web).
+function printTypeOf(item: OrderItemInput): PrintImageType {
+  return item.printImageType === PrintImageType.EDIBLE ? PrintImageType.EDIBLE : PrintImageType.NON_EDIBLE;
 }
 
 // Re-place an order on its delivery day's timeline: recompute its duration from
@@ -177,6 +185,7 @@ export async function createOrder(req: AuthRequest, res: Response) {
       customImageUrl: string | null;
       customText: string | null;
       referenceImageUrl: string | null;
+      printImageType: PrintImageType | null;
       fullPaymentIfAlone: boolean;
     }
     const lines: BuiltLine[] = [];
@@ -241,6 +250,7 @@ export async function createOrder(req: AuthRequest, res: Response) {
           customImageUrl: item.customImageUrl || null,
           customText: item.customText || null,
           referenceImageUrl: item.referenceImageUrl || null,
+          printImageType: item.customImageUrl ? printTypeOf(item) : null,
           fullPaymentIfAlone: !!variant.enPromocion,
         });
       } else {
@@ -287,6 +297,7 @@ export async function createOrder(req: AuthRequest, res: Response) {
           customImageUrl: item.customImageUrl || null,
           customText: item.customText || null,
           referenceImageUrl: item.referenceImageUrl || null,
+          printImageType: item.customImageUrl ? printTypeOf(item) : null,
           fullPaymentIfAlone: false,
         });
       }
@@ -355,6 +366,7 @@ export async function createOrder(req: AuthRequest, res: Response) {
               customImageUrl: l.customImageUrl,
               customText: l.customText,
               referenceImageUrl: l.referenceImageUrl,
+              printImageType: l.printImageType,
             })),
               ...cakeLines.map((l, i) => ({
                 ...l.itemData,

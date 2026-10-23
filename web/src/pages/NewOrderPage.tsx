@@ -36,6 +36,7 @@ interface FreeLine {
   relleno: string;
   customText: string;
   customImageUrl: string;
+  printImageType: PrintImageType;
   referenceImageUrl: string;
   skipReference: boolean;
 }
@@ -157,6 +158,7 @@ export default function NewOrderPage() {
         relleno: '',
         customText: '',
         customImageUrl: '',
+        printImageType: 'NON_EDIBLE',
         referenceImageUrl: '',
         skipReference: false,
       },
@@ -310,6 +312,7 @@ export default function NewOrderPage() {
                 relleno: l.relleno.trim(),
                 customText: l.customText.trim() || undefined,
                 customImageUrl: l.customImageUrl || undefined,
+                printImageType: l.customImageUrl ? l.printImageType : undefined,
                 referenceImageUrl: l.referenceImageUrl || undefined,
                 skipReference: l.skipReference || undefined,
               }
@@ -484,31 +487,45 @@ export default function NewOrderPage() {
               value={l.customText}
               onChange={(e) => patchLine(l.key, { customText: e.target.value })}
             />
-            <label className="admin-field-label">Imagen para imprimir (opcional)</label>
-            <input
-              type="file"
-              accept="image/*"
-              disabled={uploadingSlot === `${l.key}|customImageUrl`}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) uploadPhoto(l.key, f, 'customImageUrl');
-              }}
-            />
-            {uploadingSlot === `${l.key}|customImageUrl` && <p className="muted">Subiendo...</p>}
-            {l.customImageUrl && <img className="design-preview" src={l.customImageUrl} alt="" />}
-            {l.kind === 'catalog' && l.customImageUrl && catalog && (
-              <div className="np-pills">
-                {(['NON_EDIBLE', 'EDIBLE'] as const).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    className={`np-pill ${l.printImageType === t ? 'is-selected' : ''}`}
-                    onClick={() => patchLine(l.key, { printImageType: t })}
-                  >
-                    {PRINT_TYPE_LABELS[t]} (+${catalog.printImagePrices[t].toLocaleString('es-CO')})
-                  </button>
-                ))}
-              </div>
+            {/* A catalog design that doesn't take a print image would have it
+                dropped by the server — don't offer the upload at all. */}
+            {(l.kind === 'free' || catalog?.designs.find((d) => d.id === l.designId)?.allowsCustomImage) && (
+              <>
+              <label className="admin-field-label">Imagen para imprimir (opcional)</label>
+              <input
+                type="file"
+                accept="image/*"
+                disabled={uploadingSlot === `${l.key}|customImageUrl`}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadPhoto(l.key, f, 'customImageUrl');
+                }}
+              />
+              {uploadingSlot === `${l.key}|customImageUrl` && <p className="muted">Subiendo...</p>}
+              {l.customImageUrl && <img className="design-preview" src={l.customImageUrl} alt="" />}
+              {l.customImageUrl && (
+                <>
+                  <label className="admin-field-label">Tipo de imagen</label>
+                  <div className="np-pills">
+                    {(['NON_EDIBLE', 'EDIBLE'] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className={`np-pill ${l.printImageType === t ? 'is-selected' : ''}`}
+                        onClick={() => patchLine(l.key, { printImageType: t })}
+                      >
+                        {PRINT_TYPE_LABELS[t]}
+                        {/* Catalog cakes add the surcharge; on a free line the
+                            admin's own price already includes it. */}
+                        {l.kind === 'catalog' && catalog
+                          ? ` (+$${catalog.printImagePrices[t].toLocaleString('es-CO')})`
+                          : ''}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              </>
             )}
             {l.kind === 'catalog' && catalog && (
               <p className="np-line-price">
