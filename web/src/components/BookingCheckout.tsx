@@ -334,13 +334,13 @@ export default function BookingCheckout({ catalogHref }: { catalogHref: string }
         )}
 
       {/* ---------- Ubicación para recoger ---------- */}
-      <section className="booking-block booking-pickup dot-edges">
+      <section className="booking-block booking-pickup">
         <h2>Todos los pedidos son para recoger en el local</h2>
         <p className="booking-pickup-address">{BUSINESS.addressLine}</p>
         <p className="booking-pickup-sub">
           {BUSINESS.city} · Estación de metro más cercana: {BUSINESS.nearestMetro}
         </p>
-        <a className="btn btn-accent" href={BUSINESS.mapsUrl} target="_blank" rel="noreferrer">
+        <a className="btn btn-ghost" href={BUSINESS.mapsUrl} target="_blank" rel="noreferrer">
           Abrir en Google Maps
         </a>
       </section>

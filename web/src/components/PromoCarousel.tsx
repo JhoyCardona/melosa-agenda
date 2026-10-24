@@ -17,8 +17,9 @@ function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-// Current promotions, one poster per slide. Same scroll-snap approach as
-// HeroCarousel; dots and autoplay only appear once there's more than one promo.
+// Current promotions, one poster per slide, on a CSS scroll-snap track (swipe
+// works natively). Dots and autoplay only appear once there's more than one
+// promo.
 export default function PromoCarousel({ slides }: { slides: PromoSlide[] }) {
   const trackRef = useRef<HTMLUListElement>(null);
   const [index, setIndex] = useState(0);

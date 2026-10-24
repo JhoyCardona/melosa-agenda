@@ -315,12 +315,11 @@ export default function BookingPage() {
       <AnnouncementBar />
       <SiteHeader />
 
-      <main className="booking-main">
+      <main className="booking-main product-main">
         <EditBanner />
         <Link to={catalogHref} className="booking-back">
           ← Volver al catálogo
         </Link>
-        <h1>Arma tu pedido</h1>
 
         {cartWasStale && (
           <p className="warning">
@@ -329,246 +328,249 @@ export default function BookingPage() {
           </p>
         )}
 
-        {/* ---------- Configurador del producto actual ---------- */}
-        <section className="booking-block">
-          <div className="config-head">
+        {/* ---------- Configurador del producto actual ----------
+            Store-style product page, same as the catalog cakes'. */}
+        <div className="product-layout">
+          <div className="product-media">
             {displayedImageUrl ? (
-              <img className="config-photo" src={displayedImageUrl} alt={design.name || DESIGN_FALLBACK} />
+              <img src={displayedImageUrl} alt={design.name || DESIGN_FALLBACK} />
             ) : (
-              <div className="config-photo config-photo-empty" aria-hidden="true">
+              <div className="product-media-empty" aria-hidden="true">
                 Sin foto
               </div>
             )}
-            <div>
-              <p className="eyebrow">Estás personalizando</p>
-              <h2>{design.name || DESIGN_FALLBACK}</h2>
+          </div>
+
+          <section className="booking-block product-config">
+            <p className="eyebrow">Personaliza tu torta</p>
+            <h1 className="product-name">{design.name || DESIGN_FALLBACK}</h1>
+            {linePrice !== null && <p className="product-price">{pesos(linePrice)}</p>}
+
+            {optionLabels.length > 0 && (
+              <>
+                <label className="field-label">{design.optionTitle ?? 'Opción'}</label>
+                <div className="pills">
+                  {optionLabels.map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      className={`pill ${variant?.optionLabel === opt ? 'pill-active' : ''}`}
+                      onClick={() => pickOption(opt)}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {design.images.length > 0 && (
+              <>
+                <label className="field-label">Color</label>
+                <div className="pills">
+                  {design.images.map((img) => (
+                    <button
+                      key={img.colorName}
+                      type="button"
+                      className={`pill ${color === img.colorName ? 'pill-active' : ''}`}
+                      onClick={() => setColor(img.colorName)}
+                    >
+                      {img.colorName}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <label className="field-label">Forma</label>
+            <div className="pills">
+              {CAKE_SHAPES.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={`pill ${shape === s ? 'pill-active' : ''}`}
+                  onClick={() => setShape(s)}
+                >
+                  {s}
+                </button>
+              ))}
             </div>
-          </div>
 
-          {optionLabels.length > 0 && (
-            <>
-              <label className="field-label">{design.optionTitle ?? 'Opción'}</label>
-              <div className="pills">
-                {optionLabels.map((opt) => (
-                  <button
-                    key={opt}
-                    type="button"
-                    className={`pill ${variant?.optionLabel === opt ? 'pill-active' : ''}`}
-                    onClick={() => pickOption(opt)}
-                  >
-                    {opt}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+            <label className="field-label">Tamaño</label>
+            <div className="pills">
+              {/* Original (para cuando se reactiven tortas 5+): design.variants.map(...) */}
+              {sizeVariants.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  className={`pill ${variantId === v.id ? 'pill-active' : ''}`}
+                  onClick={() => setVariantId(v.id)}
+                >
+                  {sizeText(v)} — ${Number(v.price).toLocaleString('es-CO')}
+                </button>
+              ))}
+            </div>
 
-          {design.images.length > 0 && (
-            <>
-              <label className="field-label">Color</label>
-              <div className="pills">
-                {design.images.map((img) => (
-                  <button
-                    key={img.colorName}
-                    type="button"
-                    className={`pill ${color === img.colorName ? 'pill-active' : ''}`}
-                    onClick={() => setColor(img.colorName)}
-                  >
-                    {img.colorName}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+            {design.category !== 'ALFAJOR_CAKE' && (
+              <>
+                <label className="field-label">Sabor de la torta</label>
+                <div className="pills">
+                  {FLAVORS.map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      className={`pill ${flavor === f ? 'pill-active' : ''}`}
+                      onClick={() => setFlavor(f)}
+                    >
+                      {flavorLabels[f]}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
-          <label className="field-label">Forma</label>
-          <div className="pills">
-            {CAKE_SHAPES.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className={`pill ${shape === s ? 'pill-active' : ''}`}
-                onClick={() => setShape(s)}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-
-          <label className="field-label">Tamaño</label>
-          <div className="pills">
-            {/* Original (para cuando se reactiven tortas 5+): design.variants.map(...) */}
-            {sizeVariants.map((v) => (
-              <button
-                key={v.id}
-                type="button"
-                className={`pill ${variantId === v.id ? 'pill-active' : ''}`}
-                onClick={() => setVariantId(v.id)}
-              >
-                {sizeText(v)} — ${Number(v.price).toLocaleString('es-CO')}
-              </button>
-            ))}
-          </div>
-
-          {design.category !== 'ALFAJOR_CAKE' && (
-            <>
-              <label className="field-label">Sabor de la torta</label>
-              <div className="pills">
-                {FLAVORS.map((f) => (
-                  <button
-                    key={f}
-                    type="button"
-                    className={`pill ${flavor === f ? 'pill-active' : ''}`}
-                    onClick={() => setFlavor(f)}
-                  >
-                    {flavorLabels[f]}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          <label className="field-label">Sabor de relleno</label>
-          {variant && (
-            <RellenoSelect
-              portions={variant.portions}
-              isPromo={variant.enPromocion}
-              locked={design.category === 'ALFAJOR_CAKE'}
-              value={relleno}
-              onChange={setRelleno}
-            />
-          )}
-
-          {design.allowsCustomText && (
-            <>
-              <label className="field-label">Texto personalizado (opcional)</label>
-              <input
-                type="text"
-                maxLength={design.customTextMaxLength}
-                placeholder="Ej: Feliz cumple Ana"
-                value={customText}
-                onChange={(e) => setCustomText(e.target.value.slice(0, design.customTextMaxLength))}
+            <label className="field-label">Sabor de relleno</label>
+            {variant && (
+              <RellenoSelect
+                portions={variant.portions}
+                isPromo={variant.enPromocion}
+                locked={design.category === 'ALFAJOR_CAKE'}
+                value={relleno}
+                onChange={setRelleno}
               />
-              <p className="field-hint">
-                Máximo {design.customTextMaxLength} letras ({customText.length}/{design.customTextMaxLength}).
-              </p>
-            </>
-          )}
+            )}
 
-          {design.allowsCustomImage && variant && printPrices && (
-            <>
-              <label className="field-label">
-                {variant.maxCustomImages > 1 ? `Tus imágenes (hasta ${variant.maxCustomImages})` : 'Tu imagen'}
-              </label>
-              <p className="field-hint">
-                Esta torta lleva imagen impresa: súbela aquí, no la envíes por WhatsApp. Desde +
-                {pesos(printPrices.NON_EDIBLE)} por torta
-                {variant.maxCustomImages > 1 ? ', sin importar cuántas imágenes subas' : ''}.
-              </p>
-              {imageOptional && (
-                <label className="check-row">
-                  <input type="checkbox" checked={noImages} onChange={(e) => setNoImages(e.target.checked)} />
-                  No quiero {variant.maxCustomImages > 1 ? 'imágenes' : 'imagen'} (la hacemos con la misma
-                  decoración, sin imprimir nada)
+            {design.allowsCustomText && (
+              <>
+                <label className="field-label">Texto personalizado (opcional)</label>
+                <input
+                  type="text"
+                  maxLength={design.customTextMaxLength}
+                  placeholder="Ej: Feliz cumple Ana"
+                  value={customText}
+                  onChange={(e) => setCustomText(e.target.value.slice(0, design.customTextMaxLength))}
+                />
+                <p className="field-hint">
+                  Máximo {design.customTextMaxLength} letras ({customText.length}/{design.customTextMaxLength}).
+                </p>
+              </>
+            )}
+
+            {design.allowsCustomImage && variant && printPrices && (
+              <>
+                <label className="field-label">
+                  {variant.maxCustomImages > 1 ? `Tus imágenes (hasta ${variant.maxCustomImages})` : 'Tu imagen'}
                 </label>
-              )}
-              {!skipImages && (
-                <>
-                  <p className="field-hint">
-                    No editamos ni diseñamos la imagen: súbela lista para imprimir tal como la quieres en la torta.
-                  </p>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple={variant.maxCustomImages > 1}
-                    onChange={handleImageChange}
-                    disabled={uploadingImage || customImages.length >= variant.maxCustomImages}
-                  />
-                  {variant.maxCustomImages > 1 && (
+                <p className="field-hint">
+                  Esta torta lleva imagen impresa: súbela aquí, no la envíes por WhatsApp. Desde +
+                  {pesos(printPrices.NON_EDIBLE)} por torta
+                  {variant.maxCustomImages > 1 ? ', sin importar cuántas imágenes subas' : ''}.
+                </p>
+                {imageOptional && (
+                  <label className="check-row">
+                    <input type="checkbox" checked={noImages} onChange={(e) => setNoImages(e.target.checked)} />
+                    No quiero {variant.maxCustomImages > 1 ? 'imágenes' : 'imagen'} (la hacemos con la misma
+                    decoración, sin imprimir nada)
+                  </label>
+                )}
+                {!skipImages && (
+                  <>
                     <p className="field-hint">
-                      {customImages.length}/{variant.maxCustomImages} imágenes.
+                      No editamos ni diseñamos la imagen: súbela lista para imprimir tal como la quieres en la torta.
                     </p>
-                  )}
-                  {uploadingImage && <p className="muted">Subiendo imagen...</p>}
-                  {imageError && <p className="warning">{imageError}</p>}
-                  {customImages.length > 0 && (
-                    <div className={variant.maxCustomImages > 1 ? 'custom-images-grid' : 'custom-image-single'}>
-                      {customImages.map((url, i) => (
-                        <div key={url} className="custom-image-thumb">
-                          <img
-                            src={url}
-                            alt={variant.maxCustomImages > 1 ? `Imagen ${i + 1}` : 'Imagen personalizada'}
-                          />
-                          <button
-                            type="button"
-                            className="custom-image-remove"
-                            aria-label="Quitar imagen"
-                            onClick={() => removeImage(i)}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {customImages.length > 0 && (
-                    <>
-                      <label className="field-label">Tipo de imagen</label>
-                      <div className="pills">
-                        {(['NON_EDIBLE', 'EDIBLE'] as const).map((t) => (
-                          <button
-                            key={t}
-                            type="button"
-                            className={`pill ${t === printType ? 'pill-active' : ''}`}
-                            onClick={() => setPrintType(t)}
-                          >
-                            {PRINT_TYPE_LABELS[t]} (+{pesos(printPrices[t])})
-                          </button>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple={variant.maxCustomImages > 1}
+                      onChange={handleImageChange}
+                      disabled={uploadingImage || customImages.length >= variant.maxCustomImages}
+                    />
+                    {variant.maxCustomImages > 1 && (
+                      <p className="field-hint">
+                        {customImages.length}/{variant.maxCustomImages} imágenes.
+                      </p>
+                    )}
+                    {uploadingImage && <p className="muted">Subiendo imagen...</p>}
+                    {imageError && <p className="warning">{imageError}</p>}
+                    {customImages.length > 0 && (
+                      <div className={variant.maxCustomImages > 1 ? 'custom-images-grid' : 'custom-image-single'}>
+                        {customImages.map((url, i) => (
+                          <div key={url} className="custom-image-thumb">
+                            <img
+                              src={url}
+                              alt={variant.maxCustomImages > 1 ? `Imagen ${i + 1}` : 'Imagen personalizada'}
+                            />
+                            <button
+                              type="button"
+                              className="custom-image-remove"
+                              aria-label="Quitar imagen"
+                              onClick={() => removeImage(i)}
+                            >
+                              ✕
+                            </button>
+                          </div>
                         ))}
                       </div>
-                      <p className="field-hint">{PRINT_TYPE_HINT}</p>
-                </>
-              )}
-                </>
-              )}
-            </>
-          )}
+                    )}
+                    {customImages.length > 0 && (
+                      <>
+                        <label className="field-label">Tipo de imagen</label>
+                        <div className="pills">
+                          {(['NON_EDIBLE', 'EDIBLE'] as const).map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              className={`pill ${t === printType ? 'pill-active' : ''}`}
+                              onClick={() => setPrintType(t)}
+                            >
+                              {PRINT_TYPE_LABELS[t]} (+{pesos(printPrices[t])})
+                            </button>
+                          ))}
+                        </div>
+                        <p className="field-hint">{PRINT_TYPE_HINT}</p>
+                  </>
+                )}
+                  </>
+                )}
+              </>
+            )}
 
-          {linePrice !== null && (
-            <p className="cake-line-price">
-              Precio de esta torta: <strong>{pesos(linePrice)}</strong>
-            </p>
-          )}
+            {linePrice !== null && (
+              <p className="cake-line-price">
+                Precio de esta torta: <strong>{pesos(linePrice)}</strong>
+              </p>
+            )}
 
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={handleAddItem}
-            disabled={
-              !variant ||
-              linePrice === null ||
-              !relleno ||
-              uploadingImage ||
-              cartFull ||
-              needsImage
-            }
-          >
-            Agregar al pedido
-          </button>
-          {needsImage && (
-            <p className="field-hint">
-              {imageOptional
-                ? `Sube tu imagen, o marca "No quiero ${variant?.maxCustomImages ?? 1 > 1 ? 'imágenes' : 'imagen'}", para poder agregar este producto.`
-                : 'Sube tu imagen para poder agregar este producto.'}
-            </p>
-          )}
-          {cartFull && (
-            <p className="warning">
-              Un pedido web admite hasta {MAX_ITEMS} productos. Para más, escríbenos por WhatsApp.
-            </p>
-          )}
-          {justAdded && <AddedToCart catalogHref={catalogHref} />}
-        </section>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleAddItem}
+              disabled={
+                !variant ||
+                linePrice === null ||
+                !relleno ||
+                uploadingImage ||
+                cartFull ||
+                needsImage
+              }
+            >
+              Agregar al pedido
+            </button>
+            {needsImage && (
+              <p className="field-hint">
+                {imageOptional
+                  ? `Sube tu imagen, o marca "No quiero ${(variant?.maxCustomImages ?? 1) > 1 ? 'imágenes' : 'imagen'}", para poder agregar este producto.`
+                  : 'Sube tu imagen para poder agregar este producto.'}
+              </p>
+            )}
+            {cartFull && (
+              <p className="warning">
+                Un pedido web admite hasta {MAX_ITEMS} productos. Para más, escríbenos por WhatsApp.
+              </p>
+            )}
+            {justAdded && <AddedToCart catalogHref={catalogHref} />}
+          </section>
+        </div>
       </main>
 
       <SiteFooter />

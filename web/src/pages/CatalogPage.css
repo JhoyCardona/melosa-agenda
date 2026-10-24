@@ -2,6 +2,28 @@
   overflow-x: hidden;
 }
 
+/* Intro centered like the home's section titles, with less top padding than
+   a home section. */
+.catalog-page .section {
+  padding-top: var(--space-8);
+}
+
+.catalog-page .section-inner > .eyebrow,
+.catalog-page .section-inner > h1,
+.catalog-page .section-inner > .section-lead,
+.catalog-page .section-inner > .catalog-notice,
+.catalog-page .price-tabs-label {
+  text-align: center;
+}
+
+.catalog-page .section-inner > h1 {
+  font-size: var(--text-2xl);
+}
+
+.catalog-page .section-inner > .section-lead {
+  font-size: var(--text-base);
+}
+
 .catalog-admin-cta {
   display: inline-flex;
   margin-top: var(--space-4);
@@ -12,7 +34,7 @@
   color: var(--color-primary);
   font-weight: 700;
   max-width: 60ch;
-  margin: calc(-1 * var(--space-4)) 0 var(--space-6);
+  margin: calc(-1 * var(--space-4)) auto var(--space-6);
 }
 
 /* ---------- Price filter tabs ---------- */
@@ -25,6 +47,7 @@
 .price-tabs {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: var(--space-2);
 }
 

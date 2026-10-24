@@ -1,6 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import Landing from './pages/Landing';
-import NewHome from './pages/NewHome';
+import HomePage from './pages/HomePage';
 import CatalogPage from './pages/CatalogPage';
 import BookingPage from './pages/BookingPage';
 import CakeBookingPage from './pages/CakeBookingPage';
@@ -23,9 +22,9 @@ export default function App() {
     <>
       <ScrollToTop />
       <Routes>
-        <Route path="/" element={<Landing />} />
-        {/* Test page for the Magnolia-style redesign — not linked from anywhere. */}
-        <Route path="/nuevo" element={<NewHome />} />
+        <Route path="/" element={<HomePage />} />
+        {/* Old test address of the redesigned home, in case someone kept it. */}
+        <Route path="/nuevo" element={<Navigate to="/" replace />} />
         <Route path="/catalogo" element={<CatalogPage />} />
         {/* Always enter the customizer from the catalog, so the customer sees the
             design they're ordering. */}

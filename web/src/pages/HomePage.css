@@ -1,7 +1,7 @@
 /* ============================================================================
-   /nuevo — Magnolia-style layout test. Calm on purpose: no motion, one focal
-   point per screen, big photos on flat backgrounds. Colors and fonts still use
-   the global tokens; they'll be tuned in a later pass.
+   Home — Magnolia-style layout. Calm on purpose: one focal point per screen,
+   big photos on flat backgrounds. Colors and fonts still use the global
+   tokens; they'll be tuned in a later pass.
    ========================================================================== */
 
 .nh {
@@ -10,18 +10,10 @@
   min-height: 100vh;
 }
 
-.nh a {
+/* Product and category links read as plain text. Scoped to <main> so the
+   shared header and footer keep their own link colors (red logo). */
+.nh main a {
   color: inherit;
-}
-
-/* Footer logo (the header is the shared SiteHeader now). */
-.nh-logo {
-  font-family: var(--font-display);
-  font-size: var(--text-xl);
-  font-weight: 700;
-  color: var(--color-primary) !important;
-  text-decoration: none;
-  margin: 0;
 }
 
 /* Header links land on these sections; keep them clear of the sticky header. */
@@ -83,7 +75,7 @@
   font-size: var(--text-sm);
 }
 
-.nh-lead a {
+.nh .nh-lead a {
   color: var(--color-primary);
   font-weight: 700;
 }
@@ -129,6 +121,9 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-4);
+  /* Keeps the circles around 200px on desktop instead of a third of the page. */
+  max-width: 660px;
+  margin: 0 auto;
 }
 
 .nh-category {
@@ -314,33 +309,4 @@
   margin: 0;
   font-size: var(--text-xs);
   color: var(--color-muted);
-}
-
-/* ---------- Footer ---------- */
-.nh-footer {
-  padding: var(--space-12) var(--space-4);
-  border-top: 1px solid var(--color-border);
-  text-align: center;
-}
-
-.nh-footer-cols {
-  display: flex;
-  justify-content: center;
-  gap: var(--space-12);
-  margin: var(--space-6) 0;
-  text-align: left;
-}
-
-.nh-footer h4 {
-  margin: 0 0 var(--space-2);
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-}
-
-.nh-footer-cols a {
-  display: block;
-  padding: var(--space-1) 0;
-  font-size: var(--text-sm);
-  text-decoration: none;
 }

@@ -8,8 +8,11 @@
   padding: var(--space-8) var(--space-6) var(--space-16);
 }
 
+/* Page titles (Tu pedido, Mi pedido) centered in red, like the home's. */
 .booking-main > h1 {
   margin-bottom: var(--space-6);
+  font-size: var(--text-2xl);
+  text-align: center;
 }
 
 .booking-back {
@@ -60,44 +63,76 @@
   margin: 0 0 var(--space-4);
 }
 
-/* ---------- Configurator head ---------- */
-/* Big product photo on top, titles underneath. */
-.config-head {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  align-items: flex-start;
-  margin-bottom: var(--space-6);
+/* ---------- Product page (cake / alfajor booking) ---------- */
+/* Wider than the cart column: photo and options side by side on desktop. */
+.booking-main.product-main {
+  max-width: var(--container);
 }
 
-.config-head .config-photo {
-  width: 100%;
-  max-width: 360px;
-  height: auto;
-  aspect-ratio: 3 / 4;
-  border-radius: var(--radius-md);
+.product-layout {
+  display: grid;
+  gap: var(--space-6);
 }
 
-.config-photo {
-  width: 96px;
-  height: 128px;
-  object-fit: cover;
-  border-radius: var(--radius-sm);
+.product-media img,
+.product-media-empty {
   display: block;
-  flex: 0 0 auto;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
 }
 
-.config-photo-empty {
+.product-media-empty {
   display: grid;
   place-items: center;
   background: var(--color-bg-soft);
   color: var(--color-muted);
-  font-size: var(--text-xs);
 }
 
-/* Uploaded-image preview reuses .config-photo but shows in full. */
-img.config-photo:not(.config-photo-empty) {
-  margin-top: var(--space-3);
+/* The options sit straight on the page: no card around them. */
+.booking-block.product-config {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+
+.product-name {
+  font-size: var(--text-2xl);
+  margin: 0 0 var(--space-2);
+}
+
+.product-price {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  margin: 0 0 var(--space-6);
+}
+
+.product-config .btn-primary {
+  width: 100%;
+  padding-block: var(--space-4);
+  font-size: var(--text-base);
+}
+
+@media (min-width: 900px) {
+  .product-layout {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-12);
+    align-items: start;
+  }
+
+  /* The photo stays in view while scrolling through the options. */
+  .product-media {
+    position: sticky;
+    top: 110px;
+  }
+
+  .product-media img,
+  .product-media-empty {
+    aspect-ratio: 4 / 5;
+  }
 }
 
 /* ---------- Custom print image(s) ---------- */
@@ -354,15 +389,10 @@ img.config-photo:not(.config-photo-empty) {
 }
 
 /* ---------- Pickup location callout ---------- */
-/* Same red + blinking-lights (.dot-edges, index.css) treatment as the
-   Landing "Todos los pedidos son para recoger" band, but as a card here
-   instead of a full-bleed section. overflow: hidden clips the dot bands to
-   the rounded corners so they don't poke out past the border-radius. */
 .booking-pickup {
-  background: var(--color-primary);
-  color: var(--color-on-primary);
+  background: var(--color-bg-soft);
+  border-color: transparent;
   text-align: center;
-  overflow: hidden;
 }
 
 .booking-pickup-address {
@@ -372,7 +402,7 @@ img.config-photo:not(.config-photo-empty) {
 }
 
 .booking-pickup-sub {
-  color: color-mix(in srgb, var(--color-on-primary) 75%, transparent);
+  color: var(--color-muted);
   margin: 0 0 var(--space-4);
 }
 
@@ -385,7 +415,7 @@ img.config-photo:not(.config-photo-empty) {
   z-index: 40;
   margin: var(--space-6) calc(var(--space-6) * -1) 0;
   padding: 0 var(--space-6);
-  background: color-mix(in srgb, var(--color-bg) 94%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
   backdrop-filter: blur(8px);
   border-top: 1px solid var(--color-border);
 }
@@ -447,6 +477,7 @@ img.config-photo:not(.config-photo-empty) {
 /* ---------- Cart page: one card per product ---------- */
 .cart-intro {
   margin: calc(var(--space-4) * -1) 0 var(--space-6);
+  text-align: center;
 }
 
 .cart-cards {

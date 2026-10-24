@@ -2,14 +2,12 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BUSINESS, SOCIAL, waLink } from '../config';
 import { useAdminAuth } from '../context/AdminAuth';
-import CartButton from './CartButton';
+import CartButton, { CART_HREF } from './CartButton';
 import MarqueeAnnounce from './MarqueeAnnounce';
 import { PRODUCT_LINES } from '../productLines';
 import './SiteChrome.css';
 
-// Home page route. The redesigned home is still being built at /nuevo; switch
-// this to '/' when it replaces the old Landing.
-export const HOME_HREF = '/nuevo';
+export const HOME_HREF = '/';
 
 const ANNOUNCEMENTS = [
   '🍰 Promo: Minicake de alfajor desde $28.000',
@@ -33,6 +31,7 @@ const NAV_LINKS = [
 // cart on the right. On desktop the menu links sit in a row under the logo.
 // "Productos" opens the list of product lines (a dropdown on desktop).
 export function SiteHeader() {
+  const { isAdmin } = useAdminAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [productsOpen, setProductsOpen] = useState(false);
 
@@ -102,76 +101,77 @@ export function SiteHeader() {
             {l.label}
           </Link>
         ))}
+        {/* gretica's way into the admin; hidden once she's logged in (the
+            admin pages have their own bar). */}
+        {!isAdmin && (
+          <Link to="/admin" className="site-nav-admin" onClick={closeAll}>
+            Administradora
+          </Link>
+        )}
       </nav>
     </header>
   );
 }
 
+// Single short message, repeated so one copy of the strip is wider than any
+// screen (otherwise the loop shows a gap on desktop).
+const FAREWELL = Array<string>(4).fill('Gracias por visitarnos 🎪');
+
 export function SiteFooter() {
   const year = new Date().getFullYear();
-  const { isAdmin } = useAdminAuth();
 
   return (
     <>
-      <div className="closing-strip">Gracias por visitar a Melosa 🤎</div>
+      <MarqueeAnnounce messages={FAREWELL} />
 
-      <footer className="site-footer" id="redes">
-        <div className="site-footer-grid">
+      <footer className="site-footer">
+        <Link to={HOME_HREF} className="brand">
+          Melosa
+        </Link>
+
+        <div className="site-footer-cols">
           <div>
-            <h3>Contacto</h3>
-            <p>{BUSINESS.attentionChannel}</p>
-            <p>{BUSINESS.attentionHours}</p>
-            <a className="footer-link" href={waLink()} target="_blank" rel="noreferrer">
-              Escríbenos por WhatsApp
+            <h4>Pedidos</h4>
+            <Link to="/catalogo">Catálogo</Link>
+            <Link to={CART_HREF}>Tu pedido</Link>
+            <Link to={`${HOME_HREF}#como`}>Cómo pedir</Link>
+            <Link to={`${HOME_HREF}#domicilios`}>¿Domicilios?</Link>
+          </div>
+
+          <div>
+            <h4>Contacto</h4>
+            <a href={waLink()} target="_blank" rel="noreferrer">
+              WhatsApp
+            </a>
+            <a href={SOCIAL.instagram} target="_blank" rel="noreferrer">
+              Instagram
+            </a>
+            <a href={SOCIAL.tiktok} target="_blank" rel="noreferrer">
+              TikTok
+            </a>
+            <a href={SOCIAL.facebook} target="_blank" rel="noreferrer">
+              Facebook
             </a>
           </div>
 
           <div>
-            <h3>Ubicación</h3>
-            <p>{BUSINESS.addressLine}</p>
-            <p>Estación de metro más cercana: {BUSINESS.nearestMetro}</p>
-            <a className="footer-link" href={BUSINESS.mapsUrl} target="_blank" rel="noreferrer">
-              Abrir en Google Maps
-            </a>
-          </div>
-
-          <div>
-            <h3>Horarios</h3>
-            <p>Atención (WhatsApp): {BUSINESS.attentionHours}</p>
-            <p>Entregas: {BUSINESS.deliveryHours}</p>
+            <h4>Horarios</h4>
+            <p>
+              <strong>Atención por WhatsApp</strong>
+              <br />
+              {BUSINESS.attentionHours}
+            </p>
+            <p>
+              <strong>Entregas</strong>
+              <br />
+              {BUSINESS.deliveryHours}
+            </p>
             <p className="muted">{BUSINESS.deliveryNote}</p>
-          </div>
-
-          <div>
-            <h3>Redes</h3>
-            <p>
-              <a className="footer-link" href={SOCIAL.instagram} target="_blank" rel="noreferrer">
-                Instagram
-              </a>
-            </p>
-            <p>
-              <a className="footer-link" href={SOCIAL.tiktok} target="_blank" rel="noreferrer">
-                TikTok
-              </a>
-            </p>
-            <p>
-              <a className="footer-link" href={SOCIAL.facebook} target="_blank" rel="noreferrer">
-                Facebook
-              </a>
-            </p>
           </div>
         </div>
 
         <p className="site-footer-legal">
           © {year} Melosa · Hecho con 🤎 en {BUSINESS.city}
-          {!isAdmin && (
-            <>
-              {' · '}
-              <Link className="footer-admin-link" to="/admin">
-                Administradora
-              </Link>
-            </>
-          )}
         </p>
       </footer>
     </>

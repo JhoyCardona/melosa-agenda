@@ -37,7 +37,7 @@
   dominant-baseline: central;
 }
 
-/* Same alternating "circus lights" rhythm as .dot-edges in index.css. */
+/* Two bulb groups blinking in turn, same rhythm as MarqueeAnnounce. */
 .marquee-frame-bulbs circle {
   fill: #fff6d6;
   stroke: color-mix(in srgb, var(--color-accent) 70%, #8a5a00);

@@ -232,26 +232,32 @@ function EditView({ onDone }: { onDone: (d: Done) => void }) {
         {draft.items.length === 0 && (
           <p className="warning">Tu pedido tiene que tener al menos un producto. Agrega uno, o cancela el pedido abajo.</p>
         )}
-        <ul className="manage-items">
+        {/* Same cards as the cart page: red ✕ top right, "Cambiar" under it. */}
+        <ul className="cart-cards">
           {draft.items.map((i) => (
-            <li key={i.key}>
-              {i.designImageUrl && <img src={i.designImageUrl} alt="" className="manage-item-photo" />}
-              <div className="manage-item-body">
-                <p className="manage-item-text">{cartItemSummary(i)}</p>
-                <p className="manage-item-price">
+            <li key={i.key} className="cart-card">
+              {i.designImageUrl && <img src={i.designImageUrl} alt="" className="cart-card-photo" />}
+              <div className="cart-card-body">
+                <p className="cart-card-text">{cartItemSummary(i)}</p>
+                <p className="cart-card-price">
                   {pesos(i.price)}
                   {!i.keepItemId && <span className="manage-item-tag">{i.wasEdited ? 'Cambiada' : 'Nueva'}</span>}
                 </p>
-                <div className="manage-item-actions">
-                  {isCakeItem(i) && i.designId && (
-                    <Link to={`/tortas/${i.designId}?editar=${i.key}`} className="btn btn-ghost">
-                      Cambiar
-                    </Link>
-                  )}
-                  <button type="button" className="btn btn-ghost" onClick={() => draft.removeItem(i.key)}>
-                    Quitar
-                  </button>
-                </div>
+              </div>
+              <div className="cart-card-actions">
+                <button
+                  type="button"
+                  className="cart-card-remove"
+                  aria-label="Quitar del pedido"
+                  onClick={() => draft.removeItem(i.key)}
+                >
+                  ✕
+                </button>
+                {isCakeItem(i) && i.designId && (
+                  <Link to={`/tortas/${i.designId}?editar=${i.key}`} className="cart-card-edit">
+                    Cambiar
+                  </Link>
+                )}
               </div>
             </li>
           ))}
