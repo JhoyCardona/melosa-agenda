@@ -49,8 +49,6 @@ function inBucket(price: number | null, bucket: PriceBucket): boolean {
 
 interface CatalogCardProps {
   design: PublicCakeDesign;
-  selected: boolean;
-  onToggle: () => void;
 }
 
 // true while the element is on screen, or within `margin` of it. Used so only
@@ -70,11 +68,11 @@ function useInView<T extends Element>(margin: string): [RefObject<T | null>, boo
   return [ref, inView];
 }
 
-// One design: photo (auto-cycling its colors, with carousel arrows to jump
-// between decorations without waiting) and the marquee sign with its name.
-function CatalogCard({ design, selected, onToggle }: CatalogCardProps) {
+// One design: its photo (the customer flips through the colors with the
+// arrows; nothing moves on its own) and the marquee sign with its name.
+// Tapping the photo opens the design with the color on screen preselected.
+function CatalogCard({ design }: CatalogCardProps) {
   const [index, setIndex] = useState(0);
-  const [paused, setPaused] = useState(false);
   const [cardRef, inView] = useInView<HTMLLIElement>('0px');
   // A screen ahead: start fetching this card's color photos before the
   // customer scrolls to it, so the arrows switch instantly.
@@ -93,22 +91,25 @@ function CatalogCard({ design, selected, onToggle }: CatalogCardProps) {
 
   function step(delta: number) {
     setIndex((i) => (i + delta + count) % count);
-    setPaused(true);
   }
 
+  const colorId = images[index]?.id;
+
   return (
-    <li ref={cardRef} className={`catalog-card ${selected ? 'is-selected' : ''}`}>
+    <li ref={cardRef} className="catalog-card">
       <div className="catalog-card-photo" ref={preloadRef}>
-        <button type="button" className="catalog-card-media" aria-pressed={selected} onClick={onToggle}>
+        <Link
+          to={`/tortas/${design.id}${colorId ? `?color=${colorId}` : ''}`}
+          className="catalog-card-media"
+          aria-label={`Agendar ${design.name}${images[index] ? `, color ${images[index].colorName}` : ''}`}
+        >
           <DesignCarousel
             images={images}
             fallbackImageUrl={design.colors[0]?.imageUrl ?? null}
             alt={design.name}
             index={index}
-            onIndexChange={setIndex}
-            paused={paused || !inView}
           />
-        </button>
+        </Link>
         {count > 1 && (
           <>
             <button
@@ -137,18 +138,13 @@ function CatalogCard({ design, selected, onToggle }: CatalogCardProps) {
             <MarqueeFrame title={design.name} live={inView} />
           </div>
         )}
-        {/* Desktop: only on the selected card. Mobile (one column): always,
-            see CatalogPage.css. */}
-        <Link to={`/tortas/${design.id}`} className="btn btn-primary catalog-card-cta">
-          Quiero esta
-        </Link>
       </div>
     </li>
   );
 }
 
-// Cake catalog (catalog v2). One card per design, cycling through its color
-// photos. The price buttons filter by MiniCake price (most sales are
+// Cake catalog (catalog v2). One card per design, its color photos one tap
+// of the arrows away. The price buttons filter by MiniCake price (most sales are
 // minicakes); bigger sizes and flavor surcharges show while building the order.
 // Other product families (alfajores, cupcakes, postres) will get their own
 // catalogs; the alfajor minicake is booked from the Landing's own button.
@@ -158,7 +154,6 @@ export default function CatalogPage() {
   const [loading, setLoading] = useState(true);
   const [slow, setSlow] = useState(false);
   const [error, setError] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   // null = "Todos".
   const [bucket, setBucket] = useState<PriceBucket | null>(null);
 
@@ -195,7 +190,6 @@ export default function CatalogPage() {
   function pickBucket(next: PriceBucket | null) {
     // Tapping the active price again goes back to "Todos".
     setBucket(next && bucket && next.min === bucket.min ? null : next);
-    setSelectedId(null);
   }
 
   return (
@@ -214,7 +208,7 @@ export default function CatalogPage() {
             </Link>
           )}
           <p className="section-lead">
-            Toca un diseño para empezar tu pedido. En el siguiente paso eliges el color, el tamaño y los
+            Toca la foto de un diseño para empezar tu pedido. En el siguiente paso eliges el color, el tamaño y los
             sabores, y ves el precio.
           </p>
           <p className="catalog-notice">
@@ -278,8 +272,6 @@ export default function CatalogPage() {
                 <CatalogCard
                   key={design.id}
                   design={design}
-                  selected={selectedId === design.id}
-                  onToggle={() => setSelectedId(selectedId === design.id ? null : design.id)}
                 />
               ))}
             </ul>

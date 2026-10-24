@@ -64,11 +64,6 @@
   flex-direction: column;
 }
 
-.catalog-card.is-selected {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px var(--color-primary);
-}
-
 .catalog-card-media {
   padding: 0;
   border: none;
@@ -109,11 +104,6 @@
   position: relative;
 }
 
-.catalog-card-cta {
-  margin-top: var(--space-3);
-  text-align: center;
-}
-
 /* Photo + its color carousel controls, layered on top of the photo button. */
 .catalog-card-photo {
   position: relative;
@@ -144,17 +134,12 @@
   right: var(--space-2);
 }
 
-/* Desktop grid: the CTA only appears on the tapped card. */
-.catalog-card:not(.is-selected) .catalog-card-cta {
-  display: none;
-}
-
-/* ---------- Mobile: one column, one big photo per design ---------- */
+/* ---------- Mobile: two columns ---------- */
 @media (max-width: 720px) {
   .catalog-grid {
-    /* minmax(0, …) so a wide photo can never push the column past the screen. */
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-12);
+    /* minmax(0, …) so a wide photo can never push a column past the screen. */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-8) var(--space-3);
   }
 
   .catalog-card {
@@ -164,39 +149,27 @@
     min-width: 0;
     /* Lets the browser skip rendering cards far off screen; the height is a
        placeholder estimate so the scrollbar doesn't jump. Height only — the
-       two-value contain-intrinsic-size would also force a 640px width. */
+       two-value contain-intrinsic-size would also force a width. */
     content-visibility: auto;
-    contain-intrinsic-block-size: auto 600px;
-  }
-
-  .catalog-card.is-selected {
-    box-shadow: none;
+    contain-intrinsic-block-size: auto 280px;
   }
 
   .catalog-card-photo {
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     overflow: hidden;
     box-shadow: var(--shadow-md);
   }
 
-  /* Square-ish photo, capped by the screen height so on short phones the
-     name sign and button still show without scrolling past the photo. */
-  .catalog-photo-arrow {
-    width: 40px;
-    height: 40px;
-    font-size: 1.6rem;
-  }
-
   .catalog-card-media {
     aspect-ratio: 1 / 1;
-    max-height: 60svh;
   }
 
   .catalog-card-body {
-    padding: 0 var(--space-2);
+    padding: 0;
   }
 
-  .catalog-card:not(.is-selected) .catalog-card-cta {
-    display: block;
+  /* The sign overlaps the photo less on the smaller cards. */
+  .catalog-card-frame {
+    margin-top: calc(-1 * var(--space-4));
   }
 }

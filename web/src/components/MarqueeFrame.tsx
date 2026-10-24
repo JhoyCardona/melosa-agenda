@@ -5,7 +5,7 @@ import './MarqueeFrame.css';
 // classic 3:2 sign), so it scales uniformly to the card width and the bulbs
 // stay round.
 const W = 400;
-const H = 130;
+const H = 104;
 const CX = W / 2;
 const CY = H / 2;
 
@@ -18,7 +18,9 @@ function framePath(inset: number): string {
   const r = W - 14 - inset;
   const t = 14 + inset;
   const b = H - 14 - inset;
-  const notch = 26 - inset * 0.4;
+  // Corner notch sized so even the innermost layer's straight side reaches
+  // the side bulge (CY ± 10) before it starts, at this canvas height.
+  const notch = 18 - inset * 0.4;
   const crest = 10 - inset * 0.5;
   const bulge = 12 - inset * 0.5;
   const crestHalf = 30;
@@ -29,8 +31,8 @@ function framePath(inset: number): string {
     `C ${CX + 10} ${t - crest} ${CX + 15} ${t} ${CX + crestHalf} ${t}`,
     `L ${r - notch} ${t}`,
     `A ${notch} ${notch} 0 0 0 ${r} ${t + notch}`,
-    `L ${r} ${CY - 15}`,
-    `C ${r + bulge} ${CY - 10} ${r + bulge} ${CY + 10} ${r} ${CY + 15}`,
+    `L ${r} ${CY - 10}`,
+    `C ${r + bulge} ${CY - 7} ${r + bulge} ${CY + 7} ${r} ${CY + 10}`,
     `L ${r} ${b - notch}`,
     `A ${notch} ${notch} 0 0 0 ${r - notch} ${b}`,
     `L ${CX + crestHalf} ${b}`,
@@ -38,8 +40,8 @@ function framePath(inset: number): string {
     `C ${CX - 10} ${b + crest} ${CX - 15} ${b} ${CX - crestHalf} ${b}`,
     `L ${l + notch} ${b}`,
     `A ${notch} ${notch} 0 0 0 ${l} ${b - notch}`,
-    `L ${l} ${CY + 15}`,
-    `C ${l - bulge} ${CY + 10} ${l - bulge} ${CY - 10} ${l} ${CY - 15}`,
+    `L ${l} ${CY + 10}`,
+    `C ${l - bulge} ${CY + 7} ${l - bulge} ${CY - 7} ${l} ${CY - 10}`,
     `L ${l} ${t + notch}`,
     `A ${notch} ${notch} 0 0 0 ${l + notch} ${t}`,
     'Z',
@@ -87,7 +89,7 @@ interface MarqueeFrameProps {
 export default function MarqueeFrame({ title, live }: MarqueeFrameProps) {
   const clipId = useId();
   // Shrink long names so they always fit inside the panel.
-  const fontSize = Math.min(28, 300 / Math.max(title.length * 0.56, 1));
+  const fontSize = Math.min(26, 300 / Math.max(title.length * 0.56, 1));
 
   return (
     <svg

@@ -4,12 +4,16 @@ import { useLocation } from 'react-router-dom';
 // React Router doesn't reset scroll position on navigation — without this, a
 // link from the bottom of one page (e.g. the footer, or the sticky checkout
 // bar) lands the next page already scrolled down instead of at the top.
+// A link with a #hash (the header's "Cómo pedir", "Ubicación"...) scrolls to
+// that section instead.
 export default function ScrollToTop() {
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
 
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [pathname]);
+    const target = hash ? document.getElementById(decodeURIComponent(hash.slice(1))) : null;
+    if (target) target.scrollIntoView();
+    else window.scrollTo(0, 0);
+  }, [pathname, hash]);
 
   return null;
 }

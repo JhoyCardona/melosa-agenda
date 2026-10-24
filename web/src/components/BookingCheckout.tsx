@@ -4,13 +4,16 @@ import api from '../api';
 import type { DeliveryPreview } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
 import { waLink, BUSINESS } from '../config';
+import { isCakeItem } from '../types';
 import {
   MAX_CLIENT_NAME,
+  MAX_ITEMS,
   cartItemSummary,
   earliestDeliveryDateString,
   formatDeliveryDate,
   itemsBreakdown,
   manageHref,
+  pesos,
   toOrderLine,
 } from '../bookingShared';
 
@@ -22,10 +25,10 @@ interface OrderResult {
   accessToken?: string;
 }
 
-// Everything after the product configurator, shared by both booking pages
-// (legacy/alfajor and catalog v2 cakes): cart, delivery date + live pickup
-// time, customer data, recap, pickup address, and the "send by WhatsApp"
-// submit. Works on the one shared cart, whatever mix of products it holds.
+// The cart page's body: cart lines (remove / "Cambiar"), delivery date + live
+// pickup time, customer data, recap, pickup address, and the "send by
+// WhatsApp" submit. Works on the one shared cart, whatever mix of products it
+// holds (legacy/alfajor and catalog v2 cakes).
 export default function BookingCheckout({ catalogHref }: { catalogHref: string }) {
   const draft = useOrderDraft();
   const earliestDate = earliestDeliveryDateString();
@@ -152,30 +155,57 @@ export default function BookingCheckout({ catalogHref }: { catalogHref: string }
     );
   }
 
+  if (draft.items.length === 0) {
+    return (
+      <section className="booking-block cart-empty">
+        <h2>Tu pedido está vacío</h2>
+        <p className="muted">Escoge una torta del catálogo y agrégala a tu pedido.</p>
+        <Link to={catalogHref} className="btn btn-primary">
+          Ver catálogo
+        </Link>
+      </section>
+    );
+  }
+
   return (
     <>
       {/* ---------- Carrito ---------- */}
-      {draft.items.length > 0 && (
-        <section className="booking-block">
-          <h2>Tu pedido ({draft.items.length})</h2>
-          <ul className="cart-list">
-            {draft.items.map((i) => (
-              <li key={i.key}>
-                <span>{cartItemSummary(i)}</span>
-                <span className="cart-item-right">
-                  ${i.price.toLocaleString('es-CO')}
-                  <button type="button" aria-label="Quitar del pedido" onClick={() => draft.removeItem(i.key)}>
-                    ✕
-                  </button>
-                </span>
-              </li>
-            ))}
-          </ul>
+      <section className="booking-block">
+        <h2>Tus productos ({draft.items.length})</h2>
+        <ul className="cart-cards">
+          {draft.items.map((i) => (
+            <li key={i.key} className="cart-card">
+              {i.designImageUrl && <img src={i.designImageUrl} alt="" className="cart-card-photo" />}
+              <div className="cart-card-body">
+                <p className="cart-card-text">{cartItemSummary(i)}</p>
+                <p className="cart-card-price">{pesos(i.price)}</p>
+              </div>
+              <div className="cart-card-actions">
+                <button
+                  type="button"
+                  className="cart-card-remove"
+                  aria-label="Quitar del pedido"
+                  onClick={() => draft.removeItem(i.key)}
+                >
+                  ✕
+                </button>
+                {/* Only catalog cakes can be reopened in their configurator;
+                    an alfajor line is removed and added again instead. */}
+                {isCakeItem(i) && i.designId && (
+                  <Link to={`/tortas/${i.designId}?editar=${i.key}`} className="cart-card-edit">
+                    Cambiar
+                  </Link>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+        {draft.items.length < MAX_ITEMS && (
           <Link to={catalogHref} className="btn btn-ghost">
-            Agregar otro producto
+            Agregar otra torta
           </Link>
-        </section>
-      )}
+        )}
+      </section>
 
       {/* ---------- Entrega ---------- */}
       <section className="booking-block">
@@ -329,7 +359,7 @@ export default function BookingCheckout({ catalogHref }: { catalogHref: string }
             disabled={!canSubmit}
             onClick={handleSubmit}
           >
-            {submitting ? 'Enviando...' : 'Enviar por WhatsApp'}
+            {submitting ? 'Enviando...' : 'Enviar pedido por WhatsApp'}
           </button>
         </div>
         {errorMessage && <p className="warning checkout-error">{errorMessage}</p>}

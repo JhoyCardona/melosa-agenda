@@ -6,7 +6,8 @@ import { CAKE_SHAPES, isCakeItem } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import RellenoSelect from '../components/RellenoSelect';
-import BookingCheckout from '../components/BookingCheckout';
+import AddedToCart from '../components/AddedToCart';
+import { legacyItemStillValid } from '../cartValidation';
 import EditBanner from '../components/EditBanner';
 import { rellenoSurcharge } from '../config';
 import { MAX_ITEMS, PRINT_TYPE_LABELS, PRINT_TYPE_HINT, flavorLabels, manageHref, newKey, pesos } from '../bookingShared';
@@ -96,20 +97,11 @@ export default function BookingPage() {
         // Reconcile the stored cart against the fresh catalog, once. A line whose
         // design or variant is gone, or whose price changed, would otherwise
         // fail on submit with an unhelpful error — drop it and warn instead.
-        const byId = new Map(data.map((d) => [d.id, d]));
-        // Catalog v2 cake lines are checked by their own page, not here.
-        const kept = draft.items.filter((i) => {
-          // Lines kept from an order being modified keep their booked price.
-          if (isCakeItem(i) || i.keepItemId) return true;
-          const d = byId.get(i.designId);
-          const v = d?.variants.find((x) => x.id === i.variantId);
-          if (!d || !v) return false;
-          const hasImages = !!i.customImageUrl || (i.customImageUrls?.length ?? 0) > 0;
-          const imageExtra = hasImages && i.printImageType ? prices?.[i.printImageType] ?? NaN : 0;
-          const expected =
-            Number(v.price) + rellenoSurcharge(i.relleno, v.portions, v.enPromocion) + imageExtra;
-          return Math.round(expected) === Math.round(i.price);
-        });
+        // Catalog v2 cake lines are checked by their own page, and lines kept
+        // from an order being modified keep their booked price.
+        const kept = draft.items.filter(
+          (i) => isCakeItem(i) || !!i.keepItemId || legacyItemStillValid(data, prices, i)
+        );
         if (kept.length !== draft.items.length) {
           draft.patch({ items: kept });
           setCartWasStale(true);
@@ -300,7 +292,6 @@ export default function BookingPage() {
     setNoImages(false);
     setImageError('');
     setJustAdded(true);
-    window.setTimeout(() => setJustAdded(false), 2500);
   }
 
   if (!designsLoaded || !design) {
@@ -576,10 +567,8 @@ export default function BookingPage() {
               Un pedido web admite hasta {MAX_ITEMS} productos. Para más, escríbenos por WhatsApp.
             </p>
           )}
-          {justAdded && !cartFull && <p className="added-flash">Agregado a tu pedido ✓</p>}
+          {justAdded && <AddedToCart catalogHref={catalogHref} />}
         </section>
-
-        {!draft.edit && <BookingCheckout catalogHref={catalogHref} />}
       </main>
 
       <SiteFooter />

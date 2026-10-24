@@ -1,48 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import api, { getWithRetry } from '../api';
-import type { CakeCartItem, PrintImageType, PublicCakeCatalog, PublicCakeColor, PublicCakeSize } from '../types';
+import type { CakeCartItem, PrintImageType, PublicCakeCatalog, PublicCakeColor } from '../types';
 import { isCakeItem } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
-import BookingCheckout from '../components/BookingCheckout';
+import AddedToCart from '../components/AddedToCart';
+import { CART_HREF } from '../components/CartButton';
+import { cakeItemStillValid, cakeLinePrice } from '../cartValidation';
 import EditBanner from '../components/EditBanner';
 import { MAX_ITEMS, PRINT_TYPE_LABELS, PRINT_TYPE_HINT, manageHref, newKey, pesos } from '../bookingShared';
 import './BookingPage.css';
 
 // Booking page for a catalog v2 cake: pick color → size → bizcocho → relleno →
 // shape (+ text / print images when the design allows; adding images costs a
-// per-cake surcharge by print type), with the live price,
-// then the shared checkout. The server re-validates and re-prices everything.
+// per-cake surcharge by print type), with the live price. Date, customer data
+// and submit live on the cart page. The server re-validates and re-prices
+// everything.
 
 const CATALOG_HREF = '/catalogo';
-
-// Price of one cake as configured: this color's size price + the chosen
-// flavors' surcharges for that size + the print-image surcharge, if any.
-function linePrice(
-  catalog: PublicCakeCatalog,
-  size: PublicCakeSize,
-  bizcochoId: string,
-  rellenoId: string,
-  printImageType?: PrintImageType
-): number {
-  const extra = (flavorId: string) =>
-    catalog.flavors.find((f) => f.id === flavorId)?.surcharges[size.sizeId] ?? 0;
-  const imageExtra = printImageType ? catalog.printImagePrices[printImageType] : 0;
-  return size.price + extra(bizcochoId) + extra(rellenoId) + imageExtra;
-}
-
-// Is a saved cart line still valid against the live catalog, at the same price?
-function stillValid(catalog: PublicCakeCatalog, item: CakeCartItem): boolean {
-  const design = catalog.designs.find((d) => d.id === item.designId);
-  const color = design?.colors.find((c) => c.id === item.colorId);
-  const size = color?.sizes.find((s) => s.sizeId === item.sizeId);
-  if (!color || !size) return false;
-  if (!color.bizcochoIds.includes(item.bizcochoId) || !color.rellenoIds.includes(item.rellenoId)) return false;
-  if (!color.shapes.some((s) => s.id === item.shapeId)) return false;
-  const printType = item.customImageUrls?.length ? item.printImageType ?? 'NON_EDIBLE' : undefined;
-  return linePrice(catalog, size, item.bizcochoId, item.rellenoId, printType) === item.price;
-}
 
 export default function CakeBookingPage() {
   const { designId } = useParams();
@@ -61,7 +37,9 @@ export default function CakeBookingPage() {
 
   // The client's picks. Each is resolved against what the current color offers
   // (see below), so switching color never leaves an invalid pick behind.
-  const [colorId, setColorId] = useState('');
+  // ?color=<id> preselects the color whose photo the client tapped (home
+  // Favoritos). An unknown id falls back to the first color, like any pick.
+  const [colorId, setColorId] = useState(() => searchParams.get('color') ?? '');
   const [sizeId, setSizeId] = useState('');
   const [bizcochoId, setBizcochoId] = useState('');
   const [rellenoId, setRellenoId] = useState('');
@@ -85,7 +63,7 @@ export default function CakeBookingPage() {
         // order fail on submit. Other kinds of lines are left to their own page.
         // Lines kept from an order being modified keep their booked price, so
         // they're not checked against today's catalog.
-        const kept = draft.items.filter((i) => !isCakeItem(i) || !!i.keepItemId || stillValid(data, i));
+        const kept = draft.items.filter((i) => !isCakeItem(i) || !!i.keepItemId || cakeItemStillValid(data, i));
         if (kept.length !== draft.items.length) {
           draft.patch({ items: kept });
           setCartWasStale(true);
@@ -163,7 +141,7 @@ export default function CakeBookingPage() {
   const linePrintType = design?.allowsCustomImage && !skipImages && images.length > 0 ? printType : undefined;
 
   const price =
-    catalog && size && bizcocho && relleno ? linePrice(catalog, size, bizcocho.id, relleno.id, linePrintType) : null;
+    catalog && size && bizcocho && relleno ? cakeLinePrice(catalog, size, bizcocho.id, relleno.id, linePrintType) : null;
   // Replacing a line being changed never grows the cart.
   const cartFull = draft.items.length >= MAX_ITEMS && !editingItem;
   const needsImage = !!design?.allowsCustomImage && !skipImages && images.length === 0;
@@ -237,6 +215,12 @@ export default function CakeBookingPage() {
       navigate(manageHref(draft.edit.token));
       return;
     }
+    // "Cambiar" from the cart: replace the line and go back there.
+    if (editingItem) {
+      draft.replaceItem(editingItem.key, item);
+      navigate(CART_HREF);
+      return;
+    }
     draft.addItem(item);
     setCustomText('');
     setCustomImages([]);
@@ -244,7 +228,6 @@ export default function CakeBookingPage() {
     setNoImages(false);
     setImageError('');
     setJustAdded(true);
-    window.setTimeout(() => setJustAdded(false), 2500);
   }
 
   if (!loaded || !design || !color) {
@@ -483,10 +466,8 @@ export default function CakeBookingPage() {
               Un pedido web admite hasta {MAX_ITEMS} productos. Para más, escríbenos por WhatsApp.
             </p>
           )}
-          {justAdded && !cartFull && <p className="added-flash">Agregado a tu pedido ✓</p>}
+          {justAdded && <AddedToCart catalogHref={CATALOG_HREF} />}
         </section>
-
-        {!draft.edit && <BookingCheckout catalogHref={CATALOG_HREF} />}
       </main>
 
       <SiteFooter />
