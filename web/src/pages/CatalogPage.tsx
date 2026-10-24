@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getWithRetry } from '../api';
 import type { PublicCakeCatalog, PublicCakeDesign } from '../types';
 import { useAdminAuth } from '../context/AdminAuth';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import DesignCarousel from '../components/DesignCarousel';
+import MarqueeFrame from '../components/MarqueeFrame';
 import EditBanner from '../components/EditBanner';
-import { pesos } from '../bookingShared';
+import { catalogPhotoUrl, pesos } from '../bookingShared';
 import './CatalogPage.css';
 
 // How many price buttons to show at most. When there are more distinct prices,
@@ -46,6 +47,106 @@ function inBucket(price: number | null, bucket: PriceBucket): boolean {
   return bucket.orMore ? price >= bucket.min : price === bucket.min;
 }
 
+interface CatalogCardProps {
+  design: PublicCakeDesign;
+  selected: boolean;
+  onToggle: () => void;
+}
+
+// true while the element is on screen, or within `margin` of it. Used so only
+// the visible cards blink and rotate photos — the rest of the catalog sits still.
+function useInView<T extends Element>(margin: string): [RefObject<T | null>, boolean] {
+  const ref = useRef<T>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), {
+      rootMargin: margin,
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [margin]);
+  return [ref, inView];
+}
+
+// One design: photo (auto-cycling its colors, with carousel arrows to jump
+// between decorations without waiting) and the marquee sign with its name.
+function CatalogCard({ design, selected, onToggle }: CatalogCardProps) {
+  const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [cardRef, inView] = useInView<HTMLLIElement>('0px');
+  // A screen ahead: start fetching this card's color photos before the
+  // customer scrolls to it, so the arrows switch instantly.
+  const [preloadRef, nearView] = useInView<HTMLDivElement>('100% 0px');
+  const images = design.colors.map((c) => ({ id: c.id, colorName: c.colorName, imageUrl: c.imageUrl }));
+  const count = images.length;
+
+  useEffect(() => {
+    if (!nearView) return;
+    for (const img of images) {
+      if (img.imageUrl) new Image().src = catalogPhotoUrl(img.imageUrl);
+    }
+    // Only re-run when the card comes into view, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nearView]);
+
+  function step(delta: number) {
+    setIndex((i) => (i + delta + count) % count);
+    setPaused(true);
+  }
+
+  return (
+    <li ref={cardRef} className={`catalog-card ${selected ? 'is-selected' : ''}`}>
+      <div className="catalog-card-photo" ref={preloadRef}>
+        <button type="button" className="catalog-card-media" aria-pressed={selected} onClick={onToggle}>
+          <DesignCarousel
+            images={images}
+            fallbackImageUrl={design.colors[0]?.imageUrl ?? null}
+            alt={design.name}
+            index={index}
+            onIndexChange={setIndex}
+            paused={paused || !inView}
+          />
+        </button>
+        {count > 1 && (
+          <>
+            <button
+              type="button"
+              className="catalog-photo-arrow catalog-photo-arrow-prev"
+              aria-label="Ver decoración anterior"
+              onClick={() => step(-1)}
+            >
+              ‹
+            </button>
+            <button
+              type="button"
+              className="catalog-photo-arrow catalog-photo-arrow-next"
+              aria-label="Ver decoración siguiente"
+              onClick={() => step(1)}
+            >
+              ›
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="catalog-card-body">
+        {design.name && (
+          <div className="catalog-card-frame">
+            <MarqueeFrame title={design.name} live={inView} />
+          </div>
+        )}
+        {/* Desktop: only on the selected card. Mobile (one column): always,
+            see CatalogPage.css. */}
+        <Link to={`/tortas/${design.id}`} className="btn btn-primary catalog-card-cta">
+          Quiero esta
+        </Link>
+      </div>
+    </li>
+  );
+}
+
 // Cake catalog (catalog v2). One card per design, cycling through its color
 // photos. The price buttons filter by MiniCake price (most sales are
 // minicakes); bigger sizes and flavor surcharges show while building the order.
@@ -66,7 +167,11 @@ export default function CatalogPage() {
     setSlow(false);
     setError(false);
     getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog', { onSlow: () => setSlow(true) })
-      .then((data) => setDesigns(data.designs))
+      // Always A→Z by name (Spanish rules: accents and case don't matter), so
+      // every price filter shows its designs in the same order.
+      .then((data) =>
+        setDesigns([...data.designs].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))),
+      )
       .catch((err) => {
         console.error('Error cargando catálogo:', err);
         setError(true);
@@ -169,34 +274,14 @@ export default function CatalogPage() {
 
           {visibleDesigns.length > 0 && (
             <ul className="catalog-grid">
-              {visibleDesigns.map((design) => {
-                const isSelected = selectedId === design.id;
-                return (
-                  <li key={design.id} className={`catalog-card ${isSelected ? 'is-selected' : ''}`}>
-                    <button
-                      type="button"
-                      className="catalog-card-media"
-                      aria-pressed={isSelected}
-                      onClick={() => setSelectedId(isSelected ? null : design.id)}
-                    >
-                      <DesignCarousel
-                        images={design.colors.map((c) => ({ id: c.id, colorName: c.colorName, imageUrl: c.imageUrl }))}
-                        fallbackImageUrl={design.colors[0]?.imageUrl ?? null}
-                        alt={design.name}
-                      />
-                    </button>
-
-                    <div className="catalog-card-body">
-                      <h3>{design.name}</h3>
-                      {isSelected && (
-                        <Link to={`/tortas/${design.id}`} className="btn btn-primary catalog-card-cta">
-                          Quiero esta
-                        </Link>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
+              {visibleDesigns.map((design) => (
+                <CatalogCard
+                  key={design.id}
+                  design={design}
+                  selected={selectedId === design.id}
+                  onToggle={() => setSelectedId(selectedId === design.id ? null : design.id)}
+                />
+              ))}
             </ul>
           )}
         </div>

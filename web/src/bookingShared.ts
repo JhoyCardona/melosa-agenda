@@ -179,3 +179,9 @@ export function cartItemsFromOrder(order: ManagedOrderView): CartItem[] {
 export function manageHref(token: string): string {
   return `/mi-pedido/${token}`;
 }
+
+// Cloudinary resizes on its side: a phone-sized WebP/AVIF (~half the bytes of
+// the original JPG). Non-Cloudinary URLs pass through untouched.
+export function catalogPhotoUrl(url: string): string {
+  return url.replace('/image/upload/', '/image/upload/f_auto,q_auto,c_limit,w_800/');
+}
