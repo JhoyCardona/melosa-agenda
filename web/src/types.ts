@@ -224,6 +224,8 @@ export interface PublicCakeColor {
 export interface PublicCakeDesign {
   id: string;
   name: string;
+  // Product line: cakes and alfajor cakes share this catalog shape.
+  category: 'CAKE' | 'ALFAJOR_CAKE';
   allowsCustomImage: boolean;
   requiresCustomImage: boolean;
   allowsCustomText: boolean;

@@ -12,6 +12,7 @@ import type {
   CakeSizeSetting,
   FlavorKind,
 } from '../types';
+import { CATALOG_LINES, type CatalogLine } from '../catalogLines';
 import './adminLegacy.css';
 import './cakeSettings.css';
 
@@ -27,7 +28,8 @@ function usageNote(count: number): string {
   return `Está en ${count === 1 ? '1 color' : `${count} colores`} de diseños; se quitará de todos.`;
 }
 
-export default function CakeSettingsPage() {
+export default function CakeSettingsPage({ category = 'CAKE' }: { category?: CatalogLine }) {
+  const line = CATALOG_LINES[category];
   const navigate = useNavigate();
   const { isAdmin, logout } = useAdminAuth();
 
@@ -41,7 +43,7 @@ export default function CakeSettingsPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await api.get<CakeSettings>('/cake-settings');
+      const res = await api.get<CakeSettings>('/cake-settings', { params: { category } });
       setSettings(res.data);
       setLoadError('');
     } catch (err) {
@@ -52,7 +54,7 @@ export default function CakeSettingsPage() {
       }
       setLoadError(errorText(err, 'No se pudieron cargar los sabores, tamaños y formas'));
     }
-  }, [logout, navigate]);
+  }, [logout, navigate, category]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -187,12 +189,12 @@ export default function CakeSettingsPage() {
 
   return (
     <div className="admin-page cs-page">
-      <Link to="/admin/tortas" className="admin-back">
+      <Link to={line.adminHref} className="admin-back">
         ← Atrás
       </Link>
-      <h1>Sabores, tamaños y formas</h1>
+      <h1>Sabores, tamaños y formas{category === 'ALFAJOR_CAKE' && ' · torta de alfajor'}</h1>
       <p className="edit-hint">
-        Todo lo de esta página es global: aplica para todas las tortas. Lo que crees aquí nace
+        Todo lo de esta página es global: aplica para todas las {line.plural}. Lo que crees aquí nace
         <strong> desactivado</strong>; márcalo como activo cuando esté listo, y después cada diseño
         escoge cuáles permite.
       </p>
@@ -223,7 +225,7 @@ export default function CakeSettingsPage() {
         ))}
         <NewSizeForm
           busy={busy}
-          onCreate={(data) => run(() => api.post('/cake-settings/sizes', data), 'No se pudo crear el tamaño')}
+          onCreate={(data) => run(() => api.post('/cake-settings/sizes', { ...data, category }), 'No se pudo crear el tamaño')}
         />
       </section>
 
@@ -252,7 +254,7 @@ export default function CakeSettingsPage() {
           placeholder="Nombre de la nueva forma"
           buttonText="Agregar forma"
           busy={busy}
-          onCreate={(name) => run(() => api.post('/cake-settings/shapes', { name }), 'No se pudo crear la forma')}
+          onCreate={(name) => run(() => api.post('/cake-settings/shapes', { name, category }), 'No se pudo crear la forma')}
         />
       </section>
 
@@ -266,7 +268,7 @@ export default function CakeSettingsPage() {
         <section className="form-section" key={kind}>
           <h2>{title}</h2>
           <p className="edit-hint">
-            El valor de cada tamaño es lo que se <strong>suma</strong> al precio de la torta cuando el
+            El valor de cada tamaño es lo que se <strong>suma</strong> al precio cuando el
             cliente escoge ese sabor. Déjalo vacío si no cuesta más.
           </p>
           {flavors.length === 0 && <p className="muted">Todavía no hay sabores.</p>}
@@ -311,7 +313,7 @@ export default function CakeSettingsPage() {
             buttonText={`Agregar sabor de ${kind === 'BIZCOCHO' ? 'bizcocho' : 'relleno'}`}
             busy={busy}
             onCreate={(name) =>
-              run(() => api.post('/cake-settings/flavors', { name, kind }), 'No se pudo crear el sabor')
+              run(() => api.post('/cake-settings/flavors', { name, kind, category }), 'No se pudo crear el sabor')
             }
           />
         </section>
@@ -319,7 +321,7 @@ export default function CakeSettingsPage() {
 
       <div className="cs-save-bar">
         <p className="cs-save-note">
-          <strong>Aviso:</strong> los sabores que agregues aquí son globales; saldrán en todas las tortas
+          <strong>Aviso:</strong> los sabores que agregues aquí son globales; saldrán en todas las {line.plural}{' '}
           que los permitan.
         </p>
         {savedMessage && <p className="cs-saved">{savedMessage}</p>}

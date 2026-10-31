@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { PrismaClient, ItemCategory, Prisma } from '@prisma/client';
 import { AuthRequest } from '../middleware/authMiddleware';
+import { V2_DESIGN_WHERE, parseCatalogLine } from '../services/cakeCatalog';
 
 const prisma = new PrismaClient();
 
@@ -17,12 +18,8 @@ const TX_OPTIONS = { timeout: 15000, maxWait: 10000 };
 // v2 designs are told apart from the legacy catalog by having no
 // ProductVariant rows. Legacy designs stay out of this screen (and v2 ones stay
 // out of the legacy public catalog) until the switch-over retires them.
-
-const V2_DESIGN_WHERE: Prisma.ProductDesignWhereInput = {
-  category: ItemCategory.CAKE,
-  archivedAt: null,
-  variants: { none: {} },
-};
+// Cakes and alfajor cakes share this screen, one product line (`category`) at
+// a time; a design only uses the sizes/flavors/shapes of its own line.
 
 const COLOR_INCLUDE = {
   allowedFlavors: { select: { id: true } },
@@ -95,9 +92,14 @@ function parseImageLimits(v: unknown): Record<string, number> | null {
 
 // Replaces the design's per-size image caps. Rows equal to the default (1)
 // aren't stored — a missing row already means 1.
-async function writeImageLimits(tx: Prisma.TransactionClient, designId: string, limits: Record<string, number>) {
+async function writeImageLimits(
+  tx: Prisma.TransactionClient,
+  designId: string,
+  category: ItemCategory,
+  limits: Record<string, number>
+) {
   const sizeIds = Object.keys(limits);
-  const found = await tx.cakeSize.count({ where: { id: { in: sizeIds } } });
+  const found = await tx.cakeSize.count({ where: { id: { in: sizeIds }, category } });
   if (found !== sizeIds.length) throw new UnknownSizeError();
   await tx.designImageLimit.deleteMany({ where: { designId } });
   const rows = Object.entries(limits).filter(([, n]) => n > 1);
@@ -128,9 +130,11 @@ async function findV2Design(id: string) {
 // ─── Designs ───
 
 export async function listCakeDesigns(req: AuthRequest, res: Response) {
+  const category = parseCatalogLine(req.query.category);
+  if (!category) return res.status(400).json({ error: 'category no válida' });
   try {
     const designs = await prisma.productDesign.findMany({
-      where: V2_DESIGN_WHERE,
+      where: { ...V2_DESIGN_WHERE, category },
       orderBy: { name: 'asc' },
       include: { images: { orderBy: { createdAt: 'asc' }, include: COLOR_INCLUDE }, imageLimits: true },
     });
@@ -156,6 +160,8 @@ export async function listCakeDesigns(req: AuthRequest, res: Response) {
 
 export async function createCakeDesign(req: AuthRequest, res: Response) {
   const name = cleanName(req.body.name);
+  const category = parseCatalogLine(req.body.category);
+  if (!category) return res.status(400).json({ error: 'category no válida' });
   if (!name) return res.status(400).json({ error: 'El nombre del diseño es obligatorio (máx. 60 caracteres)' });
   const flags = parseFlags(req.body);
   if ('error' in flags) return res.status(400).json({ error: flags.error });
@@ -164,9 +170,9 @@ export async function createCakeDesign(req: AuthRequest, res: Response) {
 
   try {
     // Names aren't a DB-level unique (legacy designs are nameless), so check
-    // among the active v2 designs, ignoring case.
+    // among the active v2 designs of the same line, ignoring case.
     const clash = await prisma.productDesign.findFirst({
-      where: { ...V2_DESIGN_WHERE, name: { equals: name, mode: 'insensitive' } },
+      where: { ...V2_DESIGN_WHERE, category, name: { equals: name, mode: 'insensitive' } },
     });
     if (clash) return res.status(409).json({ error: 'Ya existe un diseño con ese nombre' });
 
@@ -174,7 +180,7 @@ export async function createCakeDesign(req: AuthRequest, res: Response) {
       const created = await tx.productDesign.create({
         data: {
           name,
-          category: ItemCategory.CAKE,
+          category,
           // Most designs take a print image and a text, so both default to
           // allowed; the admin screen opts a design out with "NO permite…".
           allowsCustomImage: true,
@@ -182,7 +188,7 @@ export async function createCakeDesign(req: AuthRequest, res: Response) {
           ...flags.data,
         },
       });
-      if (imageLimits) await writeImageLimits(tx, created.id, imageLimits);
+      if (imageLimits) await writeImageLimits(tx, created.id, category, imageLimits);
       return created;
     }, TX_OPTIONS);
     res.status(201).json(design);
@@ -208,16 +214,17 @@ export async function updateCakeDesign(req: AuthRequest, res: Response) {
   }
 
   try {
-    if (!(await findV2Design(id))) return res.status(404).json({ error: 'Diseño no encontrado' });
+    const existing = await findV2Design(id);
+    if (!existing) return res.status(404).json({ error: 'Diseño no encontrado' });
     if (typeof data.name === 'string') {
       const clash = await prisma.productDesign.findFirst({
-        where: { ...V2_DESIGN_WHERE, id: { not: id }, name: { equals: data.name, mode: 'insensitive' } },
+        where: { ...V2_DESIGN_WHERE, category: existing.category, id: { not: id }, name: { equals: data.name, mode: 'insensitive' } },
       });
       if (clash) return res.status(409).json({ error: 'Ya existe un diseño con ese nombre' });
     }
     const design = await prisma.$transaction(async (tx) => {
       const updated = await tx.productDesign.update({ where: { id }, data });
-      if (imageLimits) await writeImageLimits(tx, id, imageLimits);
+      if (imageLimits) await writeImageLimits(tx, id, existing.category, imageLimits);
       return updated;
     }, TX_OPTIONS);
     res.json(design);
@@ -327,10 +334,17 @@ export async function saveColorConfig(req: AuthRequest, res: Response) {
   }
 
   try {
+    // Only settings of the design's own product line are accepted.
+    const owner = await prisma.productDesignImage.findUnique({
+      where: { id: colorId },
+      select: { productDesign: { select: { category: true } } },
+    });
+    if (!owner) return res.status(404).json({ error: 'Color no encontrado' });
+    const { category } = owner.productDesign;
     const [flavorCount, shapeCount, sizeCount] = await Promise.all([
-      prisma.cakeFlavor.count({ where: { id: { in: flavorIds } } }),
-      prisma.cakeShape.count({ where: { id: { in: shapeIds } } }),
-      prisma.cakeSize.count({ where: { id: { in: prices.map(([id]) => id) } } }),
+      prisma.cakeFlavor.count({ where: { id: { in: flavorIds }, category } }),
+      prisma.cakeShape.count({ where: { id: { in: shapeIds }, category } }),
+      prisma.cakeSize.count({ where: { id: { in: prices.map(([id]) => id) }, category } }),
     ]);
     if (flavorCount !== new Set(flavorIds).size || shapeCount !== new Set(shapeIds).size || sizeCount !== prices.length) {
       return res.status(400).json({ error: 'Algún sabor, forma o tamaño ya no existe; recarga la página' });

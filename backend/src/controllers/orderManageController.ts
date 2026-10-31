@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient, Prisma, OrderStatus, ChangeActor, OrderChangeKind } from '@prisma/client';
+import { PrismaClient, Prisma, OrderStatus, ChangeActor, OrderChangeKind, ItemCategory } from '@prisma/client';
 import { isBusinessDay } from '../utils/colombianHolidays';
 import { computePaymentDueDate, earliestPublicDeliveryDate, isValidIsoDate } from '../utils/colombiaTime';
 import {
@@ -163,15 +163,19 @@ function snapshot(order: ManagedOrder | Omit<ManagedOrder, 'items'>, items: Mana
 }
 
 // "100% if it's the only item" for a line the client kept as it was: legacy
-// lines read their variant, v2 lines their size (by the label snapshot).
+// lines read their variant, v2 lines their size (by the label snapshot, within
+// the design's product line — cakes and alfajor cakes may share a label).
 async function keptFullPaymentFlags(items: ManagedOrder['items']): Promise<boolean[]> {
   const v2Labels = items.filter((it) => !it.variantId && it.customSize).map((it) => it.customSize!);
   const sizes = v2Labels.length
     ? await prisma.cakeSize.findMany({ where: { label: { in: v2Labels } } })
     : [];
-  const fullByLabel = new Map(sizes.map((s) => [s.label, s.requiresFullPayment]));
+  const key = (category: string | undefined, label: string) => `${category ?? ItemCategory.CAKE}:${label}`;
+  const fullByLabel = new Map(sizes.map((s) => [key(s.category, s.label), s.requiresFullPayment]));
   return items.map((it) =>
-    it.variant ? it.variant.enPromocion : !!(it.customSize && fullByLabel.get(it.customSize))
+    it.variant
+      ? it.variant.enPromocion
+      : !!(it.customSize && fullByLabel.get(key(it.productDesign?.category, it.customSize)))
   );
 }
 

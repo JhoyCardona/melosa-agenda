@@ -10,15 +10,18 @@ import { CART_HREF } from '../components/CartButton';
 import { cakeItemStillValid, cakeLinePrice } from '../cartValidation';
 import EditBanner from '../components/EditBanner';
 import { MAX_ITEMS, PRINT_TYPE_LABELS, PRINT_TYPE_HINT, manageHref, newKey, pesos } from '../bookingShared';
+import { CATALOG_LINES } from '../catalogLines';
 import './BookingPage.css';
 
-// Booking page for a catalog v2 cake: pick color → size → bizcocho → relleno →
+// Booking page for a catalog v2 cake or alfajor cake: pick color → size → bizcocho → relleno →
 // shape (+ text / print images when the design allows; adding images costs a
 // per-cake surcharge by print type), with the live price. Date, customer data
 // and submit live on the cart page. The server re-validates and re-prices
 // everything.
 
-const CATALOG_HREF = '/catalogo';
+// Where an unknown design falls back to. Known designs go back to their own
+// line's catalog (cakes or alfajor cakes).
+const DEFAULT_CATALOG_HREF = '/catalogo';
 
 export default function CakeBookingPage() {
   const { designId } = useParams();
@@ -55,7 +58,11 @@ export default function CakeBookingPage() {
   const [justAdded, setJustAdded] = useState(false);
 
   useEffect(() => {
-    getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog', { onSlow: () => setSlow(true) })
+    // Every line: the cart may mix cakes and alfajor cakes, and it's validated here.
+    getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog', {
+      onSlow: () => setSlow(true),
+      config: { params: { category: 'ALL' } },
+    })
       .then((data) => {
         setCatalog(data);
         // Drop saved cake lines that no longer match the live catalog (design,
@@ -79,6 +86,7 @@ export default function CakeBookingPage() {
   }, []);
 
   const design = catalog?.designs.find((d) => d.id === designId);
+  const catalogHref = design ? CATALOG_LINES[design.category].catalogHref : DEFAULT_CATALOG_HREF;
 
   // Load the line being changed into the configurator, once. Kept lines only
   // know names (the order stores names, not ids), so match by either.
@@ -89,10 +97,10 @@ export default function CakeBookingPage() {
     const it = editingItem;
     const c = design.colors.find((x) => x.id === it.colorId) ?? design.colors.find((x) => x.colorName === it.color);
     if (!c) return;
+    // Only this color's flavors: another product line may have one with the same name.
+    const offered = catalog.flavors.filter((f) => c.bizcochoIds.includes(f.id) || c.rellenoIds.includes(f.id));
     const flavorId = (id: string, name: string, kind: 'BIZCOCHO' | 'RELLENO') =>
-      catalog.flavors.find((f) => f.id === id)?.id ??
-      catalog.flavors.find((f) => f.kind === kind && f.name === name)?.id ??
-      '';
+      offered.find((f) => f.id === id)?.id ?? offered.find((f) => f.kind === kind && f.name === name)?.id ?? '';
     setColorId(c.id);
     setSizeId((c.sizes.find((x) => x.sizeId === it.sizeId) ?? c.sizes.find((x) => x.label === it.sizeLabel))?.sizeId ?? '');
     setBizcochoId(flavorId(it.bizcochoId, it.bizcochoName, 'BIZCOCHO'));
@@ -111,7 +119,7 @@ export default function CakeBookingPage() {
 
   // Unknown or no-longer-bookable design → back to the catalog.
   useEffect(() => {
-    if (loaded && !design) navigate(CATALOG_HREF, { replace: true });
+    if (loaded && !design) navigate(DEFAULT_CATALOG_HREF, { replace: true });
   }, [loaded, design, navigate]);
 
   // Effective selection: the pick if this color offers it, else a default.
@@ -252,7 +260,7 @@ export default function CakeBookingPage() {
       <main className="booking-main product-main">
         <EditBanner />
         {/* "Cambiar" from the cart goes back there; otherwise to the catalog. */}
-        <Link to={editingItem && !draft.edit ? CART_HREF : CATALOG_HREF} className="booking-back">
+        <Link to={editingItem && !draft.edit ? CART_HREF : catalogHref} className="booking-back">
           {editingItem && !draft.edit ? '← Volver a tu pedido' : '← Volver al catálogo'}
         </Link>
 
@@ -469,7 +477,7 @@ export default function CakeBookingPage() {
                 Un pedido web admite hasta {MAX_ITEMS} productos. Para más, escríbenos por WhatsApp.
               </p>
             )}
-            {justAdded && <AddedToCart catalogHref={CATALOG_HREF} />}
+            {justAdded && <AddedToCart catalogHref={catalogHref} />}
           </section>
         </div>
       </main>

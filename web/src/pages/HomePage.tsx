@@ -8,7 +8,7 @@ import './HomePage.css';
 
 import { BulbRow } from '../components/MarqueeAnnounce';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
-import { PRODUCT_LINES } from '../productLines';
+import { ALFAJOR_HREF, PRODUCT_LINES } from '../productLines';
 import PromoCarousel, { type PromoSlide } from '../components/PromoCarousel';
 import promoAlfajorPoster from '../assets/promo/promo-minicake-alfajor.jpeg';
 import minicakePhoto from '../assets/promo/minicake-blanca-verde.jpeg';
@@ -65,7 +65,6 @@ function fromPrice(design: PublicCakeDesign): number | null {
 
 export default function HomePage() {
   const [favorites, setFavorites] = useState<Favorite[] | null>(null);
-  const [alfajorId, setAlfajorId] = useState<string | null>(null);
   const [alfajorPhoto, setAlfajorPhoto] = useState<string>(alfajorFallback);
 
   useEffect(() => {
@@ -78,13 +77,13 @@ export default function HomePage() {
     getWithRetry<ProductDesign[]>('/product-designs')
       .then((data) => {
         const alfajor = data.find((d) => d.category === 'ALFAJOR_CAKE');
-        if (alfajor) setAlfajorId(alfajor.id);
         if (alfajor?.imageUrl) setAlfajorPhoto(alfajor.imageUrl);
       })
       .catch((err) => console.error('Error cargando diseño de alfajor:', err));
   }, []);
 
-  const alfajorHref = alfajorId ? `/agendar/${alfajorId}` : '/catalogo';
+  // Through /alfajor so the home follows the switch to the new alfajor catalog.
+  const alfajorHref = ALFAJOR_HREF;
 
   const [addressCopied, setAddressCopied] = useState(false);
 

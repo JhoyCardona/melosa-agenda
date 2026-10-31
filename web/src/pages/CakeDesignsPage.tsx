@@ -6,6 +6,7 @@ import PasswordPrompt from '../components/PasswordPrompt';
 import MoneyInput from '../components/MoneyInput';
 import { errorText, onlyDigits } from '../adminUtils';
 import type { CakeDesignV2, CakeSettings, DesignColorConfig } from '../types';
+import { CATALOG_LINES, type CatalogLine } from '../catalogLines';
 import './adminLegacy.css';
 import './cakeSettings.css';
 
@@ -22,7 +23,8 @@ function normalize(s: string): string {
   return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
 }
 
-export default function CakeDesignsPage() {
+export default function CakeDesignsPage({ category = 'CAKE' }: { category?: CatalogLine }) {
+  const line = CATALOG_LINES[category];
   const navigate = useNavigate();
   const { isAdmin, logout } = useAdminAuth();
 
@@ -37,8 +39,8 @@ export default function CakeDesignsPage() {
   const load = useCallback(async () => {
     try {
       const [d, s] = await Promise.all([
-        api.get<CakeDesignV2[]>('/cake-designs'),
-        api.get<CakeSettings>('/cake-settings'),
+        api.get<CakeDesignV2[]>('/cake-designs', { params: { category } }),
+        api.get<CakeSettings>('/cake-settings', { params: { category } }),
       ]);
       setDesigns(d.data);
       setSettings(s.data);
@@ -51,7 +53,7 @@ export default function CakeDesignsPage() {
       }
       setLoadError(errorText(err, 'No se pudieron cargar los diseños'));
     }
-  }, [logout, navigate]);
+  }, [logout, navigate, category]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -111,10 +113,10 @@ export default function CakeDesignsPage() {
 
   return (
     <div className="admin-page cs-page">
-      <Link to="/admin/tortas" className="admin-back">
+      <Link to={line.adminHref} className="admin-back">
         ← Atrás
       </Link>
-      <h1>Modificar / agregar diseños</h1>
+      <h1>Modificar / agregar diseños{category === 'ALFAJOR_CAKE' && ' · torta de alfajor'}</h1>
 
       {/* ─── 1. Name ─── */}
       <section className="form-section">
@@ -160,6 +162,7 @@ export default function CakeDesignsPage() {
 
         <DesignForm
           key={selectedId ?? 'new'}
+          category={category}
           design={selected}
           sizes={settings.sizes.filter((sz) => sz.active)}
           onSaved={async (id) => {
@@ -190,10 +193,12 @@ export default function CakeDesignsPage() {
 // ─── 1. Design name + customization ───
 
 function DesignForm({
+  category,
   design,
   sizes,
   onSaved,
 }: {
+  category: CatalogLine;
   design: CakeDesignV2 | null;
   sizes: CakeSettings['sizes'];
   onSaved: (id: string) => Promise<void>;
@@ -234,7 +239,7 @@ function DesignForm({
     try {
       const res = design
         ? await api.patch<{ id: string }>(`/cake-designs/${design.id}`, body)
-        : await api.post<{ id: string }>('/cake-designs', body);
+        : await api.post<{ id: string }>('/cake-designs', { ...body, category });
       await onSaved(res.data.id);
       if (design) setSaved('Guardado ✔');
     } catch (err) {

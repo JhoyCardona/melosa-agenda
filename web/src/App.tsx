@@ -15,6 +15,7 @@ import CakeSettingsPage from './pages/CakeSettingsPage';
 import CakeDesignsPage from './pages/CakeDesignsPage';
 import AlfajorModulePage from './pages/AlfajorModulePage';
 import AlfajorCakePage from './pages/AlfajorCakePage';
+import AlfajorCakeModulePage from './pages/AlfajorCakeModulePage';
 import ScrollToTop from './components/ScrollToTop';
 
 export default function App() {
@@ -25,7 +26,9 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         {/* Old test address of the redesigned home, in case someone kept it. */}
         <Route path="/nuevo" element={<Navigate to="/" replace />} />
-        <Route path="/catalogo" element={<CatalogPage />} />
+        {/* `key` so switching between the two catalogs remounts (fresh state). */}
+        <Route path="/catalogo" element={<CatalogPage key="CAKE" />} />
+        <Route path="/catalogo-alfajor" element={<CatalogPage key="ALFAJOR_CAKE" category="ALFAJOR_CAKE" />} />
         {/* Always enter the customizer from the catalog, so the customer sees the
             design they're ordering. */}
         <Route path="/agendar" element={<Navigate to="/catalogo" replace />} />
@@ -40,10 +43,19 @@ export default function App() {
         <Route path="/admin/pedidos/nuevo" element={<NewOrderPage />} />
         <Route path="/admin/panel" element={<AdminPanelPage />} />
         <Route path="/admin/tortas" element={<CakeModulePage />} />
-        <Route path="/admin/tortas/sabores-tamanos" element={<CakeSettingsPage />} />
-        <Route path="/admin/tortas/disenos" element={<CakeDesignsPage />} />
+        <Route path="/admin/tortas/sabores-tamanos" element={<CakeSettingsPage key="CAKE" />} />
+        <Route path="/admin/tortas/disenos" element={<CakeDesignsPage key="CAKE" />} />
         <Route path="/admin/alfajores" element={<AlfajorModulePage />} />
-        <Route path="/admin/alfajores/torta" element={<AlfajorCakePage />} />
+        <Route path="/admin/alfajores/torta" element={<AlfajorCakeModulePage />} />
+        <Route
+          path="/admin/alfajores/torta/sabores-tamanos"
+          element={<CakeSettingsPage key="ALFAJOR_CAKE" category="ALFAJOR_CAKE" />}
+        />
+        <Route
+          path="/admin/alfajores/torta/disenos"
+          element={<CakeDesignsPage key="ALFAJOR_CAKE" category="ALFAJOR_CAKE" />}
+        />
+        <Route path="/admin/alfajores/torta/anterior" element={<AlfajorCakePage />} />
       </Routes>
     </>
   );

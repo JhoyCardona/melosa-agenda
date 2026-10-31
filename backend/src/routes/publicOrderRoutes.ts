@@ -10,7 +10,7 @@ import {
 import { getDeliveryPreview } from '../services/availability';
 import { isValidIsoDate } from '../utils/colombiaTime';
 import upload from '../config/multer';
-import { getPublicCakeCatalog, PRINT_IMAGE_PRICES } from '../services/cakeCatalog';
+import { getPublicCakeCatalog, PRINT_IMAGE_PRICES, CATALOG_LINES, parseCatalogLine } from '../services/cakeCatalog';
 
 const router = Router();
 
@@ -55,10 +55,14 @@ router.post('/manage/modify', manageLimiter, modifyManagedOrder);
 router.post('/manage/cancel', manageLimiter, cancelManagedOrder);
 
 // Catalog v2 cakes the public can book (designs + their complete colors, and
-// the active flavors with their per-size surcharges).
+// the active flavors with their per-size surcharges). ?category=ALFAJOR_CAKE
+// for alfajor cakes, ?category=ALL for every line (cart and order-edit pages,
+// which may hold both); no param = cakes only.
 router.get('/cake-catalog', async (req, res) => {
+  const lines = req.query.category === 'ALL' ? [...CATALOG_LINES] : [parseCatalogLine(req.query.category)];
+  if (lines.includes(null)) return res.status(400).json({ error: 'category no válida' });
   try {
-    res.json(await getPublicCakeCatalog());
+    res.json(await getPublicCakeCatalog(lines.filter((l) => l !== null)));
   } catch (error) {
     console.error('Error cargando catálogo de tortas:', error);
     res.status(500).json({ error: 'No se pudo cargar el catálogo. Intenta de nuevo.' });

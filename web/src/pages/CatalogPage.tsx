@@ -8,6 +8,7 @@ import DesignCarousel from '../components/DesignCarousel';
 import MarqueeFrame from '../components/MarqueeFrame';
 import EditBanner from '../components/EditBanner';
 import { catalogPhotoUrl, pesos } from '../bookingShared';
+import { CATALOG_LINES, type CatalogLine } from '../catalogLines';
 import './CatalogPage.css';
 
 // How many price buttons to show at most. When there are more distinct prices,
@@ -146,9 +147,11 @@ function CatalogCard({ design }: CatalogCardProps) {
 // Cake catalog (catalog v2). One card per design, its color photos one tap
 // of the arrows away. The price buttons filter by MiniCake price (most sales are
 // minicakes); bigger sizes and flavor surcharges show while building the order.
-// Other product families (alfajores, cupcakes, postres) will get their own
-// catalogs; the alfajor minicake is booked from the Landing's own button.
-export default function CatalogPage() {
+// The same page, with category="ALFAJOR_CAKE", is the alfajor cake catalog
+// (/catalogo-alfajor); cupcakes and postres will get their own later.
+export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogLine }) {
+  const line = CATALOG_LINES[category];
+  const isAlfajor = category === 'ALFAJOR_CAKE';
   const { isAdmin } = useAdminAuth();
   const [designs, setDesigns] = useState<PublicCakeDesign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,7 +164,10 @@ export default function CatalogPage() {
     setLoading(true);
     setSlow(false);
     setError(false);
-    getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog', { onSlow: () => setSlow(true) })
+    getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog', {
+      onSlow: () => setSlow(true),
+      config: { params: { category } },
+    })
       // Always A→Z by name (Spanish rules: accents and case don't matter), so
       // every price filter shows its designs in the same order.
       .then((data) =>
@@ -175,7 +181,7 @@ export default function CatalogPage() {
         setLoading(false);
         setSlow(false);
       });
-  }, []);
+  }, [category]);
 
   useEffect(() => {
     loadCatalog();
@@ -200,10 +206,10 @@ export default function CatalogPage() {
       <main className="section">
         <div className="section-inner">
           <EditBanner />
-          <p className="eyebrow">Catálogo de tortas</p>
+          <p className="eyebrow">{isAlfajor ? 'Catálogo de tortas de alfajor' : 'Catálogo de tortas'}</p>
           <h1>Elige tu diseño</h1>
           {isAdmin && (
-            <Link to="/admin/tortas/disenos" className="btn btn-ghost catalog-admin-cta">
+            <Link to={line.designsHref} className="btn btn-ghost catalog-admin-cta">
               Editar diseños
             </Link>
           )}
@@ -218,8 +224,8 @@ export default function CatalogPage() {
 
           {!loading && !error && buckets.length > 0 && (
             <>
-              <p className="price-tabs-label">Precio MiniCake:</p>
-              <div className="price-tabs" role="group" aria-label="Filtrar diseños por precio de MiniCake">
+              <p className="price-tabs-label">{isAlfajor ? 'Precio desde:' : 'Precio MiniCake:'}</p>
+              <div className="price-tabs" role="group" aria-label="Filtrar diseños por precio">
                 <button
                   type="button"
                   className={`price-tab ${bucket === null ? 'price-tab-active' : ''}`}

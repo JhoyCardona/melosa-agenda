@@ -96,10 +96,10 @@ export default function AlfajorCakePage() {
 
   return (
     <div className="admin-page">
-      <Link to="/admin/alfajores" className="admin-back">
+      <Link to="/admin/alfajores/torta" className="admin-back">
         ← Atrás
       </Link>
-      <h1>Torta de alfajor</h1>
+      <h1>Torta de alfajor actual (versión anterior)</h1>
 
       {!design ? (
         <p className="warning">No se encontró la torta de alfajor en el catálogo.</p>

@@ -102,7 +102,8 @@ export default function NewOrderPage() {
       navigate('/admin', { replace: true });
       return;
     }
-    getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog')
+    // Cakes and alfajor cakes: both can be added as catalog lines.
+    getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog', { config: { params: { category: 'ALL' } } })
       .then(setCatalog)
       .catch(() => setError('No se pudo cargar el catálogo'));
     api

@@ -77,7 +77,9 @@ export function useCartRevalidation(
     if (!hasCakes && !hasLegacy) return;
 
     Promise.all([
-      hasCakes ? getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog') : null,
+      hasCakes
+        ? getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog', { config: { params: { category: 'ALL' } } })
+        : null,
       hasLegacy ? getWithRetry<ProductDesign[]>('/product-designs') : null,
       hasLegacy
         ? getWithRetry<Record<PrintImageType, number>>('/public-orders/print-image-prices').catch(() => null)
