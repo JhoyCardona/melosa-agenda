@@ -9,6 +9,7 @@ import MarqueeFrame from '../components/MarqueeFrame';
 import EditBanner from '../components/EditBanner';
 import { catalogPhotoUrl, pesos } from '../bookingShared';
 import { CATALOG_LINES, type CatalogLine } from '../catalogLines';
+import { searchByName } from '../fuzzySearch';
 import './CatalogPage.css';
 
 // How many price buttons to show at most. When there are more distinct prices,
@@ -159,6 +160,7 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
   const [error, setError] = useState(false);
   // null = "Todos".
   const [bucket, setBucket] = useState<PriceBucket | null>(null);
+  const [query, setQuery] = useState('');
 
   const loadCatalog = useCallback(() => {
     setLoading(true);
@@ -191,7 +193,11 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
     () => priceBuckets(designs.map(minicakePrice).filter((p): p is number => p !== null)),
     [designs],
   );
-  const visibleDesigns = bucket ? designs.filter((d) => inBucket(minicakePrice(d), bucket)) : designs;
+  const priceFiltered = bucket ? designs.filter((d) => inBucket(minicakePrice(d), bucket)) : designs;
+  // Name search runs inside the price filter; no matches → closest names instead.
+  const search = useMemo(() => searchByName(priceFiltered, query, (d) => d.name), [priceFiltered, query]);
+  const searching = query.trim() !== '';
+  const visibleDesigns = search.matches.length > 0 ? search.matches : search.suggestions;
 
   function pickBucket(next: PriceBucket | null) {
     // Tapping the active price again goes back to "Todos".
@@ -221,6 +227,24 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
             En este momento solo estamos agendando los diseños y colores que verás a continuación.
             Solo puedes editar la imagen y/o el texto, si el diseño lo permite.
           </p>
+
+          {!loading && !error && designs.length > 0 && (
+            <div className="catalog-search">
+              <label htmlFor="catalog-search-input" className="price-tabs-label">
+                Busca tu torta por nombre:
+              </label>
+              <input
+                id="catalog-search-input"
+                type="search"
+                className="catalog-search-input"
+                placeholder="Ej: corazón, vintage..."
+                value={query}
+                autoComplete="off"
+                enterKeyHint="search"
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+          )}
 
           {!loading && !error && buckets.length > 0 && (
             <>
@@ -270,6 +294,26 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
           )}
           {!loading && !error && designs.length === 0 && (
             <p className="muted">Pronto vamos a subir nuestros diseños acá.</p>
+          )}
+
+          {searching && search.matches.length === 0 && (
+            <div className="catalog-search-empty">
+              <p>
+                No encontramos una torta llamada <strong>“{query.trim()}”</strong>
+                {bucket ? ' en este precio' : ''}.
+                {search.suggestions.length > 0 && ' ¿Quisiste decir alguna de estas?'}
+              </p>
+              <div className="catalog-search-actions">
+                {bucket && (
+                  <button type="button" className="link-button" onClick={() => setBucket(null)}>
+                    Buscar en todos los precios
+                  </button>
+                )}
+                <button type="button" className="link-button" onClick={() => setQuery('')}>
+                  Borrar búsqueda
+                </button>
+              </div>
+            </div>
           )}
 
           {visibleDesigns.length > 0 && (
