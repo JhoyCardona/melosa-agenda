@@ -16,9 +16,22 @@ export const PRINT_IMAGE_PRICES: Record<PrintImageType, number> = {
   EDIBLE: 14000,
 };
 
-// v2 designs: CAKE, not archived, and no legacy ProductVariant rows.
+// Product lines that use the v2 catalog (designs + colors + their own
+// sizes/flavors/shapes). Alfajor cakes run on the same machinery as cakes,
+// each line with its own settings.
+export const CATALOG_LINES = [ItemCategory.CAKE, ItemCategory.ALFAJOR_CAKE] as const;
+export type CatalogLine = (typeof CATALOG_LINES)[number];
+
+// Reads a product line from a query/body value. Missing = CAKE, so callers
+// that predate alfajor (installed web, old links) keep getting cakes only.
+export function parseCatalogLine(v: unknown): CatalogLine | null {
+  if (v === undefined) return ItemCategory.CAKE;
+  return CATALOG_LINES.find((l) => l === v) ?? null;
+}
+
+// v2 designs: a v2 product line, not archived, and no legacy ProductVariant rows.
 export const V2_DESIGN_WHERE: Prisma.ProductDesignWhereInput = {
-  category: ItemCategory.CAKE,
+  category: { in: [...CATALOG_LINES] },
   archivedAt: null,
   variants: { none: {} },
 };
@@ -53,11 +66,15 @@ function bookableParts(color: CatalogColor) {
 // Public cake catalog: every v2 design with at least one complete color. An
 // incomplete color (no active size, bizcocho, relleno or shape) is left out
 // entirely, so the booking page never offers something the order endpoint
-// would reject.
-export async function getPublicCakeCatalog() {
+// would reject. `lines` picks the product lines to include.
+export async function getPublicCakeCatalog(lines: CatalogLine[] = [ItemCategory.CAKE]) {
   const [designs, flavors] = await Promise.all([
-    prisma.productDesign.findMany({ where: V2_DESIGN_WHERE, orderBy: { name: 'asc' }, include: CATALOG_INCLUDE }),
-    prisma.cakeFlavor.findMany({ where: { active: true }, include: { surcharges: true } }),
+    prisma.productDesign.findMany({
+      where: { ...V2_DESIGN_WHERE, category: { in: lines } },
+      orderBy: { name: 'asc' },
+      include: CATALOG_INCLUDE,
+    }),
+    prisma.cakeFlavor.findMany({ where: { active: true, category: { in: lines } }, include: { surcharges: true } }),
   ]);
 
   const catalog = designs
@@ -83,6 +100,7 @@ export async function getPublicCakeCatalog() {
       return {
         id: d.id,
         name: d.name,
+        category: d.category,
         allowsCustomImage: d.allowsCustomImage,
         requiresCustomImage: d.requiresCustomImage,
         allowsCustomText: d.allowsCustomText,

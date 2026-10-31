@@ -201,16 +201,20 @@ model ProductDesignImage {
 }
 
 // ─── Catalog v2: global cake settings ("Sabores, tamaños y formas" screen) ───
-// Everything here is global. A row with active = false is hidden from every
+// Everything here is global within its product line (`category`): cakes and
+// alfajor cakes each have their own sizes, flavors and shapes, and a design
+// only picks from its own line. A row with active = false is hidden from every
 // design, whatever the design's own checkboxes say. New rows start inactive so
 // a half-configured size or flavor never leaks to the public page.
 
 model CakeSize {
-  id                  String   @id @default(uuid())
-  label               String   @unique // "MiniCake", "6 porciones"
+  id                  String       @id @default(uuid())
+  // Product line this size belongs to (CAKE or ALFAJOR_CAKE).
+  category            ItemCategory @default(CAKE)
+  label               String // "MiniCake", "6 porciones"
   // Sort key — the list always shows sizes by portion count, so a size added
   // later ("7 porciones") lands in its natural place.
-  portions            Int      @unique
+  portions            Int
   // Minutes one cake of this size takes on the delivery timeline.
   prepMinutes         Int
   // An order made of exactly one cake of this size must be paid 100% up front
@@ -222,10 +226,14 @@ model CakeSize {
   surcharges  FlavorSurcharge[]
   colorPrices ColorSizePrice[]
   imageLimits DesignImageLimit[]
+
+  @@unique([category, label])
+  @@unique([category, portions])
 }
 
 model CakeFlavor {
-  id        String     @id @default(uuid())
+  id        String       @id @default(uuid())
+  category  ItemCategory @default(CAKE)
   name      String // "Vainilla Fiesta"
   kind      FlavorKind
   active    Boolean    @default(false)
@@ -234,7 +242,7 @@ model CakeFlavor {
   surcharges FlavorSurcharge[]
   colors     ProductDesignImage[] @relation("ColorFlavors")
 
-  @@unique([kind, name])
+  @@unique([category, kind, name])
 }
 
 // Extra cost of a flavor in a given size. Final price of a cake =
@@ -251,12 +259,15 @@ model FlavorSurcharge {
 }
 
 model CakeShape {
-  id        String   @id @default(uuid())
-  name      String   @unique // "Redonda", "Corazón"
+  id        String       @id @default(uuid())
+  category  ItemCategory @default(CAKE)
+  name      String // "Redonda", "Corazón"
   active    Boolean  @default(false)
   createdAt DateTime @default(now())
 
   colors ProductDesignImage[] @relation("ColorShapes")
+
+  @@unique([category, name])
 }
 
 // A size offered for one design color, with that color's own price. The row's

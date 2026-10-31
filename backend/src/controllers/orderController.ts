@@ -610,7 +610,13 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
     for (const order of orders) {
       const isUnpaid = !PAID_STATUSES.has(order.status);
       for (const item of order.items) {
-        const sizeLabel = item.variant?.label ?? item.customSize ?? item.customName ?? 'Personalizado';
+        const baseLabel = item.variant?.label ?? item.customSize ?? item.customName ?? 'Personalizado';
+        // A catalog-v2 alfajor cake may share its size name with a cake
+        // ("MiniCake"); prefix it so the two never merge in the bake list.
+        const sizeLabel =
+          !item.variantId && item.productDesign?.category === ItemCategory.ALFAJOR_CAKE
+            ? `Torta de alfajor · ${baseLabel}`
+            : baseLabel;
         const shape = item.shape ?? 'Sin forma definida';
         const flavor = item.flavor ?? item.customFlavor ?? 'Sin sabor definido';
 

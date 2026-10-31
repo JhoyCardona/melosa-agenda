@@ -1,6 +1,7 @@
 import { Response } from 'express';
-import { PrismaClient, FlavorKind, Prisma } from '@prisma/client';
+import { PrismaClient, FlavorKind, ItemCategory, Prisma } from '@prisma/client';
 import { AuthRequest } from '../middleware/authMiddleware';
+import { parseCatalogLine } from '../services/cakeCatalog';
 
 const prisma = new PrismaClient();
 
@@ -13,6 +14,8 @@ const TX_OPTIONS = { timeout: 15000, maxWait: 10000 };
 // lists every cake design picks from. All routes are admin-only. New rows are
 // created inactive — gretica ticks "active" once a size/flavor is fully set up,
 // so a half-configured one never reaches the public booking page.
+// Each product line (cakes, alfajor cakes) has its own lists: GET takes
+// ?category=, creates take `category` in the body (both default to CAKE).
 
 const VALID_KINDS = Object.values(FlavorKind);
 
@@ -49,16 +52,18 @@ function parseSurcharges(v: unknown): Record<string, number> | null {
   return Object.fromEntries(entries) as Record<string, number>;
 }
 
-// Upserts one FlavorSurcharge row per size. Only sizes that exist are written;
-// an unknown sizeId is rejected up front so a typo can't silently vanish.
+// Upserts one FlavorSurcharge row per size. Only sizes of the flavor's own
+// product line are written; an unknown sizeId is rejected up front so a typo
+// can't silently vanish.
 async function writeSurcharges(
   tx: Prisma.TransactionClient,
   flavorId: string,
+  category: ItemCategory,
   surcharges: Record<string, number>
 ) {
   const sizeIds = Object.keys(surcharges);
   if (sizeIds.length === 0) return;
-  const found = await tx.cakeSize.count({ where: { id: { in: sizeIds } } });
+  const found = await tx.cakeSize.count({ where: { id: { in: sizeIds }, category } });
   if (found !== sizeIds.length) throw new UnknownSizeError();
   for (const [sizeId, amount] of Object.entries(surcharges)) {
     await tx.flavorSurcharge.upsert({
@@ -77,17 +82,22 @@ class UnknownSizeError extends Error {}
 // surcharges as a { sizeId: amount } map (a missing size = 0), and every row
 // carries how many design colors use it, so the UI can warn before a delete.
 export async function getCakeSettings(req: AuthRequest, res: Response) {
+  const category = parseCatalogLine(req.query.category);
+  if (!category) return res.status(400).json({ error: 'category no válida' });
   try {
     const [sizes, flavors, shapes] = await Promise.all([
       prisma.cakeSize.findMany({
+        where: { category },
         orderBy: { portions: 'asc' },
         include: { _count: { select: { colorPrices: true } } },
       }),
       prisma.cakeFlavor.findMany({
+        where: { category },
         orderBy: { createdAt: 'asc' },
         include: { surcharges: true, _count: { select: { colors: true } } },
       }),
       prisma.cakeShape.findMany({
+        where: { category },
         orderBy: { createdAt: 'asc' },
         include: { _count: { select: { colors: true } } },
       }),
@@ -119,7 +129,9 @@ export async function getCakeSettings(req: AuthRequest, res: Response) {
 export async function createCakeSize(req: AuthRequest, res: Response) {
   const { portions, prepMinutes, requiresFullPayment } = req.body;
   const label = cleanName(req.body.label);
+  const category = parseCatalogLine(req.body.category);
 
+  if (!category) return res.status(400).json({ error: 'category no válida' });
   if (!label) return res.status(400).json({ error: 'El nombre del tamaño es obligatorio (máx. 60 caracteres)' });
   if (!isPositiveInt(portions)) return res.status(400).json({ error: 'Las porciones deben ser un número entero mayor a 0' });
   if (!isPositiveInt(prepMinutes) || prepMinutes > MAX_PREP_MINUTES) {
@@ -131,7 +143,7 @@ export async function createCakeSize(req: AuthRequest, res: Response) {
 
   try {
     const size = await prisma.cakeSize.create({
-      data: { label, portions, prepMinutes, requiresFullPayment: requiresFullPayment ?? false },
+      data: { category, label, portions, prepMinutes, requiresFullPayment: requiresFullPayment ?? false },
     });
     res.status(201).json(size);
   } catch (error) {
@@ -206,15 +218,17 @@ export async function createCakeFlavor(req: AuthRequest, res: Response) {
   const name = cleanName(req.body.name);
   const kind = req.body.kind as FlavorKind;
   const surcharges = req.body.surcharges === undefined ? {} : parseSurcharges(req.body.surcharges);
+  const category = parseCatalogLine(req.body.category);
 
+  if (!category) return res.status(400).json({ error: 'category no válida' });
   if (!name) return res.status(400).json({ error: 'El nombre del sabor es obligatorio (máx. 60 caracteres)' });
   if (!VALID_KINDS.includes(kind)) return res.status(400).json({ error: `kind debe ser uno de: ${VALID_KINDS.join(', ')}` });
   if (!surcharges) return res.status(400).json({ error: 'Los recargos deben ser montos enteros mayores o iguales a 0' });
 
   try {
     const flavor = await prisma.$transaction(async (tx) => {
-      const created = await tx.cakeFlavor.create({ data: { name, kind } });
-      await writeSurcharges(tx, created.id, surcharges);
+      const created = await tx.cakeFlavor.create({ data: { category, name, kind } });
+      await writeSurcharges(tx, created.id, category, surcharges);
       return created;
     }, TX_OPTIONS);
     res.status(201).json(flavor);
@@ -246,7 +260,7 @@ export async function updateCakeFlavor(req: AuthRequest, res: Response) {
   try {
     const flavor = await prisma.$transaction(async (tx) => {
       const updated = await tx.cakeFlavor.update({ where: { id }, data });
-      await writeSurcharges(tx, id, surcharges);
+      await writeSurcharges(tx, id, updated.category, surcharges);
       return updated;
     }, TX_OPTIONS);
     res.json(flavor);
@@ -277,10 +291,12 @@ export async function deleteCakeFlavor(req: AuthRequest, res: Response) {
 
 export async function createCakeShape(req: AuthRequest, res: Response) {
   const name = cleanName(req.body.name);
+  const category = parseCatalogLine(req.body.category);
+  if (!category) return res.status(400).json({ error: 'category no válida' });
   if (!name) return res.status(400).json({ error: 'El nombre de la forma es obligatorio (máx. 60 caracteres)' });
 
   try {
-    const shape = await prisma.cakeShape.create({ data: { name } });
+    const shape = await prisma.cakeShape.create({ data: { category, name } });
     res.status(201).json(shape);
   } catch (error) {
     if (isUniqueViolation(error)) return res.status(409).json({ error: 'Ya existe una forma con ese nombre' });
