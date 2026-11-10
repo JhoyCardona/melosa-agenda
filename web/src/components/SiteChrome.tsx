@@ -22,7 +22,6 @@ export function AnnouncementBar() {
 
 // Hash links point at home sections; ScrollToTop scrolls to them on arrival.
 const NAV_LINKS = [
-  { to: `${HOME_HREF}#promociones`, label: 'Promociones' },
   { to: `${HOME_HREF}#como`, label: 'Cómo pedir' },
   { to: `${HOME_HREF}#domicilios`, label: '¿Domicilios?' },
 ];
@@ -39,8 +38,6 @@ export function SiteHeader() {
     setMenuOpen(false);
     setProductsOpen(false);
   }
-
-  const [promos, ...rest] = NAV_LINKS;
 
   return (
     <header className="site-header">
@@ -65,9 +62,6 @@ export function SiteHeader() {
         </div>
       </div>
       <nav id="site-nav" className={`site-nav ${menuOpen ? 'is-open' : ''}`}>
-        <Link to={promos.to} onClick={closeAll}>
-          {promos.label}
-        </Link>
         <div className="site-nav-group">
           <button
             type="button"
@@ -96,7 +90,7 @@ export function SiteHeader() {
             </ul>
           )}
         </div>
-        {rest.map((l) => (
+        {NAV_LINKS.map((l) => (
           <Link key={l.to} to={l.to} onClick={closeAll}>
             {l.label}
           </Link>
