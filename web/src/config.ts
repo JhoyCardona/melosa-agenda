@@ -6,6 +6,8 @@ export const WHATSAPP_NUMBER = '573172932484';
 
 // Default greeting, matches the shortened tinyurl.com/melosa-bakery-oficial link.
 export const WHATSAPP_DEFAULT_MESSAGE = 'Hola Melosa, quiero cotizar uno de tus productos 😊';
+// "+200 alfajores" buttons: bigger alfajor orders are quoted by hand.
+export const ALFAJOR_QUOTE_MESSAGE = 'Hola Melosa, quiero cotizar más de 200 alfajores 😊';
 
 // Always build wa.me links from the raw number, never from the tinyurl: a
 // shortener can't forward a dynamic ?text= message (the booking confirmation

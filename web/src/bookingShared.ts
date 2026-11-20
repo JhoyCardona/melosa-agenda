@@ -6,6 +6,14 @@ import { isCakeItem } from './types';
 
 // Mirrors the backend cap (createPublicOrder). Bigger orders go through WhatsApp.
 export const MAX_ITEMS = 12;
+// Small alfajores: most a web order can hold, all boxes added up (backend
+// MAX_ALFAJORES_PER_PUBLIC_ORDER). More than that is quoted by WhatsApp.
+export const MAX_ALFAJORES = 200;
+
+// Alfajores in the cart (small-alfajor boxes only).
+export function alfajorCount(items: CartItem[]): number {
+  return items.reduce((sum, i) => sum + (isCakeItem(i) ? i.unitsPerBox ?? 0 : 0), 0);
+}
 export const MAX_CLIENT_NAME = 120;
 
 export const PRINT_TYPE_LABELS: Record<PrintImageType, string> = {
@@ -52,6 +60,7 @@ export function newKey(): string {
 // 3 gatos" -> "MiniCake (3 gatos)", anything else -> "Torta <label>". Catalog v2
 // cakes use the size's own label as gretica named it.
 function whatsappItemLabel(item: CartItem): string {
+  if (isCakeItem(item) && item.unitsPerBox) return `Caja de ${item.unitsPerBox} alfajores ${item.sizeLabel.toLowerCase()}`;
   if (isCakeItem(item)) return item.sizeLabel;
   const option = item.variantLabel.split(' · ')[1];
   if (item.variantLabel.startsWith('Minicake')) return option ? `MiniCake (${option})` : 'MiniCake';
@@ -60,6 +69,8 @@ function whatsappItemLabel(item: CartItem): string {
 
 // Smallest size first so the message reads in a predictable order.
 function whatsappSortKey(item: CartItem, label: string): number {
+  // Alfajor boxes after the cakes, smallest box first.
+  if (isCakeItem(item) && item.unitsPerBox) return 100000 + item.unitsPerBox;
   if (isCakeItem(item)) return item.portions;
   if (label === 'MiniCake' || label.startsWith('MiniCake ')) return 0;
   const match = label.match(/(\d+)/);
@@ -84,9 +95,18 @@ export function itemsBreakdown(items: CartItem[]): string {
 
 // One-line description of a cart line for the cart list.
 export function cartItemSummary(i: CartItem): string {
-  const parts = isCakeItem(i)
-    ? [i.designName, i.sizeLabel, i.color, `Bizcocho ${i.bizcochoName}`, `Relleno ${i.rellenoName}`, i.shapeName]
-    : [i.designName, i.variantLabel, flavorLabels[i.flavor], i.relleno, i.color, i.shape];
+  const parts =
+    isCakeItem(i) && i.unitsPerBox
+      ? [
+          i.designName,
+          `${i.unitsPerBox} alfajores ${i.sizeLabel.toLowerCase()}`,
+          `Empaque ${i.color}`,
+          `${i.bizcochoName} con ${i.rellenoName.toLowerCase()}`,
+          i.shapeName,
+        ]
+      : isCakeItem(i)
+        ? [i.designName, i.sizeLabel, i.color, `Bizcocho ${i.bizcochoName}`, `Relleno ${i.rellenoName}`, i.shapeName]
+        : [i.designName, i.variantLabel, flavorLabels[i.flavor], i.relleno, i.color, i.shape];
   const images = isCakeItem(i) ? i.customImageUrls?.length ?? 0 : i.customImageUrls?.length ?? (i.customImageUrl ? 1 : 0);
   return (
     parts.filter(Boolean).join(' · ') +
@@ -158,6 +178,7 @@ export function cartItemsFromOrder(order: ManagedOrderView): CartItem[] {
         rellenoName: it.relleno ?? '',
         shapeId: '',
         shapeName: it.shape ?? '',
+        unitsPerBox: it.unitsPerBox ?? undefined,
         customImageUrls: it.customImageUrls.length > 0 ? it.customImageUrls : undefined,
       };
     }

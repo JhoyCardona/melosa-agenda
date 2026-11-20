@@ -6,6 +6,7 @@ import {
   DEFAULT_MINICAKE_RELLENO,
 } from './pricing';
 import { resolveCakeLines, isCakeLineInput, CakeLineError, PRINT_IMAGE_PRICES, type CakeLineInput } from './cakeCatalog';
+import { MAX_ALFAJORES_PER_PUBLIC_ORDER } from './limits';
 
 // Validation + pricing of the product lines a client posts from the web — shared
 // by booking a new order (createPublicOrder) and modifying one from the private
@@ -50,6 +51,8 @@ export interface ResolvedPublicLine {
   price: number;
   prepMinutes: number;
   fullPaymentIfAlone: boolean;
+  // Small alfajores in this line (an alfajor box); 0 for anything else.
+  alfajorUnits: number;
   itemData: Omit<Prisma.OrderItemCreateWithoutOrderInput, 'productDesign' | 'variant'> & {
     productDesignId: string;
     variantId: string | null;
@@ -154,6 +157,7 @@ export async function resolvePublicLines(items: unknown[]): Promise<ResolvedPubl
       price,
       prepMinutes: variant.prepMinutes,
       fullPaymentIfAlone: variant.enPromocion,
+      alfajorUnits: 0,
       itemData: {
         productDesignId: item.productDesignId,
         variantId: item.variantId,
@@ -181,4 +185,15 @@ export async function resolvePublicLines(items: unknown[]): Promise<ResolvedPubl
   }
 
   return [...legacyLines, ...cakeLines];
+}
+
+// Small alfajores: a web order holds at most MAX_ALFAJORES_PER_PUBLIC_ORDER in
+// total, whatever mix of boxes. Bigger orders are quoted by WhatsApp.
+export function assertAlfajorCap(totalUnits: number): void {
+  if (totalUnits > MAX_ALFAJORES_PER_PUBLIC_ORDER) {
+    throw new PublicOrderInputError(
+      400,
+      `Un pedido web admite hasta ${MAX_ALFAJORES_PER_PUBLIC_ORDER} alfajores. Para más, escríbenos por WhatsApp y te cotizamos.`
+    );
+  }
 }

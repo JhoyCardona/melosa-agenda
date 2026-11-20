@@ -318,7 +318,7 @@ export async function createOrder(req: AuthRequest, res: Response) {
     const requiredPaymentPercent = computeRequiredPaymentPercent([
       ...lines.map((l) => ({ fullPaymentIfAlone: l.fullPaymentIfAlone })),
       ...cakeLines,
-    ]);
+    ], totalPrice);
     const hasDeposit = typeof depositPaid === 'number' && depositPaid > 0;
 
     const order = await prisma.$transaction(async (tx) => {
@@ -613,8 +613,16 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
         const baseLabel = item.variant?.label ?? item.customSize ?? item.customName ?? 'Personalizado';
         // A catalog-v2 alfajor cake may share its size name with a cake
         // ("MiniCake"); prefix it so the two never merge in the bake list.
-        const sizeLabel =
-          !item.variantId && item.productDesign?.category === ItemCategory.ALFAJOR_CAKE
+        // A small-alfajor box reads "Alfajores Mini · caja de 15 · Navideña"
+        // (size · box · packaging), so gretica sees what to pack. Built here,
+        // so the installed app shows it with no APK update.
+        const design = item.productDesign;
+        const isAlfajorBox = !item.variantId && design?.category === ItemCategory.ALFAJOR_UNIT;
+        const sizeLabel = isAlfajorBox
+          ? [`Alfajores ${baseLabel}`, design?.unitsPerBox ? `caja de ${design.unitsPerBox}` : design?.name, item.color]
+              .filter(Boolean)
+              .join(' · ')
+          : !item.variantId && design?.category === ItemCategory.ALFAJOR_CAKE
             ? `Torta de alfajor · ${baseLabel}`
             : baseLabel;
         const shape = item.shape ?? 'Sin forma definida';
@@ -622,7 +630,9 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
 
         let sizeGroup = sizeGroups.get(sizeLabel);
         if (!sizeGroup) {
-          sizeGroup = { sizeLabel, sortKey: item.pointsAtOrder, quantity: 0, unpaidQuantity: 0, shapes: new Map() };
+          // Alfajor boxes go after the cakes, smallest box first.
+          const sortKey = isAlfajorBox ? 100000 + (design?.unitsPerBox ?? 0) : item.pointsAtOrder;
+          sizeGroup = { sizeLabel, sortKey, quantity: 0, unpaidQuantity: 0, shapes: new Map() };
           sizeGroups.set(sizeLabel, sizeGroup);
         }
         sizeGroup.quantity += 1;

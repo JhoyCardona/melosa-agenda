@@ -7,6 +7,9 @@
 // this route looks it up and redirects (see AlfajorRedirect).
 export const ALFAJOR_HREF = '/alfajor';
 
+// Small alfajores in boxes ("Antojo de alfajores").
+export const ALFAJORES_HREF = '/catalogo-alfajores';
+
 export interface ProductLine {
   key: string;
   name: string;
@@ -18,6 +21,6 @@ export const PRODUCT_LINES: ProductLine[] = [
   { key: 'alfajor', name: 'Cakes de alfajor', href: ALFAJOR_HREF },
   { key: 'combos', name: 'Combos' },
   { key: 'cupcakes', name: 'Cupcakes' },
-  { key: 'alfajores', name: 'Alfajores' },
+  { key: 'alfajores', name: 'Alfajores', href: ALFAJORES_HREF },
   { key: 'postres', name: 'Postres' },
 ];

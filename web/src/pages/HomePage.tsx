@@ -8,13 +8,14 @@ import './HomePage.css';
 
 import { BulbRow } from '../components/MarqueeAnnounce';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
-import { ALFAJOR_HREF, PRODUCT_LINES } from '../productLines';
+import { ALFAJOR_HREF, ALFAJORES_HREF, PRODUCT_LINES } from '../productLines';
 import minicakePhoto from '../assets/promo/minicake-blanca-verde.jpeg';
 import alfajorFallback from '../assets/alfajor/minicake-alfajor.jpeg';
 import localMelosa from '../assets/local-melosa.jpeg';
 
 // Home page: every product line, hand-picked favorites, the alfajor cakes,
-// how to order and the pickup-only notice. Header, announcement strip and
+// the small-alfajor boxes ("Antojo de alfajores"), how to order and the
+// pickup-only notice. Header, announcement strip and
 // footer are the shared SiteChrome ones.
 
 // Hand-picked showcase, in display order: design name + the color whose photo
@@ -105,6 +106,8 @@ function fromPrice(design: PublicCakeDesign): number | null {
 export default function HomePage() {
   const [favorites, setFavorites] = useState<Favorite[] | null>(null);
   const [alfajorCards, setAlfajorCards] = useState<AlfajorCard[] | null>(null);
+  // Small-alfajor boxes, smallest first. Same card shape as the alfajor cakes.
+  const [boxCards, setBoxCards] = useState<AlfajorCard[] | null>(null);
 
   useEffect(() => {
     getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog')
@@ -126,9 +129,20 @@ export default function HomePage() {
         console.error('Error cargando tortas de alfajor:', err);
         setAlfajorCards([]);
       });
+    getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog', { config: { params: { category: 'ALFAJOR_UNIT' } } })
+      .then((data) =>
+        setBoxCards(
+          v2AlfajorCards([...data.designs].sort((a, b) => (a.unitsPerBox ?? 0) - (b.unitsPerBox ?? 0)))
+        )
+      )
+      .catch((err) => {
+        console.error('Error cargando alfajores:', err);
+        setBoxCards([]);
+      });
   }, []);
 
   const alfajorPhoto = alfajorCards?.find((c) => c.photo)?.photo ?? alfajorFallback;
+  const boxPhoto = boxCards?.find((c) => c.photo)?.photo ?? alfajorFallback;
 
   const [addressCopied, setAddressCopied] = useState(false);
 
@@ -154,7 +168,7 @@ export default function HomePage() {
   }
 
   // Photos for the bookable lines; the rest show as "Próximamente".
-  const linePhotos: Record<string, string> = { cakes: minicakePhoto, alfajor: alfajorPhoto };
+  const linePhotos: Record<string, string> = { cakes: minicakePhoto, alfajor: alfajorPhoto, alfajores: boxPhoto };
 
   return (
     <div className="nh">
@@ -258,6 +272,36 @@ export default function HomePage() {
         <div className="nh-lights" aria-hidden="true">
           <BulbRow />
         </div>
+
+        {/* ---------- Small alfajores in boxes. Hidden until a box is bookable,
+            so the home never shows an empty section. ---------- */}
+        {boxCards && boxCards.length > 0 && (
+          <>
+            <section className="nh-section nh-section-soft nh-alfajor" id="alfajores">
+              <div className="nh-section-head">
+                <h2 className="nh-title">Antojo de alfajores</h2>
+                <Link to={ALFAJORES_HREF} className="nh-link">
+                  Ver todo
+                </Link>
+              </div>
+              <div className="nh-products">
+                {boxCards.map((card) => (
+                  <Link key={card.id} to={card.href} className="nh-product">
+                    <div className="nh-product-photo">
+                      {card.photo && <img src={catalogPhotoUrl(card.photo)} alt={card.name} loading="lazy" />}
+                    </div>
+                    <p className="nh-product-name">{card.name}</p>
+                    {card.price !== null && <p className="nh-product-price">Desde {pesos(card.price)}</p>}
+                    <span className="nh-btn nh-btn-small">Agendar</span>
+                  </Link>
+                ))}
+              </div>
+            </section>
+            <div className="nh-lights" aria-hidden="true">
+              <BulbRow />
+            </div>
+          </>
+        )}
 
         {/* ---------- How to order ---------- */}
         <section className="nh-section" id="como">

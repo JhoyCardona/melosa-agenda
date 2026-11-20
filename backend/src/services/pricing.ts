@@ -54,11 +54,22 @@ export function isValidRelleno(relleno: string): boolean {
   return RELLENOS_BASICOS.includes(relleno) || RELLENOS_PREMIUM.includes(relleno);
 }
 
-// Deposit rule: an order with exactly one item, and that item's size asks for
-// full payment when it goes alone (the minicake — legacy promo variant, or a
-// catalog v2 CakeSize with requiresFullPayment), requires 100% up front.
-// Everything else — 2+ items, a single bigger torta, a free/custom line — 50%.
-export function computeRequiredPaymentPercent(items: { fullPaymentIfAlone: boolean }[]): number {
+// Orders below this total (pesos) are paid 100% up front, whatever they hold
+// (gretica, Nov 2026: "menos de 20 mil paga todo completo"). In practice only
+// small alfajor boxes land here — no cake costs less.
+export const FULL_PAYMENT_BELOW = 20000;
+
+// Deposit rule:
+//  - total under FULL_PAYMENT_BELOW -> 100%;
+//  - exactly one item, and that item's size asks for full payment when it goes
+//    alone (the minicake — legacy promo variant, or a catalog v2 CakeSize with
+//    requiresFullPayment) -> 100%;
+//  - everything else (2+ items, a single bigger torta, a free/custom line) -> 50%.
+export function computeRequiredPaymentPercent(
+  items: { fullPaymentIfAlone: boolean }[],
+  totalPrice: number
+): number {
+  if (totalPrice < FULL_PAYMENT_BELOW) return 100;
   if (items.length === 1 && items[0].fullPaymentIfAlone) return 100;
   return 50;
 }

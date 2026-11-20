@@ -16,6 +16,7 @@ import CakeDesignsPage from './pages/CakeDesignsPage';
 import AlfajorModulePage from './pages/AlfajorModulePage';
 import AlfajorCakePage from './pages/AlfajorCakePage';
 import AlfajorCakeModulePage from './pages/AlfajorCakeModulePage';
+import AlfajorUnitModulePage from './pages/AlfajorUnitModulePage';
 import ScrollToTop from './components/ScrollToTop';
 
 export default function App() {
@@ -29,6 +30,7 @@ export default function App() {
         {/* `key` so switching between the two catalogs remounts (fresh state). */}
         <Route path="/catalogo" element={<CatalogPage key="CAKE" />} />
         <Route path="/catalogo-alfajor" element={<CatalogPage key="ALFAJOR_CAKE" category="ALFAJOR_CAKE" />} />
+        <Route path="/catalogo-alfajores" element={<CatalogPage key="ALFAJOR_UNIT" category="ALFAJOR_UNIT" />} />
         {/* Always enter the customizer from the catalog, so the customer sees the
             design they're ordering. */}
         <Route path="/agendar" element={<Navigate to="/catalogo" replace />} />
@@ -56,6 +58,15 @@ export default function App() {
           element={<CakeDesignsPage key="ALFAJOR_CAKE" category="ALFAJOR_CAKE" />}
         />
         <Route path="/admin/alfajores/torta/anterior" element={<AlfajorCakePage />} />
+        <Route path="/admin/alfajores/sueltos" element={<AlfajorUnitModulePage />} />
+        <Route
+          path="/admin/alfajores/sueltos/tamanos-sabores"
+          element={<CakeSettingsPage key="ALFAJOR_UNIT" category="ALFAJOR_UNIT" />}
+        />
+        <Route
+          path="/admin/alfajores/sueltos/cajas"
+          element={<CakeDesignsPage key="ALFAJOR_UNIT" category="ALFAJOR_UNIT" />}
+        />
       </Routes>
     </>
   );

@@ -9,7 +9,17 @@ import AddedToCart from '../components/AddedToCart';
 import { CART_HREF } from '../components/CartButton';
 import { cakeItemStillValid, cakeLinePrice } from '../cartValidation';
 import EditBanner from '../components/EditBanner';
-import { MAX_ITEMS, PRINT_TYPE_LABELS, PRINT_TYPE_HINT, manageHref, newKey, pesos } from '../bookingShared';
+import {
+  MAX_ALFAJORES,
+  MAX_ITEMS,
+  PRINT_TYPE_LABELS,
+  PRINT_TYPE_HINT,
+  alfajorCount,
+  manageHref,
+  newKey,
+  pesos,
+} from '../bookingShared';
+import { waLink, ALFAJOR_QUOTE_MESSAGE } from '../config';
 import { CATALOG_LINES } from '../catalogLines';
 import './BookingPage.css';
 
@@ -18,6 +28,10 @@ import './BookingPage.css';
 // per-cake surcharge by print type), with the live price. Date, customer data
 // and submit live on the cart page. The server re-validates and re-prices
 // everything.
+//
+// Small-alfajor boxes (ALFAJOR_UNIT) use the same page: the "color" is the
+// packaging, the size is the alfajor size, and there's no personalization. A
+// single flavor is shown as text instead of a one-button picker.
 
 // Where an unknown design falls back to. Known designs go back to their own
 // line's catalog (cakes or alfajor cakes).
@@ -86,6 +100,7 @@ export default function CakeBookingPage() {
   }, []);
 
   const design = catalog?.designs.find((d) => d.id === designId);
+  const boxes = design?.category === 'ALFAJOR_UNIT';
   const catalogHref = design ? CATALOG_LINES[design.category].catalogHref : DEFAULT_CATALOG_HREF;
 
   // Load the line being changed into the configurator, once. Kept lines only
@@ -152,6 +167,11 @@ export default function CakeBookingPage() {
     catalog && size && bizcocho && relleno ? cakeLinePrice(catalog, size, bizcocho.id, relleno.id, linePrintType) : null;
   // Replacing a line being changed never grows the cart.
   const cartFull = draft.items.length >= MAX_ITEMS && !editingItem;
+  // Alfajores already in the cart (minus the box being changed) + this box.
+  const boxUnits = boxes ? design?.unitsPerBox ?? 0 : 0;
+  const alfajoresAfter =
+    alfajorCount(draft.items.filter((i) => i.key !== editingItem?.key)) + boxUnits;
+  const tooManyAlfajores = boxes && alfajoresAfter > MAX_ALFAJORES;
   const needsImage = !!design?.allowsCustomImage && !skipImages && images.length === 0;
 
   function surchargeLabel(flavorId: string): string {
@@ -191,7 +211,7 @@ export default function CakeBookingPage() {
 
   function handleAddItem() {
     if (!design || !color || !size || !bizcocho || !relleno || !shape || price === null) return;
-    if (cartFull || needsImage) return;
+    if (cartFull || needsImage || tooManyAlfajores) return;
     const item: CakeCartItem = {
       kind: 'cake',
       key: newKey(),
@@ -211,6 +231,7 @@ export default function CakeBookingPage() {
       shapeName: shape.name,
       price,
       prepMinutes: size.prepMinutes,
+      unitsPerBox: boxUnits || undefined,
       customText: design.allowsCustomText ? customText.trim() || undefined : undefined,
       customImageUrls: linePrintType ? images : undefined,
       printImageType: linePrintType,
@@ -275,17 +296,29 @@ export default function CakeBookingPage() {
             name, live price and the options. */}
         <div className="product-layout">
           <div className="product-media">
-            <img src={color.imageUrl} alt={`${design.name}, color ${color.colorName}`} />
+            <img
+              src={color.imageUrl}
+              alt={`${design.name}, ${boxes ? 'empaque' : 'color'} ${color.colorName}`}
+            />
           </div>
 
           <section className="booking-block product-config">
-            <p className="eyebrow">{editingItem ? 'Cambia tu torta' : 'Personaliza tu torta'}</p>
+            <p className="eyebrow">
+              {boxes
+                ? editingItem
+                  ? 'Cambia tu caja'
+                  : 'Arma tu caja de alfajores'
+                : editingItem
+                  ? 'Cambia tu torta'
+                  : 'Personaliza tu torta'}
+            </p>
             <h1 className="product-name">{design.name}</h1>
             {price !== null && <p className="product-price">{pesos(price)}</p>}
+            {boxes && boxUnits > 0 && <p className="field-hint">Caja de {boxUnits} alfajores.</p>}
 
             {design.colors.length > 1 && (
               <>
-                <label className="field-label">Color</label>
+                <label className="field-label">{boxes ? 'Empaque' : 'Color'}</label>
                 <div className="pills">
                   {design.colors.map((c) => (
                     <button
@@ -301,7 +334,7 @@ export default function CakeBookingPage() {
               </>
             )}
 
-            <label className="field-label">Tamaño</label>
+            <label className="field-label">{boxes ? 'Tamaño de los alfajores' : 'Tamaño'}</label>
             <div className="pills">
               {color.sizes.map((s) => (
                 <button
@@ -315,7 +348,16 @@ export default function CakeBookingPage() {
               ))}
             </div>
 
-            <label className="field-label">Sabor del bizcocho</label>
+            {boxes && bizcochos.length <= 1 && rellenos.length <= 1 ? (
+              <>
+                <label className="field-label">Sabor</label>
+                <p className="field-hint">
+                  {bizcocho?.name} con {relleno?.name.toLowerCase()}
+                </p>
+              </>
+            ) : (
+              <>
+            <label className="field-label">{boxes ? 'Sabor del alfajor' : 'Sabor del bizcocho'}</label>
             <div className="pills">
               {bizcochos.map((f) => (
                 <button
@@ -330,7 +372,7 @@ export default function CakeBookingPage() {
               ))}
             </div>
 
-            <label className="field-label">Sabor del relleno</label>
+            <label className="field-label">{boxes ? 'Relleno' : 'Sabor del relleno'}</label>
             <div className="pills">
               {rellenos.map((f) => (
                 <button
@@ -344,6 +386,8 @@ export default function CakeBookingPage() {
                 </button>
               ))}
             </div>
+              </>
+            )}
 
             <label className="field-label">Forma</label>
             <div className="pills">
@@ -453,7 +497,7 @@ export default function CakeBookingPage() {
 
             {price !== null && (
               <p className="cake-line-price">
-                Precio de esta torta: <strong>{pesos(price)}</strong>
+                Precio de esta {boxes ? 'caja' : 'torta'}: <strong>{pesos(price)}</strong>
               </p>
             )}
 
@@ -461,10 +505,25 @@ export default function CakeBookingPage() {
               type="button"
               className="btn btn-primary"
               onClick={handleAddItem}
-              disabled={price === null || uploadingImage || cartFull || needsImage}
+              disabled={price === null || uploadingImage || cartFull || needsImage || tooManyAlfajores}
             >
-              {editingItem ? 'Guardar cambios de esta torta' : draft.edit ? 'Agregar a mi pedido' : 'Agregar al pedido'}
+              {editingItem
+                ? `Guardar cambios de esta ${boxes ? 'caja' : 'torta'}`
+                : draft.edit
+                  ? 'Agregar a mi pedido'
+                  : 'Agregar al pedido'}
             </button>
+            {tooManyAlfajores && (
+              <div className="warning">
+                <p>
+                  Con esta caja tu pedido tendría {alfajoresAfter} alfajores. Por la web puedes pedir hasta{' '}
+                  {MAX_ALFAJORES}; para más te cotizamos por WhatsApp.
+                </p>
+                <a className="btn btn-ghost" href={waLink(ALFAJOR_QUOTE_MESSAGE)} target="_blank" rel="noreferrer">
+                  Cotizar +{MAX_ALFAJORES} alfajores por WhatsApp
+                </a>
+              </div>
+            )}
             {needsImage && (
               <p className="field-hint">
                 {imageOptional
@@ -477,7 +536,7 @@ export default function CakeBookingPage() {
                 Un pedido web admite hasta {MAX_ITEMS} productos. Para más, escríbenos por WhatsApp.
               </p>
             )}
-            {justAdded && <AddedToCart catalogHref={catalogHref} />}
+            {justAdded && <AddedToCart catalogHref={catalogHref} noun={boxes ? 'caja' : 'torta'} />}
           </section>
         </div>
       </main>

@@ -71,6 +71,8 @@ export interface DeliveryPreview {
 }
 
 export type ItemCategory = 'CAKE' | 'ALFAJOR_CAKE' | 'ALFAJOR_UNIT' | 'CUPCAKE' | 'DESSERT';
+// Product lines on the catalog v2 machinery (see catalogLines.ts).
+export type CatalogCategory = 'CAKE' | 'ALFAJOR_CAKE' | 'ALFAJOR_UNIT';
 
 // One configured product line in the in-progress order. Carries a snapshot so
 // the cart can render without re-fetching the catalog. Two shapes:
@@ -131,6 +133,8 @@ export interface CakeCartItem {
   // Snapshot of the price/minutes shown when added; the server re-prices.
   price: number;
   prepMinutes: number;
+  // Small-alfajor box: how many alfajores it holds. Absent on cakes.
+  unitsPerBox?: number;
   customText?: string;
   customImageUrls?: string[];
   // Set only when customImageUrls has at least one image; its surcharge is
@@ -168,6 +172,8 @@ export interface ManagedOrderItem {
   printImageType: PrintImageType | null;
   price: number;
   prepMinutes: number;
+  // Alfajores per box for a small-alfajor line, else null.
+  unitsPerBox: number | null;
 }
 
 export interface ManagedOrderView {
@@ -224,12 +230,15 @@ export interface PublicCakeColor {
 export interface PublicCakeDesign {
   id: string;
   name: string;
-  // Product line: cakes and alfajor cakes share this catalog shape.
-  category: 'CAKE' | 'ALFAJOR_CAKE';
+  // Product line: cakes, alfajor cakes and small-alfajor boxes share this
+  // catalog shape.
+  category: CatalogCategory;
   allowsCustomImage: boolean;
   requiresCustomImage: boolean;
   allowsCustomText: boolean;
   customTextMaxLength: number;
+  // Alfajores per box (small alfajores only), else null.
+  unitsPerBox: number | null;
   imageLimits: Record<string, number>;
   colors: PublicCakeColor[];
 }
@@ -309,6 +318,10 @@ export interface CakeDesignV2 {
   requiresCustomImage: boolean;
   allowsCustomText: boolean;
   customTextMaxLength: number;
+  // Small-alfajor boxes: alfajores per box, and the box's own minutes on the
+  // timeline (null = the size's). Null on cakes.
+  unitsPerBox: number | null;
+  prepMinutes: number | null;
   // { sizeId: max print images } — a size missing from the map allows 1.
   imageLimits: Record<string, number>;
   colors: DesignColorConfig[];

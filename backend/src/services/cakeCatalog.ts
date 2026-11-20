@@ -17,9 +17,11 @@ export const PRINT_IMAGE_PRICES: Record<PrintImageType, number> = {
 };
 
 // Product lines that use the v2 catalog (designs + colors + their own
-// sizes/flavors/shapes). Alfajor cakes run on the same machinery as cakes,
-// each line with its own settings.
-export const CATALOG_LINES = [ItemCategory.CAKE, ItemCategory.ALFAJOR_CAKE] as const;
+// sizes/flavors/shapes). Alfajor cakes and small alfajores run on the same
+// machinery as cakes, each line with its own settings. For small alfajores
+// (ALFAJOR_UNIT) a design is a box (unitsPerBox alfajores) and each of its
+// "colors" is a packaging with its own photo and price per alfajor size.
+export const CATALOG_LINES = [ItemCategory.CAKE, ItemCategory.ALFAJOR_CAKE, ItemCategory.ALFAJOR_UNIT] as const;
 export type CatalogLine = (typeof CATALOG_LINES)[number];
 
 // Reads a product line from a query/body value. Missing = CAKE, so callers
@@ -27,6 +29,17 @@ export type CatalogLine = (typeof CATALOG_LINES)[number];
 export function parseCatalogLine(v: unknown): CatalogLine | null {
   if (v === undefined) return ItemCategory.CAKE;
   return CATALOG_LINES.find((l) => l === v) ?? null;
+}
+
+// A box of small alfajores is only bookable once it says how many it holds.
+function isBookableDesign(d: { category: ItemCategory; unitsPerBox: number | null }): boolean {
+  return d.category !== ItemCategory.ALFAJOR_UNIT || (d.unitsPerBox ?? 0) > 0;
+}
+
+// Minutes a line takes on the timeline: the design's own (alfajor boxes:
+// packing time) when set, else the size's.
+function linePrepMinutes(design: { prepMinutes: number | null }, size: { prepMinutes: number }): number {
+  return design.prepMinutes ?? size.prepMinutes;
 }
 
 // v2 designs: a v2 product line, not archived, and no legacy ProductVariant rows.
@@ -78,6 +91,7 @@ export async function getPublicCakeCatalog(lines: CatalogLine[] = [ItemCategory.
   ]);
 
   const catalog = designs
+    .filter(isBookableDesign)
     .map((d) => {
       const colors = d.images
         .map((c) => ({ c, parts: bookableParts(c) }))
@@ -90,7 +104,7 @@ export async function getPublicCakeCatalog(lines: CatalogLine[] = [ItemCategory.
             sizeId: p.sizeId,
             label: p.size.label,
             portions: p.size.portions,
-            prepMinutes: p.size.prepMinutes,
+            prepMinutes: linePrepMinutes(d, p.size),
             price: Number(p.price),
           })),
           bizcochoIds: parts.bizcochos.map((f) => f.id),
@@ -105,6 +119,8 @@ export async function getPublicCakeCatalog(lines: CatalogLine[] = [ItemCategory.
         requiresCustomImage: d.requiresCustomImage,
         allowsCustomText: d.allowsCustomText,
         customTextMaxLength: d.customTextMaxLength,
+        // Alfajores per box (small alfajores only), else null.
+        unitsPerBox: d.unitsPerBox,
         imageLimits: Object.fromEntries(d.imageLimits.map((l) => [l.sizeId, l.maxImages])),
         colors,
       };
@@ -159,6 +175,8 @@ export interface ResolvedCakeLine {
   price: number;
   prepMinutes: number;
   fullPaymentIfAlone: boolean;
+  // Small alfajores in this line (the box's unitsPerBox); 0 for anything else.
+  alfajorUnits: number;
   itemData: {
     productDesignId: string;
     variantId: null;
@@ -195,7 +213,9 @@ export async function resolveCakeLines(lines: CakeLineInput[]): Promise<Resolved
 
   return lines.map((line) => {
     const design = designById.get(line.productDesignId);
-    if (!design) throw new CakeLineError('Uno de los diseños ya no está disponible. Revisa tu pedido.');
+    if (!design || !isBookableDesign(design)) {
+      throw new CakeLineError('Uno de los diseños ya no está disponible. Revisa tu pedido.');
+    }
 
     const color = design.images.find((c) => c.id === line.colorId);
     if (!color) throw new CakeLineError('Uno de los colores ya no está disponible. Revisa tu pedido.');
@@ -241,7 +261,7 @@ export async function resolveCakeLines(lines: CakeLineInput[]): Promise<Resolved
       surcharge(bizcocho.id, sizePrice.sizeId) +
       surcharge(relleno.id, sizePrice.sizeId) +
       (printImageType ? PRINT_IMAGE_PRICES[printImageType] : 0);
-    const prepMinutes = sizePrice.size.prepMinutes;
+    const prepMinutes = linePrepMinutes(design, sizePrice.size);
     // Same storage split as the legacy multi-image variant: a size that allows
     // several images keeps them all in customImageUrls, otherwise the single
     // image goes in customImageUrl.
@@ -251,6 +271,7 @@ export async function resolveCakeLines(lines: CakeLineInput[]): Promise<Resolved
       price,
       prepMinutes,
       fullPaymentIfAlone: sizePrice.size.requiresFullPayment,
+      alfajorUnits: design.category === ItemCategory.ALFAJOR_UNIT ? design.unitsPerBox ?? 0 : 0,
       itemData: {
         productDesignId: design.id,
         variantId: null,

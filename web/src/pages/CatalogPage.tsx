@@ -10,6 +10,8 @@ import EditBanner from '../components/EditBanner';
 import { catalogPhotoUrl, pesos } from '../bookingShared';
 import { CATALOG_LINES, type CatalogLine } from '../catalogLines';
 import { searchByName } from '../fuzzySearch';
+import { waLink, ALFAJOR_QUOTE_MESSAGE } from '../config';
+import { MAX_ALFAJORES } from '../bookingShared';
 import './CatalogPage.css';
 
 // How many price buttons to show at most. When there are more distinct prices,
@@ -149,10 +151,13 @@ function CatalogCard({ design }: CatalogCardProps) {
 // of the arrows away. The price buttons filter by MiniCake price (most sales are
 // minicakes); bigger sizes and flavor surcharges show while building the order.
 // The same page, with category="ALFAJOR_CAKE", is the alfajor cake catalog
-// (/catalogo-alfajor); cupcakes and postres will get their own later.
+// (/catalogo-alfajor), and with "ALFAJOR_UNIT" the small-alfajor boxes
+// (/catalogo-alfajores, "Antojo de alfajores"); cupcakes and postres will get
+// their own later.
 export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogLine }) {
   const line = CATALOG_LINES[category];
   const isAlfajor = category === 'ALFAJOR_CAKE';
+  const boxes = line.boxes;
   const { isAdmin } = useAdminAuth();
   const [designs, setDesigns] = useState<PublicCakeDesign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -171,9 +176,16 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
       config: { params: { category } },
     })
       // Always A→Z by name (Spanish rules: accents and case don't matter), so
-      // every price filter shows its designs in the same order.
+      // every price filter shows its designs in the same order. Alfajor boxes
+      // go smallest box first instead.
       .then((data) =>
-        setDesigns([...data.designs].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))),
+        setDesigns(
+          [...data.designs].sort(
+            (a, b) =>
+              (boxes ? (a.unitsPerBox ?? 0) - (b.unitsPerBox ?? 0) : 0) ||
+              a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }),
+          ),
+        ),
       )
       .catch((err) => {
         console.error('Error cargando catálogo:', err);
@@ -183,7 +195,7 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
         setLoading(false);
         setSlow(false);
       });
-  }, [category]);
+  }, [category, boxes]);
 
   useEffect(() => {
     loadCatalog();
@@ -212,32 +224,54 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
       <main className="section">
         <div className="section-inner">
           <EditBanner />
-          <p className="eyebrow">{isAlfajor ? 'Catálogo de tortas de alfajor' : 'Catálogo de tortas'}</p>
-          <h1>Elige tu diseño</h1>
+          <p className="eyebrow">
+            {boxes ? 'Antojo de alfajores' : isAlfajor ? 'Catálogo de tortas de alfajor' : 'Catálogo de tortas'}
+          </p>
+          <h1>{boxes ? 'Elige tu caja' : 'Elige tu diseño'}</h1>
           {isAdmin && (
             <Link to={line.designsHref} className="btn btn-ghost catalog-admin-cta">
               Editar diseños
             </Link>
           )}
-          <p className="section-lead">
-            Toca la foto de un diseño para empezar tu pedido. En el siguiente paso eliges el color, el tamaño y los
-            sabores, y ves el precio.
-          </p>
-          <p className="catalog-notice">
-            En este momento solo estamos agendando los diseños y colores que verás a continuación.
-            Solo puedes editar la imagen y/o el texto, si el diseño lo permite.
-          </p>
+          {boxes ? (
+            <>
+              <p className="section-lead">
+                Toca la foto de una caja para empezar tu pedido. En el siguiente paso eliges el empaque, el tamaño
+                de los alfajores y la forma, y ves el precio. Puedes agregar varias cajas al mismo pedido.
+              </p>
+              <div className="catalog-notice">
+                <p>
+                  Por la web puedes pedir hasta {MAX_ALFAJORES} alfajores. ¿Necesitas más? Te cotizamos por
+                  WhatsApp.
+                </p>
+                <a className="btn btn-ghost" href={waLink(ALFAJOR_QUOTE_MESSAGE)} target="_blank" rel="noreferrer">
+                  +{MAX_ALFAJORES} alfajores: cotizar por WhatsApp
+                </a>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="section-lead">
+                Toca la foto de un diseño para empezar tu pedido. En el siguiente paso eliges el color, el tamaño y
+                los sabores, y ves el precio.
+              </p>
+              <p className="catalog-notice">
+                En este momento solo estamos agendando los diseños y colores que verás a continuación.
+                Solo puedes editar la imagen y/o el texto, si el diseño lo permite.
+              </p>
+            </>
+          )}
 
           {!loading && !error && designs.length > 0 && (
             <div className="catalog-search">
               <label htmlFor="catalog-search-input" className="price-tabs-label">
-                Busca tu torta por nombre:
+                {boxes ? 'Busca tu caja por nombre:' : 'Busca tu torta por nombre:'}
               </label>
               <input
                 id="catalog-search-input"
                 type="search"
                 className="catalog-search-input"
-                placeholder="Ej: corazón, vintage..."
+                placeholder={boxes ? 'Ej: x15, navidad...' : 'Ej: corazón, vintage...'}
                 value={query}
                 autoComplete="off"
                 enterKeyHint="search"
@@ -248,7 +282,7 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
 
           {!loading && !error && buckets.length > 0 && (
             <>
-              <p className="price-tabs-label">{isAlfajor ? 'Precio desde:' : 'Precio MiniCake:'}</p>
+              <p className="price-tabs-label">{isAlfajor || boxes ? 'Precio desde:' : 'Precio MiniCake:'}</p>
               <div className="price-tabs" role="group" aria-label="Filtrar diseños por precio">
                 <button
                   type="button"
@@ -293,13 +327,15 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
             </p>
           )}
           {!loading && !error && designs.length === 0 && (
-            <p className="muted">Pronto vamos a subir nuestros diseños acá.</p>
+            <p className="muted">
+              {boxes ? 'Pronto vamos a subir nuestras cajas de alfajores acá.' : 'Pronto vamos a subir nuestros diseños acá.'}
+            </p>
           )}
 
           {searching && search.matches.length === 0 && (
             <div className="catalog-search-empty">
               <p>
-                No encontramos una torta llamada <strong>“{query.trim()}”</strong>
+                No encontramos {boxes ? 'una caja llamada' : 'una torta llamada'} <strong>“{query.trim()}”</strong>
                 {bucket ? ' en este precio' : ''}.
                 {search.suggestions.length > 0 && ' ¿Quisiste decir alguna de estas?'}
               </p>
