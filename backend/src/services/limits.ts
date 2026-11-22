@@ -9,3 +9,7 @@ export const MAX_ADDRESS_LENGTH = 300;
 // A self-service web order bigger than this should go through WhatsApp / the admin
 // panel instead — also caps spam and "one order eats half the day" cases.
 export const MAX_ITEMS_PER_PUBLIC_ORDER = 12;
+
+// Small alfajores: a web order holds at most this many alfajores in total
+// (all boxes added up). Bigger orders are quoted by WhatsApp ("+200").
+export const MAX_ALFAJORES_PER_PUBLIC_ORDER = 200;

@@ -13,7 +13,7 @@ import {
   OPEN_MINUTE,
 } from '../services/availability';
 import { computeRequiredPaymentPercent } from '../services/pricing';
-import { resolvePublicLines, PublicOrderInputError, type ResolvedPublicLine } from '../services/publicOrderLines';
+import { resolvePublicLines, assertAlfajorCap, PublicOrderInputError, type ResolvedPublicLine } from '../services/publicOrderLines';
 import { MAX_ITEMS_PER_PUBLIC_ORDER } from '../services/limits';
 
 // A client managing their own order from the private link in their WhatsApp
@@ -102,6 +102,11 @@ function itemPrepMinutes(item: ManagedOrder['items'][number]): number {
   return item.prepMinutesAtOrder ?? item.variant?.prepMinutes ?? 0;
 }
 
+// Alfajores in a booked line: its box size when it's a small-alfajor box, else 0.
+function itemAlfajorUnits(item: ManagedOrder['items'][number]): number {
+  return item.productDesign?.category === ItemCategory.ALFAJOR_UNIT ? item.productDesign.unitsPerBox ?? 0 : 0;
+}
+
 // What the client sees of their order. Ids let the web reopen each line in the
 // same configurator it was booked with.
 function orderView(order: ManagedOrder) {
@@ -135,6 +140,8 @@ function orderView(order: ManagedOrder) {
       printImageType: it.printImageType,
       price: Number(it.priceAtOrder),
       prepMinutes: itemPrepMinutes(it),
+      // Alfajores per box for a small-alfajor line, else null.
+      unitsPerBox: itemAlfajorUnits(it) || null,
     })),
   };
 }
@@ -249,6 +256,9 @@ async function planModification(order: ManagedOrder, body: Record<string, unknow
     throw new PublicOrderInputError(400, 'Uno de los productos ya no está en tu pedido. Recarga la página.');
   }
   const newLines = await resolvePublicLines(newLineInputs);
+  assertAlfajorCap(
+    keptItems.reduce((sum, it) => sum + itemAlfajorUnits(it), 0) + newLines.reduce((sum, l) => sum + l.alfajorUnits, 0)
+  );
 
   const totalPrice =
     keptItems.reduce((sum, it) => sum + Number(it.priceAtOrder), 0) + newLines.reduce((sum, l) => sum + l.price, 0);
@@ -258,7 +268,7 @@ async function planModification(order: ManagedOrder, body: Record<string, unknow
   const requiredPaymentPercent = computeRequiredPaymentPercent([
     ...(await keptFullPaymentFlags(keptItems)).map((fullPaymentIfAlone) => ({ fullPaymentIfAlone })),
     ...newLines,
-  ]);
+  ], totalPrice);
 
   const keepsSlot = sameDate && durationMin <= order.deliveryDurationMin;
   let startMinutes = order.deliveryStartMinutes;

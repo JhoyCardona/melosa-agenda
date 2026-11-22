@@ -7,7 +7,7 @@ import { reserveDeliverySlot, minutesToLabel, isNotEnoughRoomError, isDateBlocke
 import { computeRequiredPaymentPercent } from '../services/pricing';
 import { MAX_CLIENT_NAME_LENGTH, MAX_ADDRESS_LENGTH, MAX_ITEMS_PER_PUBLIC_ORDER } from '../services/limits';
 import cloudinary from '../config/cloudinary';
-import { resolvePublicLines, PublicOrderInputError } from '../services/publicOrderLines';
+import { resolvePublicLines, assertAlfajorCap, PublicOrderInputError } from '../services/publicOrderLines';
 
 const prisma = new PrismaClient();
 
@@ -121,11 +121,12 @@ export async function createPublicOrder(req: Request, res: Response) {
 
   try {
     const lines = await resolvePublicLines(items);
+    assertAlfajorCap(lines.reduce((sum, l) => sum + l.alfajorUnits, 0));
     const totalPrice = lines.reduce((sum, l) => sum + l.price, 0);
     const rawDurationMin = lines.reduce((sum, l) => sum + l.prepMinutes, 0);
-    // Exactly one item whose size asks for full payment alone (a minicake) ->
-    // 100%; everything else -> 50%.
-    const requiredPaymentPercent = computeRequiredPaymentPercent(lines);
+    // Under $20.000, or exactly one item whose size asks for full payment
+    // alone (a minicake) -> 100%; everything else -> 50%.
+    const requiredPaymentPercent = computeRequiredPaymentPercent(lines, totalPrice);
 
     const order = await prisma.$transaction(async (tx) => {
       // Assigns the pickup slot and advances the day cursor, all-or-nothing with

@@ -166,6 +166,14 @@ model ProductDesign {
   // grouped by ProductVariant.optionLabel (the gatitos minicake: "Cantidad de
   // gatos"). Null for every ordinary design — no option picker is shown.
   optionTitle         String?
+  // Small alfajores (ALFAJOR_UNIT) only: a design is a box, and this is how
+  // many alfajores it holds (6, 15, 22…). Drives the per-order alfajor cap and
+  // the baker's day summary. Null on every other product line.
+  unitsPerBox         Int?
+  // Minutes this design takes on the delivery timeline, overriding the size's
+  // CakeSize.prepMinutes. Used by alfajor boxes, where the time is packing and
+  // depends on the box, not on the alfajor size. Null = use the size's minutes.
+  prepMinutes         Int?
   // Soft-delete. Set when a design leaves the catalog: it stops showing
   // anywhere, but its row survives so past OrderItems keep pointing at it
   // (OrderItem.productDesign is onDelete: Restrict). Also how the pre-v2

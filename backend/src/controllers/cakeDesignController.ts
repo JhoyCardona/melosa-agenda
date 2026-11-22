@@ -62,8 +62,15 @@ function isNotFound(error: unknown): boolean {
 // Validates the customization flags shared by create and update. Returns the
 // data to write, or an error message.
 type DesignFlags = Partial<
-  Pick<Prisma.ProductDesignCreateInput, 'allowsCustomImage' | 'requiresCustomImage' | 'allowsCustomText' | 'customTextMaxLength'>
+  Pick<
+    Prisma.ProductDesignCreateInput,
+    'allowsCustomImage' | 'requiresCustomImage' | 'allowsCustomText' | 'customTextMaxLength' | 'unitsPerBox' | 'prepMinutes'
+  >
 >;
+
+// Limits for the alfajor-box fields (see ProductDesign.unitsPerBox/prepMinutes).
+const MAX_UNITS_PER_BOX = 200;
+const MAX_DESIGN_PREP_MINUTES = 300;
 
 function parseFlags(body: Record<string, unknown>): { data: DesignFlags } | { error: string } {
   const data: DesignFlags = {};
@@ -78,6 +85,21 @@ function parseFlags(body: Record<string, unknown>): { data: DesignFlags } | { er
       return { error: 'El máximo de caracteres del texto debe ser un entero entre 1 y 200' };
     }
     data.customTextMaxLength = n;
+  }
+  // Alfajor boxes: alfajores per box and timeline minutes. null clears.
+  if (body.unitsPerBox !== undefined) {
+    const n = body.unitsPerBox;
+    if (n !== null && (typeof n !== 'number' || !Number.isInteger(n) || n < 1 || n > MAX_UNITS_PER_BOX)) {
+      return { error: `Los alfajores por caja deben ser un entero entre 1 y ${MAX_UNITS_PER_BOX}` };
+    }
+    data.unitsPerBox = n as number | null;
+  }
+  if (body.prepMinutes !== undefined) {
+    const n = body.prepMinutes;
+    if (n !== null && (typeof n !== 'number' || !Number.isInteger(n) || n < 1 || n > MAX_DESIGN_PREP_MINUTES)) {
+      return { error: `Los minutos en la agenda deben ser un entero entre 1 y ${MAX_DESIGN_PREP_MINUTES}` };
+    }
+    data.prepMinutes = n as number | null;
   }
   return { data };
 }
@@ -147,6 +169,8 @@ export async function listCakeDesigns(req: AuthRequest, res: Response) {
         requiresCustomImage: d.requiresCustomImage,
         allowsCustomText: d.allowsCustomText,
         customTextMaxLength: d.customTextMaxLength,
+        unitsPerBox: d.unitsPerBox,
+        prepMinutes: d.prepMinutes,
         // { sizeId: max print images } — a size missing from the map allows 1.
         imageLimits: Object.fromEntries(d.imageLimits.map((l) => [l.sizeId, l.maxImages])),
         colors: d.images.map(colorDto),
@@ -181,10 +205,11 @@ export async function createCakeDesign(req: AuthRequest, res: Response) {
         data: {
           name,
           category,
-          // Most designs take a print image and a text, so both default to
-          // allowed; the admin screen opts a design out with "NO permite…".
-          allowsCustomImage: true,
-          allowsCustomText: true,
+          // Most cake designs take a print image and a text, so both default
+          // to allowed; the admin screen opts a design out with "NO permite…".
+          // Alfajor boxes are never personalized (gretica, Nov 2026).
+          allowsCustomImage: category !== ItemCategory.ALFAJOR_UNIT,
+          allowsCustomText: category !== ItemCategory.ALFAJOR_UNIT,
           ...flags.data,
         },
       });
