@@ -19,7 +19,6 @@ export interface ProductLine {
 export const PRODUCT_LINES: ProductLine[] = [
   { key: 'cakes', name: 'Cakes', href: '/catalogo' },
   { key: 'alfajor', name: 'Cakes de alfajor', href: ALFAJOR_HREF },
-  { key: 'combos', name: 'Combos' },
   { key: 'cupcakes', name: 'Cupcakes' },
   { key: 'alfajores', name: 'Alfajores', href: ALFAJORES_HREF },
   { key: 'postres', name: 'Postres' },
