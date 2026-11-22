@@ -201,11 +201,20 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
     loadCatalog();
   }, [loadCatalog]);
 
-  const buckets = useMemo(
-    () => priceBuckets(designs.map(minicakePrice).filter((p): p is number => p !== null)),
-    [designs],
+  // Alfajor boxes filter by how many alfajores come in the box (x6, x15...),
+  // which is what a buyer decides first; every other line filters by price.
+  // Box sizes are few (x6–x50), so each one gets its own button, no "+" group.
+  const filterValue = useCallback(
+    (d: PublicCakeDesign) => (boxes ? d.unitsPerBox ?? null : minicakePrice(d)),
+    [boxes],
   );
-  const priceFiltered = bucket ? designs.filter((d) => inBucket(minicakePrice(d), bucket)) : designs;
+  const buckets = useMemo(() => {
+    const values = designs.map(filterValue).filter((v): v is number => v !== null);
+    return boxes
+      ? [...new Set(values)].sort((a, b) => a - b).map((min) => ({ min, orMore: false }))
+      : priceBuckets(values);
+  }, [designs, filterValue, boxes]);
+  const priceFiltered = bucket ? designs.filter((d) => inBucket(filterValue(d), bucket)) : designs;
   // Name search runs inside the price filter; no matches → closest names instead.
   const search = useMemo(() => searchByName(priceFiltered, query, (d) => d.name), [priceFiltered, query]);
   const searching = query.trim() !== '';
@@ -282,8 +291,14 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
 
           {!loading && !error && buckets.length > 0 && (
             <>
-              <p className="price-tabs-label">{isAlfajor || boxes ? 'Precio desde:' : 'Precio MiniCake:'}</p>
-              <div className="price-tabs" role="group" aria-label="Filtrar diseños por precio">
+              <p className="price-tabs-label">
+                {boxes ? 'Alfajores por caja:' : isAlfajor ? 'Precio desde:' : 'Precio MiniCake:'}
+              </p>
+              <div
+                className="price-tabs"
+                role="group"
+                aria-label={boxes ? 'Filtrar cajas por cantidad de alfajores' : 'Filtrar diseños por precio'}
+              >
                 <button
                   type="button"
                   className={`price-tab ${bucket === null ? 'price-tab-active' : ''}`}
@@ -302,7 +317,7 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
                       aria-pressed={active}
                       onClick={() => pickBucket(b)}
                     >
-                      {pesos(b.min)}
+                      {boxes ? `x${b.min}` : pesos(b.min)}
                       {b.orMore && '+'}
                     </button>
                   );
@@ -336,7 +351,7 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
             <div className="catalog-search-empty">
               <p>
                 No encontramos {boxes ? 'una caja llamada' : 'una torta llamada'} <strong>“{query.trim()}”</strong>
-                {bucket ? ' en este precio' : ''}.
+                {bucket ? (boxes ? ' en esta cantidad' : ' en este precio') : ''}.
                 {search.suggestions.length > 0 && ' ¿Quisiste decir alguna de estas?'}
               </p>
               <div className="catalog-search-actions">
