@@ -123,10 +123,20 @@ export function isColombianHoliday(dateStr: string): boolean {
   return getColombianHolidays(year).some((h) => h.date === dateStr);
 }
 
+export function isMonday(dateStr: string): boolean {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return dayOfWeek({ year, month, day }) === 1;
+}
+
+// Sundays are always closed. Mondays are always open (afternoon only, see
+// openMinuteFor in services/availability) EVEN when they're a holiday — most
+// Colombian holidays land on Monday (Ley Emiliani), and Melosa chose to work
+// them; she closes a specific one by hand from the app's "bloquear días".
+// Any other holiday is closed.
 export function isBusinessDay(dateStr: string): boolean {
   const [year, month, day] = dateStr.split('-').map(Number);
   const weekday = dayOfWeek({ year, month, day });
-  const isSunday = weekday === 0;
-  const isMonday = weekday === 1;
-  return !isSunday && !isMonday && !isColombianHoliday(dateStr);
+  if (weekday === 0) return false;
+  if (weekday === 1) return true;
+  return !isColombianHoliday(dateStr);
 }

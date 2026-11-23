@@ -262,7 +262,7 @@ export default function BookingCheckout({ catalogHref }: { catalogHref: string }
             <>
               {!preview.isBusinessDay && (
                 <p className="warning">
-                  Ese día no agendamos (domingo, lunes o festivo). Elige otra fecha.
+                  Ese día no agendamos (domingo o festivo). Elige otra fecha.
                 </p>
               )}
 

@@ -103,7 +103,7 @@ export async function createPublicOrder(req: Request, res: Response) {
   }
 
   if (!isBusinessDay(deliveryDate)) {
-    return res.status(400).json({ error: 'No se agenda ese día (domingo, lunes o festivo)' });
+    return res.status(400).json({ error: 'No se agenda ese día (domingo o festivo)' });
   }
 
   if (await isDateBlocked(deliveryDate)) {
