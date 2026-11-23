@@ -77,8 +77,8 @@ export const BUSINESS = {
   attentionChannel: 'Solo atendemos por WhatsApp',
   attentionHours: 'Lunes a sábado, 10:00 a.m. – 5:30 p.m.',
 
-  deliveryHours: '2:00 p.m. – 8:30 p.m.',
-  deliveryNote: 'No entregamos domingos, lunes ni festivos.',
+  deliveryHours: '2:00 p.m. – 8:30 p.m. (lunes desde las 4:00 p.m.)',
+  deliveryNote: 'No entregamos domingos ni festivos.',
 
   pickupOnly: true,
 };

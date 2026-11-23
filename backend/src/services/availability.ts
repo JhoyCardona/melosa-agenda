@@ -1,14 +1,21 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 
 type TransactionClient = Prisma.TransactionClient;
-import { isBusinessDay } from '../utils/colombianHolidays';
+import { isBusinessDay, isMonday } from '../utils/colombianHolidays';
 
 const prisma = new PrismaClient();
 
 // Delivery window: 2:00pm-8:30pm, expressed as minutes from MIDNIGHT (so admin
 // orders can use any clock time without negative offsets).
 export const OPEN_MINUTE = 840; // 2:00 p.m.
+export const MONDAY_OPEN_MINUTE = 960; // 4:00 p.m. — Mondays are afternoon-only
 export const CLOSE_MINUTE = 1230; // 8:30 p.m.
+
+// First minute of the delivery window for that date. Use this instead of
+// OPEN_MINUTE whenever the date is known.
+export function openMinuteFor(dateStr: string): number {
+  return isMonday(dateStr) ? MONDAY_OPEN_MINUTE : OPEN_MINUTE;
+}
 // Assigned pickup times are rounded up to the next multiple of this, so times
 // stay clean (2:20, 3:40 — never 3:17).
 export const ROUND_TO_MINUTES = 5;
@@ -67,7 +74,7 @@ export async function getDeliveryPreview(
   if (await isDateBlocked(dateStr)) return { isBusinessDay: true, isBlocked: true };
 
   const day = await prisma.daySchedule.findUnique({ where: { date: dayDateValue(dateStr) } });
-  const cursor = day?.cursorMinutes ?? OPEN_MINUTE;
+  const cursor = Math.max(day?.cursorMinutes ?? 0, openMinuteFor(dateStr));
 
   const rounded = ceilToStep(Math.max(0, durationMin));
   const start = cursor;
@@ -120,15 +127,16 @@ export async function reserveDeliverySlot(
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${dateStr}))`;
 
   const existing = await tx.daySchedule.findUnique({ where: { date } });
-  const cursor = existing?.cursorMinutes ?? OPEN_MINUTE;
+  const openMinute = openMinuteFor(dateStr);
+  const cursor = Math.max(existing?.cursorMinutes ?? 0, openMinute);
 
   let start = explicitStartMin ?? cursor;
   if (capAtClose && explicitStartMin === undefined && start + rounded > CLOSE_MINUTE) {
-    start = Math.max(OPEN_MINUTE, CLOSE_MINUTE - rounded);
+    start = Math.max(openMinute, CLOSE_MINUTE - rounded);
   }
   const end = start + rounded;
 
-  if (start < OPEN_MINUTE || (end > CLOSE_MINUTE && !capAtClose)) {
+  if (start < openMinute || (end > CLOSE_MINUTE && !capAtClose)) {
     throw new Error(
       `Ese día ${NOT_ENOUGH_ROOM} para tu pedido (entregamos hasta las ${minutesToLabel(
         CLOSE_MINUTE

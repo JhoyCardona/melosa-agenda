@@ -10,7 +10,7 @@ import {
   isDateBlocked,
   ceilToStep,
   CLOSE_MINUTE,
-  OPEN_MINUTE,
+  openMinuteFor,
 } from '../services/availability';
 import { computeRequiredPaymentPercent } from '../services/pricing';
 import { resolvePublicLines, assertAlfajorCap, PublicOrderInputError, type ResolvedPublicLine } from '../services/publicOrderLines';
@@ -221,7 +221,7 @@ async function planModification(order: ManagedOrder, body: Record<string, unknow
       );
     }
     if (!isBusinessDay(newDate)) {
-      throw new PublicOrderInputError(400, 'No se agenda ese día (domingo, lunes o festivo).');
+      throw new PublicOrderInputError(400, 'No se agenda ese día (domingo o festivo).');
     }
     if (await isDateBlocked(newDate)) {
       throw new PublicOrderInputError(400, 'Ese día no está disponible. Elige otra fecha.');
@@ -276,7 +276,7 @@ async function planModification(order: ManagedOrder, body: Record<string, unknow
     const preview = await getDeliveryPreview(newDate, rawDuration);
     if (sameDate && !preview.fits) {
       // Same rule reserveDeliverySlot applies with capAtClose.
-      startMinutes = Math.max(OPEN_MINUTE, CLOSE_MINUTE - durationMin);
+      startMinutes = Math.max(openMinuteFor(newDate), CLOSE_MINUTE - durationMin);
     } else if (!preview.fits || preview.deliveryStartMinutes === undefined) {
       throw new PublicOrderInputError(
         409,
