@@ -203,6 +203,7 @@ export default function CakeDesignsPage({ category = 'CAKE' }: { category?: Cata
           reload={load}
           w={w}
           boxes={line.boxes}
+          shapes={line.shapes}
         />
       ) : (
         <p className="edit-hint">
@@ -231,11 +232,13 @@ function DesignForm({
   onSaved: (id: string) => Promise<void>;
 }) {
   const [name, setName] = useState(design?.name ?? '');
+  // Cupcakes: only an image (one per cupcake, or one repeated), never a text.
+  const cupcakes = category === 'CUPCAKE';
   // A new design allows both image and text by default (most do); the
   // checkboxes below are phrased as the opt-out ("NO permite…").
   const [allowsCustomImage, setAllowsCustomImage] = useState(design?.allowsCustomImage ?? true);
   const [requiresCustomImage, setRequiresCustomImage] = useState(design?.requiresCustomImage ?? false);
-  const [allowsCustomText, setAllowsCustomText] = useState(design?.allowsCustomText ?? true);
+  const [allowsCustomText, setAllowsCustomText] = useState(cupcakes ? false : design?.allowsCustomText ?? true);
   const [maxLength, setMaxLength] = useState(String(design?.customTextMaxLength ?? 20));
   // Alfajor boxes only, as digit strings while typing. Empty minutes = the
   // default for that box size (defaultBoxMinutes).
@@ -274,12 +277,15 @@ function DesignForm({
       name: name.trim(),
       allowsCustomImage,
       requiresCustomImage: allowsCustomImage && requiresCustomImage,
-      allowsCustomText,
+      allowsCustomText: cupcakes ? false : allowsCustomText,
       customTextMaxLength: Number(maxLength) || 20,
       // Only the active sizes shown here; an inactive size keeps whatever it had.
-      imageLimits: Object.fromEntries(
-        sizes.map((sz) => [sz.id, Math.min(20, Math.max(1, Number(imageLimits[sz.id]) || 1))])
-      ),
+      // Cupcakes store none: the server allows one image per cupcake in the box.
+      imageLimits: cupcakes
+        ? {}
+        : Object.fromEntries(
+            sizes.map((sz) => [sz.id, Math.min(20, Math.max(1, Number(imageLimits[sz.id]) || 1))])
+          ),
         };
     try {
       const res = design
@@ -392,7 +398,13 @@ function DesignForm({
           </label>
         );
       })}
-      {allowsCustomImage && sizes.length > 0 && (
+      {allowsCustomImage && cupcakes && (
+        <p className="edit-hint cs-indent">
+          El cliente puede subir una imagen por cupcake (hasta la cantidad de la caja), o una sola que se repite en
+          todos. Se cobra una vez por caja.
+        </p>
+      )}
+      {allowsCustomImage && !cupcakes && sizes.length > 0 && (
         <div className="cs-indent">
           <label className="admin-field-label">Máximo de imágenes que puede subir el cliente, por tamaño</label>
           <div className="cs-image-limits">
@@ -415,6 +427,7 @@ function DesignForm({
           <p className="edit-hint">Vacío = 1 imagen. Máximo 20.</p>
         </div>
       )}
+      {!cupcakes && (
       <label className="cs-check">
         <input
           type="checkbox"
@@ -426,7 +439,8 @@ function DesignForm({
         />
         NO permite texto personalizado
       </label>
-      {allowsCustomText && (
+      )}
+      {allowsCustomText && !cupcakes && (
         <div className="cs-indent">
           <label className="admin-field-label">Máximo de letras del texto</label>
           <input
@@ -464,6 +478,7 @@ function ColorsSection({
   reload,
   w,
   boxes,
+  shapes,
 }: {
   design: CakeDesignV2;
   allDesigns: CakeDesignV2[];
@@ -474,6 +489,8 @@ function ColorsSection({
   reload: () => Promise<void>;
   w: Words;
   boxes: boolean;
+  // false for lines without shapes (cupcakes).
+  shapes: boolean;
 }) {
   // 'new' = the add-a-color form; otherwise a color id.
   const [colorKey, setColorKey] = useState<string>(design.colors[0]?.id ?? 'new');
@@ -565,6 +582,7 @@ function ColorsSection({
           onSaved={reload}
           w={w}
           boxes={boxes}
+          usesShapes={shapes}
         />
       ) : (
         <p className="edit-hint">Guarda el {w.color} primero para escoger sus sabores, formas y tamaños.</p>
@@ -712,6 +730,7 @@ function ColorConfigForm({
   onSaved,
   w,
   boxes,
+  usesShapes,
 }: {
   color: DesignColorConfig;
   design: CakeDesignV2;
@@ -722,6 +741,7 @@ function ColorConfigForm({
   onSaved: () => Promise<void>;
   w: Words;
   boxes: boolean;
+  usesShapes: boolean;
 }) {
   const [draft, setDraft] = useState<ConfigDraft>(() => draftFrom(color));
   const [copyFrom, setCopyFrom] = useState('');
@@ -781,7 +801,7 @@ function ColorConfigForm({
     checkedSizes.length === 0 && 'al menos un tamaño',
     ![...draft.flavorIds].some((id) => bizcochos.some((f) => f.id === id)) && `un ${w.bizcocho}`,
     ![...draft.flavorIds].some((id) => rellenos.some((f) => f.id === id)) && `un ${w.relleno}`,
-    ![...draft.shapeIds].some((id) => shapes.some((s) => s.id === id)) && 'una forma',
+    usesShapes && ![...draft.shapeIds].some((id) => shapes.some((s) => s.id === id)) && 'una forma',
   ].filter(Boolean) as string[];
 
   async function save() {
@@ -859,8 +879,12 @@ function ColorConfigForm({
       <h3 className="cs-subtitle">{w.rellenos}</h3>
       {checkList(rellenos, 'flavorIds', noneActive)}
 
-      <h3 className="cs-subtitle">Formas</h3>
-      {checkList(shapes, 'shapeIds', noneActive)}
+      {usesShapes && (
+        <>
+          <h3 className="cs-subtitle">Formas</h3>
+          {checkList(shapes, 'shapeIds', noneActive)}
+        </>
+      )}
 
       <h3 className="cs-subtitle">
         {boxes ? 'Precio de la caja según el tamaño del alfajor' : 'Tamaños y precio de este color'}

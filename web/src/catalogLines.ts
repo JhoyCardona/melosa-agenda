@@ -5,6 +5,10 @@
 // Small alfajores (ALFAJOR_UNIT) reuse the same machinery with other words: a
 // design is a box ("Caja x15"), each of its colors is a packaging (empaque)
 // with its own photo and prices, sizes are mini/personal/grande.
+//
+// Cupcakes (CUPCAKE) are like cakes (designs + colors), but a size is a box
+// (x3, x6, x12: `portions` = cupcakes in it), there's no shape, and a flavor's
+// surcharge is one price per cupcake that the box multiplies.
 
 import type { CatalogCategory } from './types';
 
@@ -24,6 +28,11 @@ export interface CatalogLineInfo {
   adminSuffix: string;
   // true for small alfajores: designs are boxes, colors are packagings.
   boxes: boolean;
+  // false for cupcakes: no shape to set up or to pick.
+  shapes: boolean;
+  // Cupcakes: what a size counts ("cupcakes") — sizes are boxes of N, and
+  // flavor surcharges are per unit. null for every other line.
+  unitName: string | null;
 }
 
 export const CATALOG_LINES: Record<CatalogLine, CatalogLineInfo> = {
@@ -36,6 +45,8 @@ export const CATALOG_LINES: Record<CatalogLine, CatalogLineInfo> = {
     catalogHref: '/catalogo',
     adminSuffix: '',
     boxes: false,
+    shapes: true,
+    unitName: null,
   },
   ALFAJOR_CAKE: {
     category: 'ALFAJOR_CAKE',
@@ -46,6 +57,8 @@ export const CATALOG_LINES: Record<CatalogLine, CatalogLineInfo> = {
     catalogHref: '/catalogo-alfajor',
     adminSuffix: ' · torta de alfajor',
     boxes: false,
+    shapes: true,
+    unitName: null,
   },
   ALFAJOR_UNIT: {
     category: 'ALFAJOR_UNIT',
@@ -56,6 +69,20 @@ export const CATALOG_LINES: Record<CatalogLine, CatalogLineInfo> = {
     catalogHref: '/catalogo-alfajores',
     adminSuffix: ' · alfajores',
     boxes: true,
+    shapes: true,
+    unitName: null,
+  },
+  CUPCAKE: {
+    category: 'CUPCAKE',
+    adminHref: '/admin/cupcakes',
+    designsHref: '/admin/cupcakes/disenos',
+    settingsHref: '/admin/cupcakes/sabores-tamanos',
+    plural: 'cupcakes',
+    catalogHref: '/catalogo-cupcakes',
+    adminSuffix: ' · cupcakes',
+    boxes: false,
+    shapes: false,
+    unitName: 'cupcakes',
   },
 };
 

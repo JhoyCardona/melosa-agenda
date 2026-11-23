@@ -7,7 +7,7 @@ import { useOrderDraft } from '../context/OrderDraft';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import AddedToCart from '../components/AddedToCart';
 import { CART_HREF } from '../components/CartButton';
-import { cakeItemStillValid, cakeLinePrice } from '../cartValidation';
+import { cakeItemStillValid, cakeLinePrice, linePrintImagePrices } from '../cartValidation';
 import EditBanner from '../components/EditBanner';
 import {
   MAX_ALFAJORES,
@@ -32,6 +32,10 @@ import './BookingPage.css';
 // Small-alfajor boxes (ALFAJOR_UNIT) use the same page: the "color" is the
 // packaging, the size is the alfajor size, and there's no personalization. A
 // single flavor is shown as text instead of a one-button picker.
+//
+// Cupcakes (CUPCAKE) too: the size is the box (x3, x6, x12), there's no shape,
+// the relleno includes "Sin relleno", and the client may upload one image per
+// cupcake (or just one, repeated on all of them) for one per-box surcharge.
 
 // Where an unknown design falls back to. Known designs go back to their own
 // line's catalog (cakes or alfajor cakes).
@@ -101,6 +105,9 @@ export default function CakeBookingPage() {
 
   const design = catalog?.designs.find((d) => d.id === designId);
   const boxes = design?.category === 'ALFAJOR_UNIT';
+  const cupcakes = design?.category === 'CUPCAKE';
+  // What one line of this page is, in the copy ("Precio de esta caja").
+  const noun = boxes || cupcakes ? 'caja' : 'torta';
   const catalogHref = design ? CATALOG_LINES[design.category].catalogHref : DEFAULT_CATALOG_HREF;
 
   // Load the line being changed into the configurator, once. Kept lines only
@@ -151,6 +158,8 @@ export default function CakeBookingPage() {
   const bizcocho = bizcochos.find((f) => f.id === bizcochoId) ?? bizcochos[0];
   const relleno = rellenos.find((f) => f.id === rellenoId) ?? rellenos[0];
   const shape = color?.shapes.find((s) => s.id === shapeId) ?? color?.shapes[0];
+  // Lines without shapes (cupcakes) don't need one to be added.
+  const shapeOk = !!shape || !!cupcakes;
 
   const maxImages = design && size ? design.imageLimits[size.sizeId] ?? 1 : 1;
   // A smaller size can lower the cap; extra images beyond it are just not sent.
@@ -164,7 +173,10 @@ export default function CakeBookingPage() {
   const linePrintType = design?.allowsCustomImage && !skipImages && images.length > 0 ? printType : undefined;
 
   const price =
-    catalog && size && bizcocho && relleno ? cakeLinePrice(catalog, size, bizcocho.id, relleno.id, linePrintType) : null;
+    catalog && design && size && bizcocho && relleno
+      ? cakeLinePrice(catalog, design.category, size, bizcocho.id, relleno.id, linePrintType)
+      : null;
+  const printPrices = catalog && design ? linePrintImagePrices(catalog, design.category) : null;
   // Replacing a line being changed never grows the cart.
   const cartFull = draft.items.length >= MAX_ITEMS && !editingItem;
   // Alfajores already in the cart (minus the box being changed) + this box.
@@ -210,7 +222,7 @@ export default function CakeBookingPage() {
   }
 
   function handleAddItem() {
-    if (!design || !color || !size || !bizcocho || !relleno || !shape || price === null) return;
+    if (!design || !color || !size || !bizcocho || !relleno || !shapeOk || price === null) return;
     if (cartFull || needsImage || tooManyAlfajores) return;
     const item: CakeCartItem = {
       kind: 'cake',
@@ -227,11 +239,12 @@ export default function CakeBookingPage() {
       bizcochoName: bizcocho.name,
       rellenoId: relleno.id,
       rellenoName: relleno.name,
-      shapeId: shape.id,
-      shapeName: shape.name,
+      shapeId: shape?.id ?? '',
+      shapeName: shape?.name ?? '',
       price,
       prepMinutes: size.prepMinutes,
       unitsPerBox: boxUnits || undefined,
+      line: design.category,
       customText: design.allowsCustomText ? customText.trim() || undefined : undefined,
       customImageUrls: linePrintType ? images : undefined,
       printImageType: linePrintType,
@@ -304,10 +317,10 @@ export default function CakeBookingPage() {
 
           <section className="booking-block product-config">
             <p className="eyebrow">
-              {boxes
+              {boxes || cupcakes
                 ? editingItem
                   ? 'Cambia tu caja'
-                  : 'Arma tu caja de alfajores'
+                  : `Arma tu caja de ${boxes ? 'alfajores' : 'cupcakes'}`
                 : editingItem
                   ? 'Cambia tu torta'
                   : 'Personaliza tu torta'}
@@ -334,7 +347,9 @@ export default function CakeBookingPage() {
               </>
             )}
 
-            <label className="field-label">{boxes ? 'Tamaño de los alfajores' : 'Tamaño'}</label>
+            <label className="field-label">
+              {boxes ? 'Tamaño de los alfajores' : cupcakes ? 'Cupcakes por caja' : 'Tamaño'}
+            </label>
             <div className="pills">
               {color.sizes.map((s) => (
                 <button
@@ -357,7 +372,10 @@ export default function CakeBookingPage() {
               </>
             ) : (
               <>
-            <label className="field-label">{boxes ? 'Sabor del alfajor' : 'Sabor del bizcocho'}</label>
+            <label className="field-label">
+              {boxes ? 'Sabor del alfajor' : cupcakes ? 'Sabor del cupcake' : 'Sabor del bizcocho'}
+            </label>
+            {cupcakes && <p className="field-hint">Todos los cupcakes de la caja van del mismo sabor.</p>}
             <div className="pills">
               {bizcochos.map((f) => (
                 <button
@@ -372,7 +390,7 @@ export default function CakeBookingPage() {
               ))}
             </div>
 
-            <label className="field-label">{boxes ? 'Relleno' : 'Sabor del relleno'}</label>
+            <label className="field-label">{boxes || cupcakes ? 'Relleno' : 'Sabor del relleno'}</label>
             <div className="pills">
               {rellenos.map((f) => (
                 <button
@@ -389,6 +407,8 @@ export default function CakeBookingPage() {
               </>
             )}
 
+            {color.shapes.length > 0 && (
+              <>
             <label className="field-label">Forma</label>
             <div className="pills">
               {color.shapes.map((s) => (
@@ -402,6 +422,8 @@ export default function CakeBookingPage() {
                 </button>
               ))}
             </div>
+              </>
+            )}
 
             {design.allowsCustomText && (
               <>
@@ -419,14 +441,16 @@ export default function CakeBookingPage() {
               </>
             )}
 
-            {design.allowsCustomImage && catalog && (
+            {design.allowsCustomImage && printPrices && (
               <>
                 <label className="field-label">
                   {maxImages > 1 ? `Tus imágenes (hasta ${maxImages})` : 'Tu imagen'}
                 </label>
                 <p className="field-hint">
-                  Esta torta lleva imagen impresa: súbela aquí, no la envíes por WhatsApp. Desde +
-                  {pesos(catalog.printImagePrices.NON_EDIBLE)} por torta
+                  {cupcakes
+                    ? `Puedes subir una imagen por cupcake (hasta ${maxImages}), o solo una y la repetimos en todos. Súbelas aquí, no las envíes por WhatsApp. Desde +`
+                    : 'Esta torta lleva imagen impresa: súbela aquí, no la envíes por WhatsApp. Desde +'}
+                  {pesos(printPrices.NON_EDIBLE)} por {noun}
                   {maxImages > 1 ? ', sin importar cuántas imágenes subas' : ''}.
                 </p>
                 {imageOptional && (
@@ -439,7 +463,8 @@ export default function CakeBookingPage() {
                 {!skipImages && (
                   <>
                     <p className="field-hint">
-                      No editamos ni diseñamos la imagen: súbela lista para imprimir tal como la quieres en la torta.
+                      No editamos ni diseñamos la imagen: súbela lista para imprimir tal como la quieres en{' '}
+                      {cupcakes ? 'los cupcakes' : 'la torta'}.
                     </p>
                     <input
                       type="file"
@@ -483,7 +508,7 @@ export default function CakeBookingPage() {
                               className={`pill ${t === printType ? 'pill-active' : ''}`}
                               onClick={() => setPrintType(t)}
                             >
-                              {PRINT_TYPE_LABELS[t]} (+{pesos(catalog.printImagePrices[t])})
+                              {PRINT_TYPE_LABELS[t]} (+{pesos(printPrices[t])})
                             </button>
                           ))}
                         </div>
@@ -497,7 +522,7 @@ export default function CakeBookingPage() {
 
             {price !== null && (
               <p className="cake-line-price">
-                Precio de esta {boxes ? 'caja' : 'torta'}: <strong>{pesos(price)}</strong>
+                Precio de esta {noun}: <strong>{pesos(price)}</strong>
               </p>
             )}
 
@@ -508,7 +533,7 @@ export default function CakeBookingPage() {
               disabled={price === null || uploadingImage || cartFull || needsImage || tooManyAlfajores}
             >
               {editingItem
-                ? `Guardar cambios de esta ${boxes ? 'caja' : 'torta'}`
+                ? `Guardar cambios de esta ${noun}`
                 : draft.edit
                   ? 'Agregar a mi pedido'
                   : 'Agregar al pedido'}
@@ -536,7 +561,7 @@ export default function CakeBookingPage() {
                 Un pedido web admite hasta {MAX_ITEMS} productos. Para más, escríbenos por WhatsApp.
               </p>
             )}
-            {justAdded && <AddedToCart catalogHref={catalogHref} noun={boxes ? 'caja' : 'torta'} />}
+            {justAdded && <AddedToCart catalogHref={catalogHref} noun={noun} />}
           </section>
         </div>
       </main>

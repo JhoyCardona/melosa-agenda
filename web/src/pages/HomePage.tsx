@@ -8,13 +8,13 @@ import './HomePage.css';
 
 import { BulbRow } from '../components/MarqueeAnnounce';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
-import { ALFAJOR_HREF, ALFAJORES_HREF, PRODUCT_LINES } from '../productLines';
+import { ALFAJOR_HREF, ALFAJORES_HREF, CUPCAKES_HREF, PRODUCT_LINES } from '../productLines';
 import minicakePhoto from '../assets/promo/minicake-blanca-verde.jpeg';
 import alfajorFallback from '../assets/alfajor/minicake-alfajor.jpeg';
 import localMelosa from '../assets/local-melosa.jpeg';
 
 // Home page: every product line, hand-picked favorites, the alfajor cakes,
-// the small-alfajor boxes ("Antojo de alfajores"), how to order and the
+// the small-alfajor boxes ("Antojo de alfajores"), cupcakes, how to order and the
 // pickup-only notice. Header, announcement strip and
 // footer are the shared SiteChrome ones.
 
@@ -46,6 +46,9 @@ function pickFeatured(designs: PublicCakeDesign[]): Favorite[] {
     return design && color ? [{ design, color }] : [];
   });
 }
+
+// Cupcake designs shown on the home before the "Ver catálogo" button.
+const CUPCAKE_CARDS = 4;
 
 // Same order as the real flow: the date is picked last, in the cart, once the
 // pickup time can account for every product.
@@ -108,6 +111,8 @@ export default function HomePage() {
   const [alfajorCards, setAlfajorCards] = useState<AlfajorCard[] | null>(null);
   // Small-alfajor boxes, smallest first. Same card shape as the alfajor cakes.
   const [boxCards, setBoxCards] = useState<AlfajorCard[] | null>(null);
+  // A few cupcake designs (the first CUPCAKE_CARDS, A→Z) + a button to the catalog.
+  const [cupcakeCards, setCupcakeCards] = useState<AlfajorCard[] | null>(null);
 
   useEffect(() => {
     getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog')
@@ -139,10 +144,19 @@ export default function HomePage() {
         console.error('Error cargando alfajores:', err);
         setBoxCards([]);
       });
+    getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog', { config: { params: { category: 'CUPCAKE' } } })
+      .then((data) => setCupcakeCards(v2AlfajorCards(data.designs)))
+      .catch((err) => {
+        console.error('Error cargando cupcakes:', err);
+        setCupcakeCards([]);
+      });
   }, []);
 
   const alfajorPhoto = alfajorCards?.find((c) => c.photo)?.photo ?? alfajorFallback;
   const boxPhoto = boxCards?.find((c) => c.photo)?.photo ?? alfajorFallback;
+  // No fallback photo for cupcakes yet: until one is bookable the circle keeps
+  // saying "Próximamente".
+  const cupcakePhoto = cupcakeCards?.find((c) => c.photo)?.photo ?? undefined;
 
   const [addressCopied, setAddressCopied] = useState(false);
 
@@ -168,7 +182,12 @@ export default function HomePage() {
   }
 
   // Photos for the bookable lines; the rest show as "Próximamente".
-  const linePhotos: Record<string, string> = { cakes: minicakePhoto, alfajor: alfajorPhoto, alfajores: boxPhoto };
+  const linePhotos: Record<string, string | undefined> = {
+    cakes: minicakePhoto,
+    alfajor: alfajorPhoto,
+    alfajores: boxPhoto,
+    cupcakes: cupcakePhoto,
+  };
 
   return (
     <div className="nh">
@@ -181,7 +200,7 @@ export default function HomePage() {
           <h2 className="nh-title">Nuestros productos</h2>
           <div className="nh-categories">
             {PRODUCT_LINES.map((line) =>
-              line.href ? (
+              line.href && linePhotos[line.key] ? (
                 <Link key={line.key} to={line.href} className="nh-category">
                   <img src={linePhotos[line.key]} alt="" loading="lazy" />
                   <span>{line.name}</span>
@@ -295,6 +314,38 @@ export default function HomePage() {
                     <span className="nh-btn nh-btn-small">Agendar</span>
                   </Link>
                 ))}
+              </div>
+            </section>
+            <div className="nh-lights" aria-hidden="true">
+              <BulbRow />
+            </div>
+          </>
+        )}
+
+        {/* ---------- Cupcakes: a few designs + the catalog button. Hidden until
+            a design is bookable, like the alfajor boxes. ---------- */}
+        {cupcakeCards && cupcakeCards.length > 0 && (
+          <>
+            <section className="nh-section nh-section-soft nh-alfajor" id="cupcakes">
+              <div className="nh-section-head">
+                <h2 className="nh-title">Cupcakes</h2>
+              </div>
+              <div className="nh-products">
+                {cupcakeCards.slice(0, CUPCAKE_CARDS).map((card) => (
+                  <Link key={card.id} to={card.href} className="nh-product">
+                    <div className="nh-product-photo">
+                      {card.photo && <img src={catalogPhotoUrl(card.photo)} alt={card.name} loading="lazy" />}
+                    </div>
+                    <p className="nh-product-name">{card.name}</p>
+                    {card.price !== null && <p className="nh-product-price">Desde {pesos(card.price)}</p>}
+                    <span className="nh-btn nh-btn-small">Agendar</span>
+                  </Link>
+                ))}
+              </div>
+              <div className="nh-center nh-more">
+                <Link to={CUPCAKES_HREF} className="nh-btn">
+                  Ver catálogo de cupcakes
+                </Link>
               </div>
             </section>
             <div className="nh-lights" aria-hidden="true">

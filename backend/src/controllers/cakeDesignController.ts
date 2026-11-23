@@ -207,9 +207,10 @@ export async function createCakeDesign(req: AuthRequest, res: Response) {
           category,
           // Most cake designs take a print image and a text, so both default
           // to allowed; the admin screen opts a design out with "NO permite…".
-          // Alfajor boxes are never personalized (gretica, Nov 2026).
+          // Alfajor boxes are never personalized; cupcakes only take a print
+          // image, never a text (gretica, Nov 2026).
           allowsCustomImage: category !== ItemCategory.ALFAJOR_UNIT,
-          allowsCustomText: category !== ItemCategory.ALFAJOR_UNIT,
+          allowsCustomText: category !== ItemCategory.ALFAJOR_UNIT && category !== ItemCategory.CUPCAKE,
           ...flags.data,
         },
       });

@@ -10,6 +10,9 @@ export const ALFAJOR_HREF = '/alfajor';
 // Small alfajores in boxes ("Antojo de alfajores").
 export const ALFAJORES_HREF = '/catalogo-alfajores';
 
+// Cupcake boxes (x3, x6, x12).
+export const CUPCAKES_HREF = '/catalogo-cupcakes';
+
 export interface ProductLine {
   key: string;
   name: string;
@@ -19,7 +22,7 @@ export interface ProductLine {
 export const PRODUCT_LINES: ProductLine[] = [
   { key: 'cakes', name: 'Cakes', href: '/catalogo' },
   { key: 'alfajor', name: 'Cakes de alfajor', href: ALFAJOR_HREF },
-  { key: 'cupcakes', name: 'Cupcakes' },
+  { key: 'cupcakes', name: 'Cupcakes', href: CUPCAKES_HREF },
   { key: 'alfajores', name: 'Alfajores', href: ALFAJORES_HREF },
   { key: 'postres', name: 'Postres' },
 ];

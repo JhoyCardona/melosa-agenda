@@ -4,8 +4,8 @@ import { useAdminAuth } from '../context/AdminAuth';
 import './adminLegacy.css';
 import './cakeSettings.css';
 
-// Admin landing ("Modo administradora"): one entry per product family. Tortas
-// and Alfajores have their modules; the rest are placeholders so the layout
+// Admin landing ("Modo administradora"): one entry per product family. Tortas,
+// Alfajores and Cupcakes have their modules; the rest are placeholders so the layout
 // already matches the planned structure.
 export default function AdminPanelPage() {
   const navigate = useNavigate();
@@ -25,7 +25,9 @@ export default function AdminPanelPage() {
         <Link to="/admin/alfajores" className="cs-menu-item">
           Alfajores
         </Link>
-        <span className="cs-menu-item is-disabled">Cupcakes · próximamente</span>
+        <Link to="/admin/cupcakes" className="cs-menu-item">
+          Cupcakes
+        </Link>
         <span className="cs-menu-item is-disabled">Postres · próximamente</span>
       </nav>
       <p className="edit-hint">

@@ -307,3 +307,8 @@
   font-size: var(--text-xs);
   color: var(--color-muted);
 }
+
+/* Space between a section's cards and its "Ver catálogo" button (Cupcakes). */
+.nh-more {
+  margin-top: var(--space-6);
+}

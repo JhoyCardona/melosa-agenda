@@ -72,7 +72,7 @@ export interface DeliveryPreview {
 
 export type ItemCategory = 'CAKE' | 'ALFAJOR_CAKE' | 'ALFAJOR_UNIT' | 'CUPCAKE' | 'DESSERT';
 // Product lines on the catalog v2 machinery (see catalogLines.ts).
-export type CatalogCategory = 'CAKE' | 'ALFAJOR_CAKE' | 'ALFAJOR_UNIT';
+export type CatalogCategory = 'CAKE' | 'ALFAJOR_CAKE' | 'ALFAJOR_UNIT' | 'CUPCAKE';
 
 // One configured product line in the in-progress order. Carries a snapshot so
 // the cart can render without re-fetching the catalog. Two shapes:
@@ -135,6 +135,9 @@ export interface CakeCartItem {
   prepMinutes: number;
   // Small-alfajor box: how many alfajores it holds. Absent on cakes.
   unitsPerBox?: number;
+  // Product line, for labels ("Cupcakes x6"). Absent on lines added before it
+  // existed and on lines kept from an order being modified.
+  line?: CatalogCategory;
   customText?: string;
   customImageUrls?: string[];
   // Set only when customImageUrls has at least one image; its surcharge is
@@ -253,8 +256,11 @@ export interface PublicCakeFlavor {
 export interface PublicCakeCatalog {
   designs: PublicCakeDesign[];
   flavors: PublicCakeFlavor[];
-  // Per-cake surcharge for adding print image(s), by print type.
+  // Per-cake surcharge for adding print image(s), by print type (cake prices).
   printImagePrices: Record<PrintImageType, number>;
+  // The same, per product line (cupcakes charge their own, once per box).
+  // Missing on an older backend — read it through linePrintImagePrices().
+  printImagePricesByLine?: Partial<Record<CatalogCategory, Record<PrintImageType, number>>>;
 }
 
 // ─── Catalog v2: global cake settings (GET /cake-settings, admin only) ───

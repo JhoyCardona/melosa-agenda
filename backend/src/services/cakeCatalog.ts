@@ -16,13 +16,50 @@ export const PRINT_IMAGE_PRICES: Record<PrintImageType, number> = {
   EDIBLE: 14000,
 };
 
+// Cupcakes charge their own image price, once per box whatever its size
+// (gretica, Nov 2026: non-edible +4.000, edible +14.000).
+const CUPCAKE_PRINT_IMAGE_PRICES: Record<PrintImageType, number> = {
+  NON_EDIBLE: 4000,
+  EDIBLE: 14000,
+};
+
+export function printImagePricesFor(category: ItemCategory): Record<PrintImageType, number> {
+  return category === ItemCategory.CUPCAKE ? CUPCAKE_PRINT_IMAGE_PRICES : PRINT_IMAGE_PRICES;
+}
+
 // Product lines that use the v2 catalog (designs + colors + their own
 // sizes/flavors/shapes). Alfajor cakes and small alfajores run on the same
 // machinery as cakes, each line with its own settings. For small alfajores
 // (ALFAJOR_UNIT) a design is a box (unitsPerBox alfajores) and each of its
 // "colors" is a packaging with its own photo and price per alfajor size.
-export const CATALOG_LINES = [ItemCategory.CAKE, ItemCategory.ALFAJOR_CAKE, ItemCategory.ALFAJOR_UNIT] as const;
+// Cupcakes (CUPCAKE): a size is a box (x3, x6, x12 — `portions` = cupcakes in
+// it), there is no shape, and flavor surcharges are per cupcake.
+export const CATALOG_LINES = [
+  ItemCategory.CAKE,
+  ItemCategory.ALFAJOR_CAKE,
+  ItemCategory.ALFAJOR_UNIT,
+  ItemCategory.CUPCAKE,
+] as const;
 export type CatalogLine = (typeof CATALOG_LINES)[number];
+
+// Lines whose products have no shape to pick (a cupcake is a cupcake).
+function usesShapes(category: ItemCategory): boolean {
+  return category !== ItemCategory.CUPCAKE;
+}
+
+// Cupcake flavor surcharges are stored per cupcake (a relleno costs $500 per
+// cupcake) and charged for every cupcake in the box: x6 → 6 × 500. Every other
+// line stores the surcharge per cake, already for that size.
+function flavorSurchargeFor(category: ItemCategory, stored: number, size: { portions: number }): number {
+  return category === ItemCategory.CUPCAKE ? stored * size.portions : stored;
+}
+
+// Print images allowed on one item when the design sets no limit for the
+// size: one per cupcake in a cupcake box (one image can also be repeated on
+// all of them), one for anything else.
+function defaultMaxImages(category: ItemCategory, size: { portions: number }): number {
+  return category === ItemCategory.CUPCAKE ? size.portions : 1;
+}
 
 // Reads a product line from a query/body value. Missing = CAKE, so callers
 // that predate alfajor (installed web, old links) keep getting cakes only.
@@ -65,14 +102,15 @@ type CatalogDesign = Prisma.ProductDesignGetPayload<{ include: typeof CATALOG_IN
 type CatalogColor = CatalogDesign['images'][number];
 
 // The bookable part of one color: only globally active sizes/flavors/shapes.
-function bookableParts(color: CatalogColor) {
+function bookableParts(color: CatalogColor, category: ItemCategory) {
   const sizes = color.sizePrices
     .filter((p) => p.size.active)
     .sort((a, b) => a.size.portions - b.size.portions);
   const bizcochos = color.allowedFlavors.filter((f) => f.active && f.kind === FlavorKind.BIZCOCHO);
   const rellenos = color.allowedFlavors.filter((f) => f.active && f.kind === FlavorKind.RELLENO);
   const shapes = color.allowedShapes.filter((s) => s.active);
-  const complete = sizes.length > 0 && bizcochos.length > 0 && rellenos.length > 0 && shapes.length > 0;
+  const complete =
+    sizes.length > 0 && bizcochos.length > 0 && rellenos.length > 0 && (shapes.length > 0 || !usesShapes(category));
   return { sizes, bizcochos, rellenos, shapes, complete };
 }
 
@@ -87,14 +125,17 @@ export async function getPublicCakeCatalog(lines: CatalogLine[] = [ItemCategory.
       orderBy: { name: 'asc' },
       include: CATALOG_INCLUDE,
     }),
-    prisma.cakeFlavor.findMany({ where: { active: true, category: { in: lines } }, include: { surcharges: true } }),
+    prisma.cakeFlavor.findMany({
+      where: { active: true, category: { in: lines } },
+      include: { surcharges: { include: { size: true } } },
+    }),
   ]);
 
   const catalog = designs
     .filter(isBookableDesign)
     .map((d) => {
       const colors = d.images
-        .map((c) => ({ c, parts: bookableParts(c) }))
+        .map((c) => ({ c, parts: bookableParts(c, d.category) }))
         .filter(({ parts }) => parts.complete)
         .map(({ c, parts }) => ({
           id: c.id,
@@ -121,7 +162,16 @@ export async function getPublicCakeCatalog(lines: CatalogLine[] = [ItemCategory.
         customTextMaxLength: d.customTextMaxLength,
         // Alfajores per box (small alfajores only), else null.
         unitsPerBox: d.unitsPerBox,
-        imageLimits: Object.fromEntries(d.imageLimits.map((l) => [l.sizeId, l.maxImages])),
+        // { sizeId: max print images }. Cupcake boxes list every size (one
+        // image per cupcake by default); other lines only the sizes above 1.
+        imageLimits: {
+          ...(d.category === ItemCategory.CUPCAKE
+            ? Object.fromEntries(
+                colors.flatMap((c) => c.sizes).map((sz) => [sz.sizeId, defaultMaxImages(d.category, sz)]),
+              )
+            : {}),
+          ...Object.fromEntries(d.imageLimits.map((l) => [l.sizeId, l.maxImages])),
+        },
         colors,
       };
     })
@@ -129,14 +179,20 @@ export async function getPublicCakeCatalog(lines: CatalogLine[] = [ItemCategory.
 
   return {
     designs: catalog,
+    // Cake prices, kept for pages that predate per-line prices; the booking
+    // pages read the line's own entry from printImagePricesByLine.
     printImagePrices: PRINT_IMAGE_PRICES,
+    printImagePricesByLine: Object.fromEntries(lines.map((l) => [l, printImagePricesFor(l)])),
     // Surcharges per size so the page can show the live price; a size missing
     // from the map costs 0 extra.
     flavors: flavors.map((f) => ({
       id: f.id,
       name: f.name,
       kind: f.kind,
-      surcharges: Object.fromEntries(f.surcharges.map((s) => [s.sizeId, Number(s.amount)])),
+      // Already multiplied for the size (cupcakes: per cupcake × box size).
+      surcharges: Object.fromEntries(
+        f.surcharges.map((s) => [s.sizeId, flavorSurchargeFor(f.category, Number(s.amount), s.size)]),
+      ),
     })),
   };
 }
@@ -147,7 +203,8 @@ export interface CakeLineInput {
   sizeId: string;
   bizcochoId: string;
   rellenoId: string;
-  shapeId: string;
+  // Empty/missing for lines without shapes (cupcakes).
+  shapeId?: string;
   customText?: string;
   customImageUrls?: string[];
   printImageType?: string;
@@ -158,9 +215,10 @@ export function isCakeLineInput(v: unknown): v is CakeLineInput {
   return (
     typeof i === 'object' &&
     i !== null &&
-    ['productDesignId', 'colorId', 'sizeId', 'bizcochoId', 'rellenoId', 'shapeId'].every(
+    ['productDesignId', 'colorId', 'sizeId', 'bizcochoId', 'rellenoId'].every(
       (k) => typeof i[k] === 'string' && (i[k] as string).length > 0
-    )
+    ) &&
+    (i.shapeId === undefined || i.shapeId === null || typeof i.shapeId === 'string')
   );
 }
 
@@ -186,7 +244,7 @@ export interface ResolvedCakeLine {
     flavor: null;
     customFlavor: string;
     relleno: string;
-    shape: string;
+    shape: string | null;
     color: string;
     customSize: string;
     customText: string | null;
@@ -204,12 +262,15 @@ export async function resolveCakeLines(lines: CakeLineInput[]): Promise<Resolved
   const designIds = [...new Set(lines.map((l) => l.productDesignId))];
   const [designs, flavors] = await Promise.all([
     prisma.productDesign.findMany({ where: { ...V2_DESIGN_WHERE, id: { in: designIds } }, include: CATALOG_INCLUDE }),
-    prisma.cakeFlavor.findMany({ where: { active: true }, include: { surcharges: true } }),
+    prisma.cakeFlavor.findMany({ where: { active: true }, include: { surcharges: { include: { size: true } } } }),
   ]);
   const designById = new Map(designs.map((d) => [d.id, d]));
   const flavorById = new Map(flavors.map((f) => [f.id, f]));
-  const surcharge = (flavorId: string, sizeId: string) =>
-    Number(flavorById.get(flavorId)?.surcharges.find((s) => s.sizeId === sizeId)?.amount ?? 0);
+  const surcharge = (flavorId: string, sizeId: string) => {
+    const flavor = flavorById.get(flavorId);
+    const row = flavor?.surcharges.find((s) => s.sizeId === sizeId);
+    return flavor && row ? flavorSurchargeFor(flavor.category, Number(row.amount), row.size) : 0;
+  };
 
   return lines.map((line) => {
     const design = designById.get(line.productDesignId);
@@ -219,7 +280,7 @@ export async function resolveCakeLines(lines: CakeLineInput[]): Promise<Resolved
 
     const color = design.images.find((c) => c.id === line.colorId);
     if (!color) throw new CakeLineError('Uno de los colores ya no está disponible. Revisa tu pedido.');
-    const parts = bookableParts(color);
+    const parts = bookableParts(color, design.category);
     if (!parts.complete) throw new CakeLineError(`El color "${color.colorName}" ya no está disponible.`);
 
     const sizePrice = parts.sizes.find((p) => p.sizeId === line.sizeId);
@@ -228,14 +289,19 @@ export async function resolveCakeLines(lines: CakeLineInput[]): Promise<Resolved
     if (!bizcocho) throw new CakeLineError('Ese sabor de bizcocho ya no está disponible para este diseño.');
     const relleno = parts.rellenos.find((f) => f.id === line.rellenoId);
     if (!relleno) throw new CakeLineError('Ese sabor de relleno ya no está disponible para este diseño.');
-    const shape = parts.shapes.find((s) => s.id === line.shapeId);
-    if (!shape) throw new CakeLineError('Esa forma ya no está disponible para este diseño.');
+    // Lines without shapes (cupcakes) store no shape; the others must pick one.
+    const shape = usesShapes(design.category) ? parts.shapes.find((s) => s.id === line.shapeId) : null;
+    if (usesShapes(design.category) && !shape) {
+      throw new CakeLineError('Esa forma ya no está disponible para este diseño.');
+    }
 
     // Honour the design's flags even if the client posts these fields directly.
     const images = design.allowsCustomImage
       ? (line.customImageUrls ?? []).filter((u) => typeof u === 'string' && /^https:\/\/\S+$/.test(u))
       : [];
-    const maxImages = design.imageLimits.find((l) => l.sizeId === line.sizeId)?.maxImages ?? 1;
+    const maxImages =
+      design.imageLimits.find((l) => l.sizeId === line.sizeId)?.maxImages ??
+      defaultMaxImages(design.category, sizePrice.size);
     if (design.allowsCustomImage && design.requiresCustomImage && images.length === 0) {
       throw new CakeLineError('Este diseño necesita que subas una imagen para imprimir.');
     }
@@ -260,7 +326,7 @@ export async function resolveCakeLines(lines: CakeLineInput[]): Promise<Resolved
       Number(sizePrice.price) +
       surcharge(bizcocho.id, sizePrice.sizeId) +
       surcharge(relleno.id, sizePrice.sizeId) +
-      (printImageType ? PRINT_IMAGE_PRICES[printImageType] : 0);
+      (printImageType ? printImagePricesFor(design.category)[printImageType] : 0);
     const prepMinutes = linePrepMinutes(design, sizePrice.size);
     // Same storage split as the legacy multi-image variant: a size that allows
     // several images keeps them all in customImageUrls, otherwise the single
@@ -281,7 +347,7 @@ export async function resolveCakeLines(lines: CakeLineInput[]): Promise<Resolved
         flavor: null,
         customFlavor: bizcocho.name,
         relleno: relleno.name,
-        shape: shape.name,
+        shape: shape?.name ?? null,
         color: color.colorName,
         customSize: sizePrice.size.label,
         customText: text,

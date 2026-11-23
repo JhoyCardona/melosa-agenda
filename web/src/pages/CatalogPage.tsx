@@ -157,6 +157,7 @@ function CatalogCard({ design }: CatalogCardProps) {
 export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogLine }) {
   const line = CATALOG_LINES[category];
   const isAlfajor = category === 'ALFAJOR_CAKE';
+  const cupcakes = category === 'CUPCAKE';
   const boxes = line.boxes;
   const { isAdmin } = useAdminAuth();
   const [designs, setDesigns] = useState<PublicCakeDesign[]>([]);
@@ -234,7 +235,13 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
         <div className="section-inner">
           <EditBanner />
           <p className="eyebrow">
-            {boxes ? 'Antojo de alfajores' : isAlfajor ? 'Catálogo de tortas de alfajor' : 'Catálogo de tortas'}
+            {boxes
+              ? 'Antojo de alfajores'
+              : cupcakes
+                ? 'Catálogo de cupcakes'
+                : isAlfajor
+                  ? 'Catálogo de tortas de alfajor'
+                  : 'Catálogo de tortas'}
           </p>
           <h1>{boxes ? 'Elige tu caja' : 'Elige tu diseño'}</h1>
           {isAdmin && (
@@ -258,6 +265,11 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
                 </a>
               </div>
             </>
+          ) : cupcakes ? (
+            <p className="section-lead">
+              Toca la foto de un diseño para empezar tu pedido. En el siguiente paso eliges el color, la caja (x3,
+              x6 o x12), el sabor y si lo quieres con relleno, y ves el precio. Si quieres, le agregas tu imagen.
+            </p>
           ) : (
             <>
               <p className="section-lead">
@@ -274,13 +286,13 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
           {!loading && !error && designs.length > 0 && (
             <div className="catalog-search">
               <label htmlFor="catalog-search-input" className="price-tabs-label">
-                {boxes ? 'Busca tu caja por nombre:' : 'Busca tu torta por nombre:'}
+                {boxes ? 'Busca tu caja por nombre:' : cupcakes ? 'Busca tu cupcake por nombre:' : 'Busca tu torta por nombre:'}
               </label>
               <input
                 id="catalog-search-input"
                 type="search"
                 className="catalog-search-input"
-                placeholder={boxes ? 'Ej: x15, navidad...' : 'Ej: corazón, vintage...'}
+                placeholder={boxes ? 'Ej: x15, navidad...' : cupcakes ? 'Ej: flores, unicornio...' : 'Ej: corazón, vintage...'}
                 value={query}
                 autoComplete="off"
                 enterKeyHint="search"
@@ -292,7 +304,7 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
           {!loading && !error && buckets.length > 0 && (
             <>
               <p className="price-tabs-label">
-                {boxes ? 'Alfajores por caja:' : isAlfajor ? 'Precio desde:' : 'Precio MiniCake:'}
+                {boxes ? 'Alfajores por caja:' : isAlfajor || cupcakes ? 'Precio desde:' : 'Precio MiniCake:'}
               </p>
               <div
                 className="price-tabs"
@@ -343,14 +355,18 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
           )}
           {!loading && !error && designs.length === 0 && (
             <p className="muted">
-              {boxes ? 'Pronto vamos a subir nuestras cajas de alfajores acá.' : 'Pronto vamos a subir nuestros diseños acá.'}
+              {boxes
+                ? 'Pronto vamos a subir nuestras cajas de alfajores acá.'
+                : cupcakes
+                  ? 'Pronto vamos a subir nuestros cupcakes acá.'
+                  : 'Pronto vamos a subir nuestros diseños acá.'}
             </p>
           )}
 
           {searching && search.matches.length === 0 && (
             <div className="catalog-search-empty">
               <p>
-                No encontramos {boxes ? 'una caja llamada' : 'una torta llamada'} <strong>“{query.trim()}”</strong>
+                No encontramos {boxes ? 'una caja llamada' : cupcakes ? 'un cupcake llamado' : 'una torta llamada'} <strong>“{query.trim()}”</strong>
                 {bucket ? (boxes ? ' en esta cantidad' : ' en este precio') : ''}.
                 {search.suggestions.length > 0 && ' ¿Quisiste decir alguna de estas?'}
               </p>

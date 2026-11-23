@@ -24,6 +24,10 @@ import './cakeSettings.css';
 // Small alfajores (boxes) reuse it: their sizes are mini/personal/grande, with
 // no portions or minutes of their own (each box carries its packing minutes)
 // and no "100% if alone" flag (the <$20.000 rule covers small orders).
+//
+// Cupcakes: sizes are boxes (x3, x6, x12 — "portions" = cupcakes in the box),
+// there are no shapes, and each flavor has ONE price per cupcake (saved on
+// every size; the catalog multiplies it by the box) instead of a size grid.
 
 type SurchargeDrafts = Record<string, Record<string, string>>; // flavorId → sizeId → digits
 
@@ -119,6 +123,16 @@ export default function CakeSettingsPage({ category = 'CAKE' }: { category?: Cat
     setDrafts((prev) => ({ ...prev, [flavorId]: { ...prev[flavorId], [sizeId]: value } }));
   }
 
+  // Cupcakes: one per-cupcake price, written to every size.
+  function setUnitDraft(flavorId: string, value: string) {
+    if (!settings) return;
+    setSavedMessage('');
+    setDrafts((prev) => ({
+      ...prev,
+      [flavorId]: Object.fromEntries(settings.sizes.map((size) => [size.id, value])),
+    }));
+  }
+
   // Only the cells that actually differ from what's saved, and only for
   // flavors/sizes that still exist (one may have been deleted meanwhile).
   const changedSurcharges = useMemo(() => {
@@ -198,7 +212,7 @@ export default function CakeSettingsPage({ category = 'CAKE' }: { category?: Cat
         ← Atrás
       </Link>
       <h1>
-        {line.boxes ? 'Tamaños, sabores y formas' : 'Sabores, tamaños y formas'}
+        {line.boxes ? 'Tamaños, sabores y formas' : line.shapes ? 'Sabores, tamaños y formas' : 'Sabores y tamaños'}
         {line.adminSuffix}
       </h1>
       <p className="edit-hint">
@@ -215,13 +229,16 @@ export default function CakeSettingsPage({ category = 'CAKE' }: { category?: Cat
         <p className="edit-hint">
           {line.boxes
             ? 'Tamaños del alfajor. Se ordenan solos por el número de orden.'
-            : 'Se ordenan solos por número de porciones.'}
+            : line.unitName
+              ? `Cada tamaño es una caja (x3, x6, x12…). Se ordenan solos por la cantidad de ${line.unitName}.`
+              : 'Se ordenan solos por número de porciones.'}
         </p>
         {settings.sizes.length === 0 && <p className="muted">Todavía no hay tamaños.</p>}
         {settings.sizes.map((size) => (
           <SizeRow
             key={size.id}
             boxes={line.boxes}
+            unitName={line.unitName}
             size={size}
             busy={busy}
             onToggle={(active) => toggleActive('sizes', size.id, active)}
@@ -238,12 +255,14 @@ export default function CakeSettingsPage({ category = 'CAKE' }: { category?: Cat
         ))}
         <NewSizeForm
           boxes={line.boxes}
+          unitName={line.unitName}
           busy={busy}
           onCreate={(data) => run(() => api.post('/cake-settings/sizes', { ...data, category }), 'No se pudo crear el tamaño')}
         />
       </section>
 
-      {/* ─── 2. Shapes ─── */}
+      {/* ─── 2. Shapes (not for lines without shapes, e.g. cupcakes) ─── */}
+      {line.shapes && (
       <section className="form-section">
         <h2>2. Formas</h2>
         {settings.shapes.length === 0 && <p className="muted">Todavía no hay formas.</p>}
@@ -271,20 +290,29 @@ export default function CakeSettingsPage({ category = 'CAKE' }: { category?: Cat
           onCreate={(name) => run(() => api.post('/cake-settings/shapes', { name, category }), 'No se pudo crear la forma')}
         />
       </section>
+      )}
 
       {/* ─── 3 & 4. Flavors ─── */}
       {(
         [
-          ['BIZCOCHO', `3. ${w.bizcochos}`, settings.bizcochos],
-          ['RELLENO', `4. ${w.rellenos}`, settings.rellenos],
+          ['BIZCOCHO', `${line.shapes ? 3 : 2}. ${w.bizcochos}`, settings.bizcochos],
+          ['RELLENO', `${line.shapes ? 4 : 3}. ${w.rellenos}`, settings.rellenos],
         ] as [FlavorKind, string, CakeFlavorSetting[]][]
       ).map(([kind, title, flavors]) => (
         <section className="form-section" key={kind}>
           <h2>{title}</h2>
-          <p className="edit-hint">
-            El valor de cada tamaño es lo que se <strong>suma</strong> al precio cuando el
-            cliente escoge ese sabor. Déjalo vacío si no cuesta más.
-          </p>
+          {line.unitName ? (
+            <p className="edit-hint">
+              Escribe lo que cuesta de más <strong>por cada uno de los {line.unitName}</strong>; la página lo
+              multiplica por la cantidad de la caja (ej. $500 → caja x6 = $3.000). Déjalo vacío si no cuesta más.
+              {kind === 'RELLENO' && ' Crea también "Sin relleno" (sin precio) para quien no lo quiera.'}
+            </p>
+          ) : (
+            <p className="edit-hint">
+              El valor de cada tamaño es lo que se <strong>suma</strong> al precio cuando el
+              cliente escoge ese sabor. Déjalo vacío si no cuesta más.
+            </p>
+          )}
           {flavors.length === 0 && <p className="muted">Todavía no hay sabores.</p>}
           {flavors.map((flavor) => (
             <div className="cs-flavor" key={flavor.id}>
@@ -306,6 +334,17 @@ export default function CakeSettingsPage({ category = 'CAKE' }: { category?: Cat
               />
               {settings.sizes.length === 0 ? (
                 <p className="edit-hint">Crea primero los tamaños para ponerle precio a este sabor.</p>
+              ) : line.unitName ? (
+                <div className="cs-surcharge-grid">
+                  <label>
+                    <span>Por cada uno</span>
+                    <MoneyInput
+                      label={`Precio extra de ${flavor.name} por cada uno`}
+                      value={draftValue(flavor, settings.sizes[0].id)}
+                      onChange={(v) => setUnitDraft(flavor.id, v)}
+                    />
+                  </label>
+                </div>
               ) : (
                 <div className="cs-surcharge-grid">
                   {settings.sizes.map((size) => (
@@ -373,6 +412,7 @@ interface SizeFields {
 // as digit strings while typing and only turned into numbers on submit.
 function SizeFieldsForm({
   boxes,
+  unitName,
   initial,
   submitText,
   busy,
@@ -380,6 +420,7 @@ function SizeFieldsForm({
   onCancel,
 }: {
   boxes: boolean;
+  unitName: string | null;
   initial: { label: string; portions: string; prepMinutes: string; requiresFullPayment: boolean };
   submitText: string;
   busy: boolean;
@@ -417,7 +458,7 @@ function SizeFieldsForm({
       <input
         type="text"
         value={label}
-        placeholder={boxes ? 'Ej: Mini' : 'Ej: 6 porciones'}
+        placeholder={boxes ? 'Ej: Mini' : unitName ? 'Ej: x6' : 'Ej: 6 porciones'}
         onChange={(e) => setLabel(e.target.value)}
       />
       {boxes ? (
@@ -434,7 +475,7 @@ function SizeFieldsForm({
       ) : (
       <div className="cs-two-cols">
         <div>
-          <label className="admin-field-label">Porciones</label>
+          <label className="admin-field-label">{unitName ? `Cantidad de ${unitName}` : 'Porciones'}</label>
           <input
             type="text"
             inputMode="numeric"
@@ -444,7 +485,7 @@ function SizeFieldsForm({
           />
         </div>
         <div>
-          <label className="admin-field-label">Minutos que toma hacerla</label>
+          <label className="admin-field-label">{unitName ? 'Minutos que toma la caja' : 'Minutos que toma hacerla'}</label>
           <input
             type="text"
             inputMode="numeric"
@@ -462,7 +503,9 @@ function SizeFieldsForm({
             checked={requiresFullPayment}
             onChange={(e) => setRequiresFullPayment(e.target.checked)}
           />
-          Pago del 100% cuando es lo único del pedido (si piden 2 o más tortas, es el 50%)
+          {unitName
+            ? 'Pago del 100% cuando es lo único del pedido (si piden 2 cajas o más productos, es el 50%)'
+            : 'Pago del 100% cuando es lo único del pedido (si piden 2 o más tortas, es el 50%)'}
         </label>
       )}
       <div className="cs-actions">
@@ -481,6 +524,7 @@ function SizeFieldsForm({
 
 function SizeRow({
   boxes,
+  unitName,
   size,
   busy,
   onToggle,
@@ -488,6 +532,7 @@ function SizeRow({
   onDelete,
 }: {
   boxes: boolean;
+  unitName: string | null;
   size: CakeSizeSetting;
   busy: boolean;
   onToggle: (active: boolean) => void;
@@ -501,6 +546,7 @@ function SizeRow({
       <div className="cs-row is-editing">
         <SizeFieldsForm
           boxes={boxes}
+          unitName={unitName}
           initial={{
             label: size.label,
             portions: String(size.portions),
@@ -527,7 +573,9 @@ function SizeRow({
         <span>
           <strong>{size.label}</strong>
           <span className="cs-meta">
-            {boxes ? `orden ${size.portions}` : `${size.portions} porciones · ${size.prepMinutes} min`}
+            {boxes
+              ? `orden ${size.portions}`
+              : `${size.portions} ${unitName ?? 'porciones'} · ${size.prepMinutes} min`}
             {!boxes && size.requiresFullPayment && ' · pago 100% si va sola'}
             {!size.active && ' · desactivado'}
           </span>
@@ -547,10 +595,12 @@ function SizeRow({
 
 function NewSizeForm({
   boxes,
+  unitName,
   busy,
   onCreate,
 }: {
   boxes: boolean;
+  unitName: string | null;
   busy: boolean;
   onCreate: (fields: SizeFields) => Promise<boolean>;
 }) {
@@ -568,6 +618,7 @@ function NewSizeForm({
     <div className="cs-new">
       <SizeFieldsForm
         boxes={boxes}
+        unitName={unitName}
         initial={{ label: '', portions: '', prepMinutes: '', requiresFullPayment: false }}
         submitText="Crear tamaño"
         busy={busy}

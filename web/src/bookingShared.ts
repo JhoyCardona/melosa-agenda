@@ -24,7 +24,7 @@ export const PRINT_TYPE_LABELS: Record<PrintImageType, string> = {
 // Shown under the print-type pills: most clients don't know the difference,
 // and asking gretica by WhatsApp is exactly what the web is meant to avoid.
 export const PRINT_TYPE_HINT =
-  'No comestible: impresa en papel, se retira antes de comer. Comestible: impresa en papel de azúcar, se come con la torta.';
+  'No comestible: impresa en papel, se retira antes de comer. Comestible: impresa en papel de azúcar, se puede comer.';
 
 export function pesos(n: number): string {
   return `$${n.toLocaleString('es-CO')}`;
@@ -61,6 +61,7 @@ export function newKey(): string {
 // cakes use the size's own label as gretica named it.
 function whatsappItemLabel(item: CartItem): string {
   if (isCakeItem(item) && item.unitsPerBox) return `Caja de ${item.unitsPerBox} alfajores ${item.sizeLabel.toLowerCase()}`;
+  if (isCakeItem(item) && item.line === 'CUPCAKE') return `Cupcakes ${item.sizeLabel}`;
   if (isCakeItem(item)) return item.sizeLabel;
   const option = item.variantLabel.split(' · ')[1];
   if (item.variantLabel.startsWith('Minicake')) return option ? `MiniCake (${option})` : 'MiniCake';
@@ -71,6 +72,8 @@ function whatsappItemLabel(item: CartItem): string {
 function whatsappSortKey(item: CartItem, label: string): number {
   // Alfajor boxes after the cakes, smallest box first.
   if (isCakeItem(item) && item.unitsPerBox) return 100000 + item.unitsPerBox;
+  // Cupcake boxes between the cakes and the alfajores, smallest box first.
+  if (isCakeItem(item) && item.line === 'CUPCAKE') return 50000 + item.portions;
   if (isCakeItem(item)) return item.portions;
   if (label === 'MiniCake' || label.startsWith('MiniCake ')) return 0;
   const match = label.match(/(\d+)/);
@@ -104,6 +107,14 @@ export function cartItemSummary(i: CartItem): string {
           `${i.bizcochoName} con ${i.rellenoName.toLowerCase()}`,
           i.shapeName,
         ]
+      : isCakeItem(i) && i.line === 'CUPCAKE'
+        ? [
+            i.designName,
+            `Cupcakes ${i.sizeLabel}`,
+            i.color,
+            `Sabor ${i.bizcochoName}`,
+            /^sin relleno$/i.test(i.rellenoName) ? 'Sin relleno' : `Relleno ${i.rellenoName}`,
+          ]
       : isCakeItem(i)
         ? [i.designName, i.sizeLabel, i.color, `Bizcocho ${i.bizcochoName}`, `Relleno ${i.rellenoName}`, i.shapeName]
         : [i.designName, i.variantLabel, flavorLabels[i.flavor], i.relleno, i.color, i.shape];
