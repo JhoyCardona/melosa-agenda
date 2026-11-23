@@ -14,6 +14,8 @@ const TX_OPTIONS = { timeout: 15000, maxWait: 10000 };
 // lists every cake design picks from. All routes are admin-only. New rows are
 // created inactive — gretica ticks "active" once a size/flavor is fully set up,
 // so a half-configured one never reaches the public booking page.
+// Cupcake flavor surcharges are a price PER CUPCAKE (same amount on every box
+// size; cakeCatalog multiplies it by the box's cupcakes).
 // Each product line (cakes, alfajor cakes) has its own lists: GET takes
 // ?category=, creates take `category` in the body (both default to CAKE).
 
@@ -142,9 +144,22 @@ export async function createCakeSize(req: AuthRequest, res: Response) {
   }
 
   try {
-    const size = await prisma.cakeSize.create({
-      data: { category, label, portions, prepMinutes, requiresFullPayment: requiresFullPayment ?? false },
-    });
+    const size = await prisma.$transaction(async (tx) => {
+      const created = await tx.cakeSize.create({
+        data: { category, label, portions, prepMinutes, requiresFullPayment: requiresFullPayment ?? false },
+      });
+      // Cupcake surcharges are one price per cupcake, stored on every size, so
+      // a new box size starts with each flavor's current per-cupcake price
+      // instead of silently charging $0 for it.
+      if (category === ItemCategory.CUPCAKE) {
+        const flavors = await tx.cakeFlavor.findMany({ where: { category }, include: { surcharges: { take: 1 } } });
+        const rows = flavors
+          .filter((f) => f.surcharges.length > 0)
+          .map((f) => ({ flavorId: f.id, sizeId: created.id, amount: f.surcharges[0].amount }));
+        if (rows.length > 0) await tx.flavorSurcharge.createMany({ data: rows });
+      }
+      return created;
+    }, TX_OPTIONS);
     res.status(201).json(size);
   } catch (error) {
     if (isUniqueViolation(error)) {

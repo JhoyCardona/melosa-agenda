@@ -618,20 +618,30 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
         // so the installed app shows it with no APK update.
         const design = item.productDesign;
         const isAlfajorBox = !item.variantId && design?.category === ItemCategory.ALFAJOR_UNIT;
-        const sizeLabel = isAlfajorBox
+        // A cupcake box reads "Cupcakes x6", and its filling takes the place
+        // of the shape (cupcakes have none), so a box with relleno and one
+        // without never merge — they're baked differently.
+        const isCupcakeBox = !item.variantId && design?.category === ItemCategory.CUPCAKE;
+        const sizeLabel = isCupcakeBox
+          ? `Cupcakes ${baseLabel}`
+          : isAlfajorBox
           ? [`Alfajores ${baseLabel}`, design?.unitsPerBox ? `caja de ${design.unitsPerBox}` : design?.name, item.color]
               .filter(Boolean)
               .join(' · ')
           : !item.variantId && design?.category === ItemCategory.ALFAJOR_CAKE
             ? `Torta de alfajor · ${baseLabel}`
             : baseLabel;
-        const shape = item.shape ?? 'Sin forma definida';
+        const shape = isCupcakeBox ? item.relleno ?? 'Sin relleno' : item.shape ?? 'Sin forma definida';
         const flavor = item.flavor ?? item.customFlavor ?? 'Sin sabor definido';
 
         let sizeGroup = sizeGroups.get(sizeLabel);
         if (!sizeGroup) {
-          // Alfajor boxes go after the cakes, smallest box first.
-          const sortKey = isAlfajorBox ? 100000 + (design?.unitsPerBox ?? 0) : item.pointsAtOrder;
+          // Cupcakes go after the cakes, then alfajor boxes (smallest box first).
+          const sortKey = isAlfajorBox
+            ? 100000 + (design?.unitsPerBox ?? 0)
+            : isCupcakeBox
+              ? 50000
+              : item.pointsAtOrder;
           sizeGroup = { sizeLabel, sortKey, quantity: 0, unpaidQuantity: 0, shapes: new Map() };
           sizeGroups.set(sizeLabel, sizeGroup);
         }
