@@ -172,9 +172,10 @@ export default function HomePage() {
   }, []);
 
   const alfajorPhoto = alfajorCards?.find((c) => c.photo)?.photo ?? alfajorFallback;
-  const boxPhoto = boxCards?.find((c) => c.photo)?.photo ?? alfajorFallback;
-  // No fallback photo for cupcakes yet: until one is bookable the circle keeps
-  // saying "Próximamente".
+  // Small alfajores and cupcakes have no fallback photo: until one of their
+  // products is bookable the circle says "Próximamente" (the alfajor cake's
+  // photo used to stand in for small alfajores, which looked like a mistake).
+  const boxPhoto = boxCards?.find((c) => c.photo)?.photo ?? undefined;
   const cupcakePhoto = cupcakeCards?.find((c) => c.photo)?.photo ?? undefined;
 
   const [addressCopied, setAddressCopied] = useState(false);
