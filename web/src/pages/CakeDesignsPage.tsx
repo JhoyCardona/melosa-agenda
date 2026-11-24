@@ -20,16 +20,15 @@ import './cakeSettings.css';
 // can never carry values over from another color.
 //
 // Small alfajores use the same screen with their own words (lineWords): a
-// design is a box with its alfajor count and packing minutes, and colors are
-// packagings. Boxes are never personalized, so the image/text flags are hidden.
+// design is a FLAVOR with a single photo (its one color row), its shapes and
+// the price of one alfajor per size. No bizcocho/relleno (the design is the
+// flavor) and never personalized. Boxes live on AlfajorBoxesPage.
 
 type Words = ReturnType<typeof lineWords>;
 
-// Default packing minutes for a box (gretica, Nov 2026): 10 up to 30 alfajores,
-// 20 above. Only a suggestion; each box can set its own.
-function defaultBoxMinutes(units: number): number {
-  return units <= 30 ? 10 : 20;
-}
+// Name of the single color row a small-alfajor flavor uses for its photo.
+// Never shown to clients (the order stores the box name instead).
+const ALFAJOR_PHOTO_NAME = 'Foto';
 
 function normalize(s: string): string {
   return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
@@ -136,9 +135,9 @@ export default function CakeDesignsPage({ category = 'CAKE' }: { category?: Cata
 
       {/* ─── 1. Name ─── */}
       <section className="form-section">
-        <h2>1. {line.boxes ? 'Caja' : 'Diseño'}</h2>
+        <h2>1. {line.boxes ? 'Sabor' : 'Diseño'}</h2>
         <label className="admin-field-label">
-          Buscar {line.boxes ? 'una caja para editarla' : 'un diseño para editarlo'} ({designs.length} en total)
+          Buscar {line.boxes ? 'un sabor para editarlo' : 'un diseño para editarlo'} ({designs.length} en total)
         </label>
         <input
           type="text"
@@ -170,11 +169,11 @@ export default function CakeDesignsPage({ category = 'CAKE' }: { category?: Cata
             <>
               Editando: <strong>{selected.name}</strong>
               <button type="button" className="link-button" onClick={() => selectDesign(null)}>
-                {line.boxes ? 'Crear otra caja' : 'Crear otro diseño'}
+                {line.boxes ? 'Crear otro sabor' : 'Crear otro diseño'}
               </button>
             </>
           ) : (
-            <>{line.boxes ? 'Caja nueva' : 'Diseño nuevo'}</>
+            <>{line.boxes ? 'Sabor nuevo' : 'Diseño nuevo'}</>
           )}
         </div>
 
@@ -208,7 +207,7 @@ export default function CakeDesignsPage({ category = 'CAKE' }: { category?: Cata
       ) : (
         <p className="edit-hint">
           {line.boxes
-            ? 'Crea o selecciona una caja para agregarle empaques, sabores y tamaños.'
+            ? 'Crea o selecciona un sabor para agregarle su foto, formas y precios.'
             : 'Crea o selecciona un diseño para agregarle colores, sabores y tamaños.'}
         </p>
       )}
@@ -240,10 +239,6 @@ function DesignForm({
   const [requiresCustomImage, setRequiresCustomImage] = useState(design?.requiresCustomImage ?? false);
   const [allowsCustomText, setAllowsCustomText] = useState(cupcakes ? false : design?.allowsCustomText ?? true);
   const [maxLength, setMaxLength] = useState(String(design?.customTextMaxLength ?? 20));
-  // Alfajor boxes only, as digit strings while typing. Empty minutes = the
-  // default for that box size (defaultBoxMinutes).
-  const [units, setUnits] = useState(design?.unitsPerBox ? String(design.unitsPerBox) : '');
-  const [boxMinutes, setBoxMinutes] = useState(design?.prepMinutes ? String(design.prepMinutes) : '');
   // Per-size cap on print images, as digit strings while typing ('' = 1).
   const [imageLimits, setImageLimits] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(design?.imageLimits ?? {}).map(([id, n]) => [id, String(n)]))
@@ -252,10 +247,8 @@ function DesignForm({
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
 
-  const unitsNum = Number(units);
-  const validUnits = unitsNum >= 1 && unitsNum <= 200;
   const valid = boxes
-    ? name.trim() !== '' && validUnits
+    ? name.trim() !== ''
     : name.trim() !== '' && (!allowsCustomText || Number(maxLength) > 0);
 
   async function save() {
@@ -266,12 +259,10 @@ function DesignForm({
     const body = boxes
       ? {
           name: name.trim(),
-          // Boxes are never personalized.
+          // Small alfajores are never personalized.
           allowsCustomImage: false,
           requiresCustomImage: false,
           allowsCustomText: false,
-          unitsPerBox: unitsNum,
-          prepMinutes: Number(boxMinutes) > 0 ? Math.min(300, Number(boxMinutes)) : defaultBoxMinutes(unitsNum),
         }
       : {
       name: name.trim(),
@@ -294,7 +285,7 @@ function DesignForm({
       await onSaved(res.data.id);
       if (design) setSaved('Guardado ✔');
     } catch (err) {
-      setError(errorText(err, boxes ? 'No se pudo guardar la caja' : 'No se pudo guardar el diseño'));
+      setError(errorText(err, boxes ? 'No se pudo guardar el sabor' : 'No se pudo guardar el diseño'));
     } finally {
       setSaving(false);
     }
@@ -303,52 +294,23 @@ function DesignForm({
   if (boxes) {
     return (
       <div>
-        <label className="admin-field-label">Nombre de la caja</label>
+        <label className="admin-field-label">Nombre del sabor</label>
         <input
           type="text"
           value={name}
-          placeholder="Ej: Caja x15"
+          placeholder="Ej: Alfajor de chocolate"
           onChange={(e) => {
             setName(e.target.value);
             setSaved('');
           }}
         />
-        <p className="edit-hint">Así la ven los clientes en el catálogo. Sirve ponerle la cantidad: "Caja x15".</p>
-
-        <label className="admin-field-label">¿Cuántos alfajores trae la caja?</label>
-        <input
-          type="text"
-          inputMode="numeric"
-          value={units}
-          placeholder="Ej: 15"
-          onChange={(e) => {
-            setUnits(onlyDigits(e.target.value).slice(0, 3));
-            setSaved('');
-          }}
-        />
-        {units !== '' && !validUnits && <p className="warning">Escribe un número entre 1 y 200.</p>}
-
-        <label className="admin-field-label">Minutos que ocupa en la agenda (empacar)</label>
-        <input
-          type="text"
-          inputMode="numeric"
-          value={boxMinutes}
-          placeholder={validUnits ? String(defaultBoxMinutes(unitsNum)) : '10'}
-          onChange={(e) => {
-            setBoxMinutes(onlyDigits(e.target.value).slice(0, 3));
-            setSaved('');
-          }}
-        />
-        <p className="edit-hint">
-          Vacío = 10 minutos para cajas de hasta 30 alfajores y 20 minutos para las más grandes. Los alfajores se
-          hornean aparte, así que solo cuenta el tiempo de empacar.
-        </p>
+        <p className="edit-hint">Así lo ven los clientes en el catálogo.</p>
 
         {error && <p className="warning">{error}</p>}
         {saved && <p className="cs-saved">{saved}</p>}
         <div className="cs-actions">
           <button type="button" className="secondary-button cs-primary" disabled={!valid || saving} onClick={save}>
-            {saving ? 'Guardando...' : design ? 'Guardar caja' : 'Crear caja'}
+            {saving ? 'Guardando...' : design ? 'Guardar nombre' : 'Crear sabor'}
           </button>
         </div>
       </div>
@@ -523,7 +485,9 @@ function ColorsSection({
   return (
     <>
       <section className="form-section">
-        <h2>2. {boxes ? 'Empaques' : 'Colores o decoraciones'}</h2>
+        <h2>2. {boxes ? 'Foto del sabor' : 'Colores o decoraciones'}</h2>
+        {/* A small-alfajor flavor has a single photo: no list to pick from. */}
+        {!boxes && (
         <div className="cs-chips">
           {design.colors.map((c) => (
             <button
@@ -543,19 +507,21 @@ function ColorsSection({
             + Nuevo {w.color}
           </button>
         </div>
+        )}
 
         <ColorForm
           key={colorKey}
           designId={design.id}
           color={color}
           w={w}
+          fixedName={boxes ? ALFAJOR_PHOTO_NAME : undefined}
           onSaved={async (savedColorId) => {
             await reload();
             setColorKey(savedColorId);
           }}
         />
 
-        {color && (
+        {color && !boxes && (
           <button
             type="button"
             className="link-button cs-danger-link"
@@ -585,12 +551,16 @@ function ColorsSection({
           usesShapes={shapes}
         />
       ) : (
-        <p className="edit-hint">Guarda el {w.color} primero para escoger sus sabores, formas y tamaños.</p>
+        <p className="edit-hint">
+          {boxes
+            ? 'Sube la foto del sabor primero para escoger sus formas y precios.'
+            : `Guarda el ${w.color} primero para escoger sus sabores, formas y tamaños.`}
+        </p>
       )}
 
       {pendingDelete && (
         <PasswordPrompt
-          message={`¿Eliminar el ${w.color} "${pendingDelete.colorName}" de ${boxes ? 'esta caja' : 'este diseño'}? Se borran también sus precios y sabores.`}
+          message={`¿Eliminar el ${w.color} "${pendingDelete.colorName}" de este diseño? Se borran también sus precios y sabores.`}
           onConfirm={deleteColor}
           onCancel={() => setPendingDelete(null)}
         />
@@ -603,14 +573,17 @@ function ColorForm({
   designId,
   color,
   w,
+  fixedName,
   onSaved,
 }: {
   designId: string;
   color: DesignColorConfig | null;
   w: Words;
+  // Small alfajores: the photo row has a fixed, hidden name.
+  fixedName?: string;
   onSaved: (colorId: string) => Promise<void>;
 }) {
-  const [colorName, setColorName] = useState(color?.colorName ?? '');
+  const [colorName, setColorName] = useState(color?.colorName ?? fixedName ?? '');
   const [imageUrl, setImageUrl] = useState(color?.imageUrl ?? '');
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -662,16 +635,20 @@ function ColorForm({
 
   return (
     <div className="cs-color-form">
-      <label className="admin-field-label">Nombre del {w.color}</label>
-      <input
-        type="text"
-        value={colorName}
-        placeholder={w.color === 'empaque' ? 'Ej: Clásico, Navideño' : 'Ej: Rojo'}
-        onChange={(e) => {
-          setColorName(e.target.value);
-          setSaved('');
-        }}
-      />
+      {!fixedName && (
+        <>
+          <label className="admin-field-label">Nombre del {w.color}</label>
+          <input
+            type="text"
+            value={colorName}
+            placeholder="Ej: Rojo"
+            onChange={(e) => {
+              setColorName(e.target.value);
+              setSaved('');
+            }}
+          />
+        </>
+      )}
 
       <div className="cs-photo">
         {imageUrl ? (
@@ -694,7 +671,13 @@ function ColorForm({
           disabled={!valid || !changed || saving || uploading}
           onClick={save}
         >
-          {saving ? 'Guardando...' : color ? `Guardar nombre y foto del ${w.color}` : `Crear ${w.color}`}
+          {saving
+            ? 'Guardando...'
+            : fixedName
+              ? 'Guardar foto'
+              : color
+                ? `Guardar nombre y foto del ${w.color}`
+                : `Crear ${w.color}`}
         </button>
       </div>
       {!color && !imageUrl && <p className="edit-hint">Un {w.color} nuevo necesita su foto.</p>}
@@ -797,10 +780,11 @@ function ColorConfigForm({
   const missingPrice = checkedSizes.some(([, s]) => !(Number(s.price) > 0));
 
   // Soft checklist: the color can be saved incomplete, but won't be bookable.
+  // Small alfajores have no bizcocho/relleno: the design is the flavor.
   const gaps = [
     checkedSizes.length === 0 && 'al menos un tamaño',
-    ![...draft.flavorIds].some((id) => bizcochos.some((f) => f.id === id)) && `un ${w.bizcocho}`,
-    ![...draft.flavorIds].some((id) => rellenos.some((f) => f.id === id)) && `un ${w.relleno}`,
+    !boxes && ![...draft.flavorIds].some((id) => bizcochos.some((f) => f.id === id)) && `un ${w.bizcocho}`,
+    !boxes && ![...draft.flavorIds].some((id) => rellenos.some((f) => f.id === id)) && `un ${w.relleno}`,
     usesShapes && ![...draft.shapeIds].some((id) => shapes.some((s) => s.id === id)) && 'una forma',
   ].filter(Boolean) as string[];
 
@@ -817,7 +801,7 @@ function ColorConfigForm({
       });
       setDirty(false);
       await onSaved();
-      setSaved('Sabores, formas y tamaños guardados ✔');
+      setSaved(boxes ? 'Formas y precios guardados ✔' : 'Sabores, formas y tamaños guardados ✔');
     } catch (err) {
       setError(errorText(err, 'No se pudo guardar la configuración'));
     } finally {
@@ -847,21 +831,21 @@ function ColorConfigForm({
       </div>
     );
 
-  const noneActive = `No hay ninguno activo. Actívalos en "${boxes ? 'Tamaños, sabores y formas' : 'Sabores, tamaños y formas'}".`;
+  const noneActive = `No hay ninguno activo. Actívalos en "${boxes ? 'Tamaños y formas' : 'Sabores, tamaños y formas'}".`;
 
   return (
     <section className="form-section">
-      <h2>3. Sabores, formas y tamaños de "{color.colorName}"</h2>
+      <h2>{boxes ? `3. Formas y precio de "${design.name}"` : `3. Sabores, formas y tamaños de "${color.colorName}"`}</h2>
 
       {copySources.length > 0 && (
         <div className="cs-copy">
-          <label className="admin-field-label">Copiar la configuración de otro {w.color}</label>
+          <label className="admin-field-label">Copiar la configuración de otro {boxes ? 'sabor' : w.color}</label>
           <div className="cs-new-inline">
             <select value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)}>
-              <option value="">Escoge un {w.color}…</option>
+              <option value="">Escoge un {boxes ? 'sabor' : w.color}…</option>
               {copySources.map(({ design: d, color: c }) => (
                 <option key={c.id} value={c.id}>
-                  {d.id === design.id ? c.colorName : `${d.name} · ${c.colorName}`}
+                  {boxes ? d.name : d.id === design.id ? c.colorName : `${d.name} · ${c.colorName}`}
                 </option>
               ))}
             </select>
@@ -869,15 +853,19 @@ function ColorConfigForm({
               Copiar
             </button>
           </div>
-          <p className="edit-hint">Llena todo con lo de ese {w.color}; revisa y guarda.</p>
+          <p className="edit-hint">Llena todo con lo de ese {boxes ? 'sabor' : w.color}; revisa y guarda.</p>
         </div>
       )}
 
-      <h3 className="cs-subtitle">{w.bizcochos}</h3>
-      {checkList(bizcochos, 'flavorIds', noneActive)}
+      {!boxes && (
+        <>
+          <h3 className="cs-subtitle">{w.bizcochos}</h3>
+          {checkList(bizcochos, 'flavorIds', noneActive)}
 
-      <h3 className="cs-subtitle">{w.rellenos}</h3>
-      {checkList(rellenos, 'flavorIds', noneActive)}
+          <h3 className="cs-subtitle">{w.rellenos}</h3>
+          {checkList(rellenos, 'flavorIds', noneActive)}
+        </>
+      )}
 
       {usesShapes && (
         <>
@@ -887,7 +875,7 @@ function ColorConfigForm({
       )}
 
       <h3 className="cs-subtitle">
-        {boxes ? 'Precio de la caja según el tamaño del alfajor' : 'Tamaños y precio de este color'}
+        {boxes ? 'Precio de 1 alfajor según el tamaño' : 'Tamaños y precio de este color'}
       </h3>
       {sizes.length === 0 && <p className="edit-hint">{noneActive}</p>}
       {sizes.map((size) => {
@@ -902,7 +890,7 @@ function ColorConfigForm({
               </span>
             </label>
             <MoneyInput
-              label={boxes ? `Precio de la caja con alfajores ${size.label.toLowerCase()}` : `Precio de ${size.label}`}
+              label={boxes ? `Precio de 1 alfajor ${size.label.toLowerCase()}` : `Precio de ${size.label}`}
               value={s.checked ? s.price : ''}
               disabled={!s.checked}
               onChange={(v) => setSize(size.id, { price: v })}
@@ -913,13 +901,13 @@ function ColorConfigForm({
 
       {gaps.length > 0 && (
         <p className="edit-hint cs-gaps">
-          Para que los clientes puedan pedir este {w.color} le falta: {gaps.join(', ')}.
+          Para que los clientes puedan pedir este {boxes ? 'sabor' : w.color} le falta: {gaps.join(', ')}.
         </p>
       )}
       {missingPrice && <p className="warning">Cada tamaño marcado necesita su precio.</p>}
 
       <div className="cs-notice">
-        <strong>Aviso:</strong> revisa la información de este {w.color} 2 veces antes de guardarla para evitar
+        <strong>Aviso:</strong> revisa la información de este {boxes ? 'sabor' : w.color} 2 veces antes de guardarla para evitar
         equivocaciones.
       </div>
       {error && <p className="warning">{error}</p>}
@@ -930,7 +918,13 @@ function ColorConfigForm({
         disabled={saving || missingPrice || !dirty}
         onClick={save}
       >
-        {saving ? 'Guardando...' : dirty ? 'Guardar sabores, formas y tamaños' : 'Sin cambios por guardar'}
+        {saving
+          ? 'Guardando...'
+          : !dirty
+            ? 'Sin cambios por guardar'
+            : boxes
+              ? 'Guardar formas y precios'
+              : 'Guardar sabores, formas y tamaños'}
       </button>
     </section>
   );

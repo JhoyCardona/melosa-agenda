@@ -7,9 +7,9 @@ import './cakeSettings.css';
 
 const LINE = CATALOG_LINES.ALFAJOR_UNIT;
 
-// "Alfajores en caja": same two spaces as the cake module, with alfajor words.
-// A box ("Caja x15") is a design; its packagings are the colors, each with its
-// photo and its price per alfajor size.
+// "Alfajores en caja": the flavors (each a design with its photo, shapes and
+// price of one alfajor per size), the boxes every flavor shares (quantities +
+// decorations with their prices), and the global sizes/shapes.
 export default function AlfajorUnitModulePage() {
   const navigate = useNavigate();
   const { isAdmin } = useAdminAuth();
@@ -26,19 +26,23 @@ export default function AlfajorUnitModulePage() {
       <h1>Alfajores en caja</h1>
       <nav className="cs-menu">
         <Link to={LINE.designsHref} className="cs-menu-item">
-          Modificar / agregar cajas
+          Modificar / agregar sabores
+        </Link>
+        <Link to={LINE.boxesHref ?? ''} className="cs-menu-item">
+          Cajas y cantidades
         </Link>
         <Link to={LINE.settingsHref} className="cs-menu-item">
-          Tamaños, sabores y formas
+          Tamaños y formas
         </Link>
         <Link to={LINE.catalogHref} className="cs-menu-item">
           Ver el catálogo como lo ven los clientes
         </Link>
       </nav>
       <p className="edit-hint">
-        Cada caja tiene una cantidad de alfajores (6, 15, 22…) y sus empaques. Cada empaque lleva su foto y su
-        precio para cada tamaño (mini, personal, grande). Una caja aparece en la web cuando tiene al menos un
-        empaque con foto, precio, forma y sabor.
+        Cada sabor (alfajor clásico, de chocolate…) lleva su foto, sus formas y el precio de 1 alfajor en cada
+        tamaño. Las cajas son para todos los sabores: en "Cajas y cantidades" pones las cantidades (x6, x15…) y
+        cada caja (clásica, navideña…) con su foto y su precio. El cliente paga los alfajores × la cantidad + la
+        caja.
       </p>
     </div>
   );

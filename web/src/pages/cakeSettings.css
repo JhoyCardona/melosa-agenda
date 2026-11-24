@@ -432,3 +432,10 @@ a.cs-menu-item:hover {
   gap: 4px;
   font-size: 0.8rem;
 }
+
+/* Small alfajores: one box price per active alfajor size in a quantity row. */
+.cs-box-price {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

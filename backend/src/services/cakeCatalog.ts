@@ -30,8 +30,9 @@ export function printImagePricesFor(category: ItemCategory): Record<PrintImageTy
 // Product lines that use the v2 catalog (designs + colors + their own
 // sizes/flavors/shapes). Alfajor cakes and small alfajores run on the same
 // machinery as cakes, each line with its own settings. For small alfajores
-// (ALFAJOR_UNIT) a design is a box (unitsPerBox alfajores) and each of its
-// "colors" is a packaging with its own photo and price per alfajor size.
+// (ALFAJOR_UNIT) a design is a FLAVOR: its color holds the photo, the shapes
+// and the price of ONE alfajor per size; the client also picks a quantity
+// (AlfajorQuantity) and a box decoration (AlfajorBox), which are global.
 // Cupcakes (CUPCAKE): a size is a box (x3, x6, x12 — `portions` = cupcakes in
 // it), there is no shape, and flavor surcharges are per cupcake.
 export const CATALOG_LINES = [
@@ -68,15 +69,37 @@ export function parseCatalogLine(v: unknown): CatalogLine | null {
   return CATALOG_LINES.find((l) => l === v) ?? null;
 }
 
-// A box of small alfajores is only bookable once it says how many it holds.
+// A small-alfajor design from the old box-as-design model (unitsPerBox set,
+// Nov 20–24 2026) is never bookable: small alfajores are now one design per
+// flavor, with the box picked separately.
 function isBookableDesign(d: { category: ItemCategory; unitsPerBox: number | null }): boolean {
-  return d.category !== ItemCategory.ALFAJOR_UNIT || (d.unitsPerBox ?? 0) > 0;
+  return d.category !== ItemCategory.ALFAJOR_UNIT || d.unitsPerBox === null;
 }
 
-// Minutes a line takes on the timeline: the design's own (alfajor boxes:
-// packing time) when set, else the size's.
-function linePrepMinutes(design: { prepMinutes: number | null }, size: { prepMinutes: number }): number {
-  return design.prepMinutes ?? size.prepMinutes;
+// Small alfajores have no bizcocho/relleno to pick: the design IS the flavor.
+function usesFlavors(category: ItemCategory): boolean {
+  return category !== ItemCategory.ALFAJOR_UNIT;
+}
+
+// Active quantities and boxes of small alfajores, with every box price for an
+// active alfajor size. Only offered combinations are returned (a price row of
+// an active box × active quantity × active size).
+async function loadAlfajorBoxes() {
+  const [quantities, boxes] = await Promise.all([
+    prisma.alfajorQuantity.findMany({ where: { active: true }, orderBy: { units: 'asc' } }),
+    prisma.alfajorBox.findMany({
+      where: { active: true },
+      orderBy: { createdAt: 'asc' },
+      include: { prices: { where: { quantity: { active: true }, size: { active: true } } } },
+    }),
+  ]);
+  return { quantities, boxes: boxes.filter((b) => b.prices.length > 0) };
+}
+type AlfajorBoxes = Awaited<ReturnType<typeof loadAlfajorBoxes>>;
+
+// Sizes for which at least one box (any quantity) has a price.
+function sizesWithBoxes(boxes: AlfajorBoxes): Set<string> {
+  return new Set(boxes.boxes.flatMap((b) => b.prices.map((p) => p.sizeId)));
 }
 
 // v2 designs: a v2 product line, not archived, and no legacy ProductVariant rows.
@@ -102,15 +125,19 @@ type CatalogDesign = Prisma.ProductDesignGetPayload<{ include: typeof CATALOG_IN
 type CatalogColor = CatalogDesign['images'][number];
 
 // The bookable part of one color: only globally active sizes/flavors/shapes.
-function bookableParts(color: CatalogColor, category: ItemCategory) {
+// For small alfajores, `boxSizes` (sizes that have a box price) narrows the
+// sizes too: an alfajor size with no box to pack it in can't be booked.
+function bookableParts(color: CatalogColor, category: ItemCategory, boxSizes?: Set<string>) {
   const sizes = color.sizePrices
-    .filter((p) => p.size.active)
+    .filter((p) => p.size.active && (!boxSizes || boxSizes.has(p.sizeId)))
     .sort((a, b) => a.size.portions - b.size.portions);
   const bizcochos = color.allowedFlavors.filter((f) => f.active && f.kind === FlavorKind.BIZCOCHO);
   const rellenos = color.allowedFlavors.filter((f) => f.active && f.kind === FlavorKind.RELLENO);
   const shapes = color.allowedShapes.filter((s) => s.active);
   const complete =
-    sizes.length > 0 && bizcochos.length > 0 && rellenos.length > 0 && (shapes.length > 0 || !usesShapes(category));
+    sizes.length > 0 &&
+    ((bizcochos.length > 0 && rellenos.length > 0) || !usesFlavors(category)) &&
+    (shapes.length > 0 || !usesShapes(category));
   return { sizes, bizcochos, rellenos, shapes, complete };
 }
 
@@ -119,7 +146,8 @@ function bookableParts(color: CatalogColor, category: ItemCategory) {
 // entirely, so the booking page never offers something the order endpoint
 // would reject. `lines` picks the product lines to include.
 export async function getPublicCakeCatalog(lines: CatalogLine[] = [ItemCategory.CAKE]) {
-  const [designs, flavors] = await Promise.all([
+  const withAlfajores = lines.includes(ItemCategory.ALFAJOR_UNIT);
+  const [designs, flavors, alfajorBoxes] = await Promise.all([
     prisma.productDesign.findMany({
       where: { ...V2_DESIGN_WHERE, category: { in: lines } },
       orderBy: { name: 'asc' },
@@ -129,13 +157,18 @@ export async function getPublicCakeCatalog(lines: CatalogLine[] = [ItemCategory.
       where: { active: true, category: { in: lines } },
       include: { surcharges: { include: { size: true } } },
     }),
+    withAlfajores ? loadAlfajorBoxes() : null,
   ]);
+  const alfajorBoxSizes = alfajorBoxes ? sizesWithBoxes(alfajorBoxes) : undefined;
 
   const catalog = designs
     .filter(isBookableDesign)
     .map((d) => {
       const colors = d.images
-        .map((c) => ({ c, parts: bookableParts(c, d.category) }))
+        .map((c) => ({
+          c,
+          parts: bookableParts(c, d.category, d.category === ItemCategory.ALFAJOR_UNIT ? alfajorBoxSizes : undefined),
+        }))
         .filter(({ parts }) => parts.complete)
         .map(({ c, parts }) => ({
           id: c.id,
@@ -145,7 +178,8 @@ export async function getPublicCakeCatalog(lines: CatalogLine[] = [ItemCategory.
             sizeId: p.sizeId,
             label: p.size.label,
             portions: p.size.portions,
-            prepMinutes: linePrepMinutes(d, p.size),
+            prepMinutes: p.size.prepMinutes,
+            // Small alfajores: the price of ONE alfajor of this size.
             price: Number(p.price),
           })),
           bizcochoIds: parts.bizcochos.map((f) => f.id),
@@ -160,8 +194,8 @@ export async function getPublicCakeCatalog(lines: CatalogLine[] = [ItemCategory.
         requiresCustomImage: d.requiresCustomImage,
         allowsCustomText: d.allowsCustomText,
         customTextMaxLength: d.customTextMaxLength,
-        // Alfajores per box (small alfajores only), else null.
-        unitsPerBox: d.unitsPerBox,
+        // Legacy field (old alfajor box designs, never bookable now): always null.
+        unitsPerBox: null,
         // { sizeId: max print images }. Cupcake boxes list every size (one
         // image per cupcake by default); other lines only the sizes above 1.
         imageLimits: {
@@ -194,6 +228,19 @@ export async function getPublicCakeCatalog(lines: CatalogLine[] = [ItemCategory.
         f.surcharges.map((s) => [s.sizeId, flavorSurchargeFor(f.category, Number(s.amount), s.size)]),
       ),
     })),
+    // Small alfajores: the quantities and boxes every flavor shares. A box's
+    // `prices` = { quantityId: { sizeId: box price } }; a missing entry isn't
+    // offered. Null when the request didn't include small alfajores.
+    alfajorBoxes: alfajorBoxes
+      ? {
+          quantities: alfajorBoxes.quantities.map((q) => ({ id: q.id, units: q.units, prepMinutes: q.prepMinutes })),
+          boxes: alfajorBoxes.boxes.map((b) => {
+            const prices: Record<string, Record<string, number>> = {};
+            for (const p of b.prices) (prices[p.quantityId] ??= {})[p.sizeId] = Number(p.price);
+            return { id: b.id, name: b.name, imageUrl: b.imageUrl, prices };
+          }),
+        }
+      : null,
   };
 }
 
@@ -201,10 +248,15 @@ export interface CakeLineInput {
   productDesignId: string;
   colorId: string;
   sizeId: string;
-  bizcochoId: string;
-  rellenoId: string;
+  // Empty/missing for small alfajores (the design is the flavor).
+  bizcochoId?: string;
+  rellenoId?: string;
   // Empty/missing for lines without shapes (cupcakes).
   shapeId?: string;
+  // Small alfajores only: the quantity (AlfajorQuantity) and box decoration
+  // (AlfajorBox) picked.
+  quantityId?: string;
+  boxId?: string;
   customText?: string;
   customImageUrls?: string[];
   printImageType?: string;
@@ -215,9 +267,10 @@ export function isCakeLineInput(v: unknown): v is CakeLineInput {
   return (
     typeof i === 'object' &&
     i !== null &&
-    ['productDesignId', 'colorId', 'sizeId', 'bizcochoId', 'rellenoId'].every(
-      (k) => typeof i[k] === 'string' && (i[k] as string).length > 0
-    ) &&
+    ['productDesignId', 'colorId', 'sizeId'].every((k) => typeof i[k] === 'string' && (i[k] as string).length > 0) &&
+    // Either the flavors (cakes, cupcakes) or the box (small alfajores).
+    (['bizcochoId', 'rellenoId'].every((k) => typeof i[k] === 'string' && (i[k] as string).length > 0) ||
+      ['quantityId', 'boxId'].every((k) => typeof i[k] === 'string' && (i[k] as string).length > 0)) &&
     (i.shapeId === undefined || i.shapeId === null || typeof i.shapeId === 'string')
   );
 }
@@ -233,7 +286,7 @@ export interface ResolvedCakeLine {
   price: number;
   prepMinutes: number;
   fullPaymentIfAlone: boolean;
-  // Small alfajores in this line (the box's unitsPerBox); 0 for anything else.
+  // Small alfajores in this line (the quantity picked); 0 for anything else.
   alfajorUnits: number;
   itemData: {
     productDesignId: string;
@@ -243,7 +296,7 @@ export interface ResolvedCakeLine {
     prepMinutesAtOrder: number;
     flavor: null;
     customFlavor: string;
-    relleno: string;
+    relleno: string | null;
     shape: string | null;
     color: string;
     customSize: string;
@@ -251,6 +304,7 @@ export interface ResolvedCakeLine {
     customImageUrl: string | null;
     customImageUrls: string[];
     printImageType: PrintImageType | null;
+    unitsAtOrder: number | null;
   };
 }
 
@@ -260,9 +314,10 @@ export async function resolveCakeLines(lines: CakeLineInput[]): Promise<Resolved
   if (lines.length === 0) return [];
 
   const designIds = [...new Set(lines.map((l) => l.productDesignId))];
-  const [designs, flavors] = await Promise.all([
+  const [designs, flavors, alfajorBoxes] = await Promise.all([
     prisma.productDesign.findMany({ where: { ...V2_DESIGN_WHERE, id: { in: designIds } }, include: CATALOG_INCLUDE }),
     prisma.cakeFlavor.findMany({ where: { active: true }, include: { surcharges: { include: { size: true } } } }),
+    lines.some((l) => l.quantityId || l.boxId) ? loadAlfajorBoxes() : null,
   ]);
   const designById = new Map(designs.map((d) => [d.id, d]));
   const flavorById = new Map(flavors.map((f) => [f.id, f]));
@@ -285,6 +340,10 @@ export async function resolveCakeLines(lines: CakeLineInput[]): Promise<Resolved
 
     const sizePrice = parts.sizes.find((p) => p.sizeId === line.sizeId);
     if (!sizePrice) throw new CakeLineError('Ese tamaño ya no está disponible para este diseño.');
+
+    if (design.category === ItemCategory.ALFAJOR_UNIT) {
+      return resolveAlfajorLine(line, design, color, parts, sizePrice, alfajorBoxes);
+    }
     const bizcocho = parts.bizcochos.find((f) => f.id === line.bizcochoId);
     if (!bizcocho) throw new CakeLineError('Ese sabor de bizcocho ya no está disponible para este diseño.');
     const relleno = parts.rellenos.find((f) => f.id === line.rellenoId);
@@ -327,7 +386,7 @@ export async function resolveCakeLines(lines: CakeLineInput[]): Promise<Resolved
       surcharge(bizcocho.id, sizePrice.sizeId) +
       surcharge(relleno.id, sizePrice.sizeId) +
       (printImageType ? printImagePricesFor(design.category)[printImageType] : 0);
-    const prepMinutes = linePrepMinutes(design, sizePrice.size);
+    const prepMinutes = sizePrice.size.prepMinutes;
     // Same storage split as the legacy multi-image variant: a size that allows
     // several images keeps them all in customImageUrls, otherwise the single
     // image goes in customImageUrl.
@@ -337,7 +396,7 @@ export async function resolveCakeLines(lines: CakeLineInput[]): Promise<Resolved
       price,
       prepMinutes,
       fullPaymentIfAlone: sizePrice.size.requiresFullPayment,
-      alfajorUnits: design.category === ItemCategory.ALFAJOR_UNIT ? design.unitsPerBox ?? 0 : 0,
+      alfajorUnits: 0,
       itemData: {
         productDesignId: design.id,
         variantId: null,
@@ -354,7 +413,62 @@ export async function resolveCakeLines(lines: CakeLineInput[]): Promise<Resolved
         customImageUrl: multiImage ? null : images[0] ?? null,
         customImageUrls: multiImage ? images : [],
         printImageType,
+        unitsAtOrder: null,
       },
     };
   });
+}
+
+// A small-alfajor line: flavor (the design) + size + shape + quantity + box.
+// Price = price of 1 alfajor × quantity + the box's price for that quantity
+// and size. Minutes = the quantity's packing minutes. Never personalized.
+// The text snapshots are what the installed mobile app shows (no APK update):
+// title "Alfajor de chocolate - Mini x15 · caja Clásica", Sabor = the flavor.
+function resolveAlfajorLine(
+  line: CakeLineInput,
+  design: CatalogDesign,
+  color: CatalogColor,
+  parts: ReturnType<typeof bookableParts>,
+  sizePrice: ReturnType<typeof bookableParts>['sizes'][number],
+  boxes: AlfajorBoxes | null,
+): ResolvedCakeLine {
+  const quantity = boxes?.quantities.find((q) => q.id === line.quantityId);
+  if (!quantity) throw new CakeLineError('Esa cantidad de alfajores ya no está disponible. Revisa tu pedido.');
+  const box = boxes?.boxes.find((b) => b.id === line.boxId);
+  if (!box) throw new CakeLineError('Esa caja ya no está disponible. Revisa tu pedido.');
+  const boxPrice = box.prices.find((p) => p.quantityId === quantity.id && p.sizeId === sizePrice.sizeId);
+  if (!boxPrice) throw new CakeLineError(`La caja ${box.name} no viene en esa cantidad y tamaño.`);
+  const shape = parts.shapes.find((s) => s.id === line.shapeId);
+  if (!shape) throw new CakeLineError('Esa forma ya no está disponible para este alfajor.');
+
+  const price = Number(sizePrice.price) * quantity.units + Number(boxPrice.price);
+  return {
+    price,
+    prepMinutes: quantity.prepMinutes,
+    fullPaymentIfAlone: sizePrice.size.requiresFullPayment,
+    alfajorUnits: quantity.units,
+    itemData: {
+      productDesignId: design.id,
+      variantId: null,
+      priceAtOrder: price,
+      pointsAtOrder: 0,
+      prepMinutesAtOrder: quantity.prepMinutes,
+      flavor: null,
+      customFlavor: design.name,
+      relleno: null,
+      shape: shape.name,
+      color: box.name,
+      customSize: alfajorSizeLabel(sizePrice.size.label, quantity.units, box.name),
+      customText: null,
+      customImageUrl: null,
+      customImageUrls: [],
+      printImageType: null,
+      unitsAtOrder: quantity.units,
+    },
+  };
+}
+
+// "Mini x15 · caja Clásica" — the size snapshot of a small-alfajor line.
+export function alfajorSizeLabel(sizeLabel: string, units: number, boxName: string): string {
+  return `${sizeLabel} x${units} · caja ${boxName}`;
 }

@@ -151,9 +151,9 @@ function CatalogCard({ design }: CatalogCardProps) {
 // of the arrows away. The price buttons filter by MiniCake price (most sales are
 // minicakes); bigger sizes and flavor surcharges show while building the order.
 // The same page, with category="ALFAJOR_CAKE", is the alfajor cake catalog
-// (/catalogo-alfajor), and with "ALFAJOR_UNIT" the small-alfajor boxes
-// (/catalogo-alfajores, "Antojo de alfajores"); cupcakes and postres will get
-// their own later.
+// (/catalogo-alfajor), with "ALFAJOR_UNIT" the small alfajores, one card per
+// flavor (/catalogo-alfajores, "Antojo de alfajores"), and with "CUPCAKE" the
+// cupcakes.
 export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogLine }) {
   const line = CATALOG_LINES[category];
   const isAlfajor = category === 'ALFAJOR_CAKE';
@@ -177,16 +177,9 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
       config: { params: { category } },
     })
       // Always A→Z by name (Spanish rules: accents and case don't matter), so
-      // every price filter shows its designs in the same order. Alfajor boxes
-      // go smallest box first instead.
+      // every price filter shows its designs in the same order.
       .then((data) =>
-        setDesigns(
-          [...data.designs].sort(
-            (a, b) =>
-              (boxes ? (a.unitsPerBox ?? 0) - (b.unitsPerBox ?? 0) : 0) ||
-              a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }),
-          ),
-        ),
+        setDesigns([...data.designs].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))),
       )
       .catch((err) => {
         console.error('Error cargando catálogo:', err);
@@ -196,25 +189,22 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
         setLoading(false);
         setSlow(false);
       });
-  }, [category, boxes]);
+  }, [category]);
 
   useEffect(() => {
     loadCatalog();
   }, [loadCatalog]);
 
-  // Alfajor boxes filter by how many alfajores come in the box (x6, x15...),
-  // which is what a buyer decides first; every other line filters by price.
-  // Box sizes are few (x6–x50), so each one gets its own button, no "+" group.
+  // Small alfajores have no price filter: a card is a flavor, and its price
+  // depends on the quantity and box picked next (and flavors are few).
   const filterValue = useCallback(
-    (d: PublicCakeDesign) => (boxes ? d.unitsPerBox ?? null : minicakePrice(d)),
+    (d: PublicCakeDesign) => (boxes ? null : minicakePrice(d)),
     [boxes],
   );
-  const buckets = useMemo(() => {
-    const values = designs.map(filterValue).filter((v): v is number => v !== null);
-    return boxes
-      ? [...new Set(values)].sort((a, b) => a - b).map((min) => ({ min, orMore: false }))
-      : priceBuckets(values);
-  }, [designs, filterValue, boxes]);
+  const buckets = useMemo(
+    () => priceBuckets(designs.map(filterValue).filter((v): v is number => v !== null)),
+    [designs, filterValue],
+  );
   const priceFiltered = bucket ? designs.filter((d) => inBucket(filterValue(d), bucket)) : designs;
   // Name search runs inside the price filter; no matches → closest names instead.
   const search = useMemo(() => searchByName(priceFiltered, query, (d) => d.name), [priceFiltered, query]);
@@ -243,17 +233,18 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
                   ? 'Catálogo de tortas de alfajor'
                   : 'Catálogo de tortas'}
           </p>
-          <h1>{boxes ? 'Elige tu caja' : 'Elige tu diseño'}</h1>
+          <h1>{boxes ? 'Elige tu sabor' : 'Elige tu diseño'}</h1>
           {isAdmin && (
             <Link to={line.designsHref} className="btn btn-ghost catalog-admin-cta">
-              Editar diseños
+              {boxes ? 'Editar sabores' : 'Editar diseños'}
             </Link>
           )}
           {boxes ? (
             <>
               <p className="section-lead">
-                Toca la foto de una caja para empezar tu pedido. En el siguiente paso eliges el empaque, el tamaño
-                de los alfajores y la forma, y ves el precio. Puedes agregar varias cajas al mismo pedido.
+                Toca la foto de un sabor para empezar tu pedido. En el siguiente paso eliges cuántos alfajores
+                quieres, el tamaño, la forma y la caja, y ves el precio. Puedes agregar varias cajas al mismo
+                pedido.
               </p>
               <div className="catalog-notice">
                 <p>
@@ -286,13 +277,13 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
           {!loading && !error && designs.length > 0 && (
             <div className="catalog-search">
               <label htmlFor="catalog-search-input" className="price-tabs-label">
-                {boxes ? 'Busca tu caja por nombre:' : cupcakes ? 'Busca tu cupcake por nombre:' : 'Busca tu torta por nombre:'}
+                {boxes ? 'Busca tu alfajor por nombre:' : cupcakes ? 'Busca tu cupcake por nombre:' : 'Busca tu torta por nombre:'}
               </label>
               <input
                 id="catalog-search-input"
                 type="search"
                 className="catalog-search-input"
-                placeholder={boxes ? 'Ej: x15, navidad...' : cupcakes ? 'Ej: flores, unicornio...' : 'Ej: corazón, vintage...'}
+                placeholder={boxes ? 'Ej: chocolate, coco...' : cupcakes ? 'Ej: flores, unicornio...' : 'Ej: corazón, vintage...'}
                 value={query}
                 autoComplete="off"
                 enterKeyHint="search"
@@ -304,12 +295,12 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
           {!loading && !error && buckets.length > 0 && (
             <>
               <p className="price-tabs-label">
-                {boxes ? 'Alfajores por caja:' : isAlfajor || cupcakes ? 'Precio desde:' : 'Precio MiniCake:'}
+                {isAlfajor || cupcakes ? 'Precio desde:' : 'Precio MiniCake:'}
               </p>
               <div
                 className="price-tabs"
                 role="group"
-                aria-label={boxes ? 'Filtrar cajas por cantidad de alfajores' : 'Filtrar diseños por precio'}
+                aria-label="Filtrar diseños por precio"
               >
                 <button
                   type="button"
@@ -329,7 +320,7 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
                       aria-pressed={active}
                       onClick={() => pickBucket(b)}
                     >
-                      {boxes ? `x${b.min}` : pesos(b.min)}
+                      {pesos(b.min)}
                       {b.orMore && '+'}
                     </button>
                   );
@@ -356,7 +347,7 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
           {!loading && !error && designs.length === 0 && (
             <p className="muted">
               {boxes
-                ? 'Pronto vamos a subir nuestras cajas de alfajores acá.'
+                ? 'Pronto vamos a subir nuestros alfajores acá.'
                 : cupcakes
                   ? 'Pronto vamos a subir nuestros cupcakes acá.'
                   : 'Pronto vamos a subir nuestros diseños acá.'}
@@ -366,8 +357,8 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
           {searching && search.matches.length === 0 && (
             <div className="catalog-search-empty">
               <p>
-                No encontramos {boxes ? 'una caja llamada' : cupcakes ? 'un cupcake llamado' : 'una torta llamada'} <strong>“{query.trim()}”</strong>
-                {bucket ? (boxes ? ' en esta cantidad' : ' en este precio') : ''}.
+                No encontramos {boxes ? 'un alfajor llamado' : cupcakes ? 'un cupcake llamado' : 'una torta llamada'} <strong>“{query.trim()}”</strong>
+                {bucket ? ' en este precio' : ''}.
                 {search.suggestions.length > 0 && ' ¿Quisiste decir alguna de estas?'}
               </p>
               <div className="catalog-search-actions">

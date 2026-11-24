@@ -22,8 +22,9 @@ import './cakeSettings.css';
 // with the bottom button, since gretica fills many of them at once.
 //
 // Small alfajores (boxes) reuse it: their sizes are mini/personal/grande, with
-// no portions or minutes of their own (each box carries its packing minutes)
-// and no "100% if alone" flag (the <$20.000 rule covers small orders).
+// no portions or minutes of their own (each box quantity carries its packing
+// minutes) and no "100% if alone" flag (the <$20.000 rule covers small
+// orders). They have no flavor lists: each design is a flavor.
 //
 // Cupcakes: sizes are boxes (x3, x6, x12 — "portions" = cupcakes in the box),
 // there are no shapes, and each flavor has ONE price per cupcake (saved on
@@ -212,7 +213,7 @@ export default function CakeSettingsPage({ category = 'CAKE' }: { category?: Cat
         ← Atrás
       </Link>
       <h1>
-        {line.boxes ? 'Tamaños, sabores y formas' : line.shapes ? 'Sabores, tamaños y formas' : 'Sabores y tamaños'}
+        {line.boxes ? 'Tamaños y formas' : line.shapes ? 'Sabores, tamaños y formas' : 'Sabores y tamaños'}
         {line.adminSuffix}
       </h1>
       <p className="edit-hint">
@@ -293,6 +294,8 @@ export default function CakeSettingsPage({ category = 'CAKE' }: { category?: Cat
       )}
 
       {/* ─── 3 & 4. Flavors ─── */}
+      {!line.boxes && (
+        <>
       {(
         [
           ['BIZCOCHO', `${line.shapes ? 3 : 2}. ${w.bizcochos}`, settings.bizcochos],
@@ -387,6 +390,8 @@ export default function CakeSettingsPage({ category = 'CAKE' }: { category?: Cat
           {busy ? 'Guardando...' : hasUnsaved ? 'Guardar precios de sabores' : 'Sin cambios por guardar'}
         </button>
       </div>
+        </>
+      )}
 
       {pendingDelete && (
         <PasswordPrompt

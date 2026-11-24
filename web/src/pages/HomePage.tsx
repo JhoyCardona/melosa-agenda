@@ -100,6 +100,22 @@ function legacyAlfajorCards(designs: ProductDesign[]): AlfajorCard[] {
     });
 }
 
+// Small alfajores: the cheapest whole box of this flavor (price of 1 alfajor ×
+// quantity + box, over every offered combination) = its "desde" price.
+function alfajorFromPrice(catalog: PublicCakeCatalog, design: PublicCakeDesign): number | null {
+  const totals = (catalog.alfajorBoxes?.quantities ?? []).flatMap((q) =>
+    design.colors.flatMap((c) =>
+      c.sizes.flatMap((s) =>
+        (catalog.alfajorBoxes?.boxes ?? []).flatMap((b) => {
+          const box = b.prices[q.id]?.[s.sizeId];
+          return box === undefined ? [] : [s.price * q.units + box];
+        })
+      )
+    )
+  );
+  return totals.length ? Math.min(...totals) : null;
+}
+
 // Cheapest size across all colors = the "desde" price on the card.
 function fromPrice(design: PublicCakeDesign): number | null {
   const prices = design.colors.flatMap((c) => c.sizes.map((s) => s.price));
@@ -109,7 +125,7 @@ function fromPrice(design: PublicCakeDesign): number | null {
 export default function HomePage() {
   const [favorites, setFavorites] = useState<Favorite[] | null>(null);
   const [alfajorCards, setAlfajorCards] = useState<AlfajorCard[] | null>(null);
-  // Small-alfajor boxes, smallest first. Same card shape as the alfajor cakes.
+  // Small alfajores, one card per flavor (A→Z). Same card shape as the alfajor cakes.
   const [boxCards, setBoxCards] = useState<AlfajorCard[] | null>(null);
   // A few cupcake designs (the first CUPCAKE_CARDS, A→Z) + a button to the catalog.
   const [cupcakeCards, setCupcakeCards] = useState<AlfajorCard[] | null>(null);
@@ -137,7 +153,10 @@ export default function HomePage() {
     getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog', { config: { params: { category: 'ALFAJOR_UNIT' } } })
       .then((data) =>
         setBoxCards(
-          v2AlfajorCards([...data.designs].sort((a, b) => (a.unitsPerBox ?? 0) - (b.unitsPerBox ?? 0)))
+          v2AlfajorCards(data.designs).map((card) => {
+            const design = data.designs.find((d) => d.id === card.id);
+            return { ...card, price: design ? alfajorFromPrice(data, design) : null };
+          })
         )
       )
       .catch((err) => {

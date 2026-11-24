@@ -3,8 +3,10 @@
 // formas" screens are shared; this tells them which line they're editing.
 //
 // Small alfajores (ALFAJOR_UNIT) reuse the same machinery with other words: a
-// design is a box ("Caja x15"), each of its colors is a packaging (empaque)
-// with its own photo and prices, sizes are mini/personal/grande.
+// design is a FLAVOR ("Alfajor de chocolate") with one photo, its shapes and
+// the price of ONE alfajor per size (mini/personal/grande). The boxes
+// (quantities + decorations, with their prices) are global, on their own
+// screen (boxesHref).
 //
 // Cupcakes (CUPCAKE) are like cakes (designs + colors), but a size is a box
 // (x3, x6, x12: `portions` = cupcakes in it), there's no shape, and a flavor's
@@ -26,8 +28,11 @@ export interface CatalogLineInfo {
   catalogHref: string;
   // Appended to the admin screen titles ("" for cakes).
   adminSuffix: string;
-  // true for small alfajores: designs are boxes, colors are packagings.
+  // true for small alfajores: designs are flavors with a single photo, no
+  // bizcocho/relleno, and the boxes live on their own screen.
   boxes: boolean;
+  // Small alfajores only: the "Cajas y cantidades" screen.
+  boxesHref?: string;
   // false for cupcakes: no shape to set up or to pick.
   shapes: boolean;
   // Cupcakes: what a size counts ("cupcakes") — sizes are boxes of N, and
@@ -63,8 +68,9 @@ export const CATALOG_LINES: Record<CatalogLine, CatalogLineInfo> = {
   ALFAJOR_UNIT: {
     category: 'ALFAJOR_UNIT',
     adminHref: '/admin/alfajores/sueltos',
-    designsHref: '/admin/alfajores/sueltos/cajas',
-    settingsHref: '/admin/alfajores/sueltos/tamanos-sabores',
+    designsHref: '/admin/alfajores/sueltos/sabores',
+    settingsHref: '/admin/alfajores/sueltos/tamanos-formas',
+    boxesHref: '/admin/alfajores/sueltos/cajas',
     plural: 'alfajores',
     catalogHref: '/catalogo-alfajores',
     adminSuffix: ' · alfajores',
@@ -86,14 +92,14 @@ export const CATALOG_LINES: Record<CatalogLine, CatalogLineInfo> = {
   },
 };
 
-// Words that change between cakes and alfajor boxes, for the shared screens.
+// Words that change between cakes and small alfajores, for the shared screens.
 export function lineWords(line: CatalogLineInfo) {
   return line.boxes
     ? {
-        design: 'caja',
-        designs: 'cajas',
-        color: 'empaque',
-        colors: 'empaques',
+        design: 'sabor',
+        designs: 'sabores',
+        color: 'foto',
+        colors: 'fotos',
         bizcocho: 'sabor del alfajor',
         bizcochos: 'Sabores del alfajor',
         relleno: 'relleno',

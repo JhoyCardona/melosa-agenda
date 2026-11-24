@@ -44,12 +44,40 @@ export function cakeLinePrice(
   return size.price + extra(bizcochoId) + extra(rellenoId) + imageExtra;
 }
 
+// Small alfajores: the box price for this box, quantity and alfajor size, or
+// null when that combination isn't offered.
+export function alfajorBoxPrice(
+  catalog: PublicCakeCatalog,
+  boxId: string,
+  quantityId: string,
+  sizeId: string
+): number | null {
+  return catalog.alfajorBoxes?.boxes.find((b) => b.id === boxId)?.prices[quantityId]?.[sizeId] ?? null;
+}
+
+// Small alfajores: price of 1 alfajor × quantity + the box. Null when the
+// combination isn't offered.
+export function alfajorLinePrice(
+  catalog: PublicCakeCatalog,
+  size: PublicCakeSize,
+  quantityId: string,
+  boxId: string
+): number | null {
+  const quantity = catalog.alfajorBoxes?.quantities.find((q) => q.id === quantityId);
+  const box = alfajorBoxPrice(catalog, boxId, quantityId, size.sizeId);
+  return quantity && box !== null ? size.price * quantity.units + box : null;
+}
+
 // Is a saved cake line still valid against the live catalog, at the same price?
 export function cakeItemStillValid(catalog: PublicCakeCatalog, item: CakeCartItem): boolean {
   const design = catalog.designs.find((d) => d.id === item.designId);
   const color = design?.colors.find((c) => c.id === item.colorId);
   const size = color?.sizes.find((s) => s.sizeId === item.sizeId);
   if (!design || !color || !size) return false;
+  if (design.category === 'ALFAJOR_UNIT') {
+    if (!item.quantityId || !item.boxId || !color.shapes.some((s) => s.id === item.shapeId)) return false;
+    return alfajorLinePrice(catalog, size, item.quantityId, item.boxId) === item.price;
+  }
   if (!color.bizcochoIds.includes(item.bizcochoId) || !color.rellenoIds.includes(item.rellenoId)) return false;
   // Cupcakes have no shape (their colors list none).
   if (design.category !== 'CUPCAKE' && !color.shapes.some((s) => s.id === item.shapeId)) return false;

@@ -139,6 +139,12 @@ model OrderItem {
   // they have no ProductVariant to read it from. Null on legacy rows — those
   // still fall back to variant.prepMinutes.
   prepMinutesAtOrder Int?
+  // Small alfajores (ALFAJOR_UNIT) only: how many alfajores this line is (the
+  // box quantity the client picked: 6, 15…), frozen at order time. Drives the
+  // per-order alfajor cap and the baker's day summary. Null on every other line
+  // and on alfajor lines booked before Nov 2026 (those read the design's
+  // unitsPerBox).
+  unitsAtOrder       Int?
   createdAt          DateTime        @default(now())
 }
 
@@ -166,13 +172,13 @@ model ProductDesign {
   // grouped by ProductVariant.optionLabel (the gatitos minicake: "Cantidad de
   // gatos"). Null for every ordinary design — no option picker is shown.
   optionTitle         String?
-  // Small alfajores (ALFAJOR_UNIT) only: a design is a box, and this is how
-  // many alfajores it holds (6, 15, 22…). Drives the per-order alfajor cap and
-  // the baker's day summary. Null on every other product line.
+  // LEGACY (Nov 20–24 2026 box-as-design model of small alfajores, never live
+  // on the public web): how many alfajores the box design held. Small alfajores
+  // are now one design per flavor, and the quantity is a global AlfajorQuantity
+  // picked by the client. Kept so old rows/orders still read; nothing new sets it.
   unitsPerBox         Int?
-  // Minutes this design takes on the delivery timeline, overriding the size's
-  // CakeSize.prepMinutes. Used by alfajor boxes, where the time is packing and
-  // depends on the box, not on the alfajor size. Null = use the size's minutes.
+  // LEGACY, same as unitsPerBox: the box design's packing minutes. Packing
+  // minutes now live on AlfajorQuantity.prepMinutes.
   prepMinutes         Int?
   // Soft-delete. Set when a design leaves the catalog: it stops showing
   // anywhere, but its row survives so past OrderItems keep pointing at it
@@ -233,6 +239,7 @@ model CakeSize {
 
   surcharges  FlavorSurcharge[]
   colorPrices ColorSizePrice[]
+  alfajorBoxPrices AlfajorBoxPrice[]
   imageLimits DesignImageLimit[]
 
   @@unique([category, label])
@@ -301,6 +308,54 @@ model DesignImageLimit {
   maxImages Int
 
   @@id([designId, sizeId])
+}
+
+// ─── Small alfajores (ALFAJOR_UNIT): boxes ───
+// A small-alfajor design is a FLAVOR ("Alfajor de chocolate"): its one color
+// row holds the photo, the allowed shapes and the price of ONE alfajor per size
+// (ColorSizePrice, sizes = CakeSize mini/personal/grande). The box is global,
+// shared by every flavor: the client picks how many (AlfajorQuantity) and which
+// box decoration (AlfajorBox). Line price =
+//   price of 1 alfajor × quantity + AlfajorBoxPrice(box, quantity, size).
+
+// How many alfajores a box holds (x6, x15…). Also the packing minutes it takes
+// on the delivery timeline (alfajores are baked apart; only packing counts).
+model AlfajorQuantity {
+  id          String   @id @default(uuid())
+  units       Int      @unique
+  prepMinutes Int
+  active      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  prices AlfajorBoxPrice[]
+}
+
+// A box decoration (Clásica, Navideña, Halloween), with the small photo the
+// client sees when picking it. Only added once it exists in every quantity and
+// size (gretica, Nov 2026); `active` turns a seasonal box on/off.
+model AlfajorBox {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  imageUrl  String?
+  active    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  prices AlfajorBoxPrice[]
+}
+
+// What a box costs, by decoration × quantity × alfajor size (a x6 box for
+// grandes is bigger than one for minis). No row = that combination isn't
+// offered.
+model AlfajorBoxPrice {
+  boxId      String
+  box        AlfajorBox      @relation(fields: [boxId], references: [id], onDelete: Cascade)
+  quantityId String
+  quantity   AlfajorQuantity @relation(fields: [quantityId], references: [id], onDelete: Cascade)
+  sizeId     String
+  size       CakeSize        @relation(fields: [sizeId], references: [id], onDelete: Cascade)
+  price      Decimal
+
+  @@id([boxId, quantityId, sizeId])
 }
 
 enum PrintImageType {

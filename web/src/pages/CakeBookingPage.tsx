@@ -6,6 +6,7 @@ import { isCakeItem } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
 import { AnnouncementBar, SiteFooter, SiteHeader } from '../components/SiteChrome';
 import AddedToCart from '../components/AddedToCart';
+import AlfajorBoxConfigurator from '../components/AlfajorBoxConfigurator';
 import { CART_HREF } from '../components/CartButton';
 import { cakeItemStillValid, cakeLinePrice, linePrintImagePrices } from '../cartValidation';
 import EditBanner from '../components/EditBanner';
@@ -29,9 +30,9 @@ import './BookingPage.css';
 // and submit live on the cart page. The server re-validates and re-prices
 // everything.
 //
-// Small-alfajor boxes (ALFAJOR_UNIT) use the same page: the "color" is the
-// packaging, the size is the alfajor size, and there's no personalization. A
-// single flavor is shown as text instead of a one-button picker.
+// Small alfajores (ALFAJOR_UNIT) share the address but get their own
+// configurator (AlfajorBoxConfigurator): a design is a flavor, and the client
+// picks quantity, size, shape and box.
 //
 // Cupcakes (CUPCAKE) too: the size is the box (x3, x6, x12), there's no shape,
 // the relleno includes "Sin relleno", and the client may upload one image per
@@ -270,6 +271,23 @@ export default function CakeBookingPage() {
     setNoImages(false);
     setImageError('');
     setJustAdded(true);
+  }
+
+  if (loaded && catalog && design && boxes && design.colors.length > 0) {
+    return (
+      <div className="booking-page">
+        <AnnouncementBar />
+        <SiteHeader />
+        <AlfajorBoxConfigurator
+          catalog={catalog}
+          design={design}
+          editingItem={editingItem}
+          catalogHref={catalogHref}
+          cartWasStale={cartWasStale}
+        />
+        <SiteFooter />
+      </div>
+    );
   }
 
   if (!loaded || !design || !color) {

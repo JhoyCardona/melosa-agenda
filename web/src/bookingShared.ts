@@ -60,7 +60,9 @@ export function newKey(): string {
 // 3 gatos" -> "MiniCake (3 gatos)", anything else -> "Torta <label>". Catalog v2
 // cakes use the size's own label as gretica named it.
 function whatsappItemLabel(item: CartItem): string {
-  if (isCakeItem(item) && item.unitsPerBox) return `Caja de ${item.unitsPerBox} alfajores ${item.sizeLabel.toLowerCase()}`;
+  if (isCakeItem(item) && item.unitsPerBox) {
+    return `Caja de ${item.unitsPerBox} alfajores ${item.sizeLabel.toLowerCase()}${item.boxName ? ` (caja ${item.boxName})` : ''}`;
+  }
   if (isCakeItem(item) && item.line === 'CUPCAKE') return `Cupcakes ${item.sizeLabel}`;
   if (isCakeItem(item)) return item.sizeLabel;
   const option = item.variantLabel.split(' · ')[1];
@@ -103,9 +105,8 @@ export function cartItemSummary(i: CartItem): string {
       ? [
           i.designName,
           `${i.unitsPerBox} alfajores ${i.sizeLabel.toLowerCase()}`,
-          `Empaque ${i.color}`,
-          `${i.bizcochoName} con ${i.rellenoName.toLowerCase()}`,
           i.shapeName,
+          i.boxName ? `Caja ${i.boxName}${i.boxPrice ? ` (${pesos(i.boxPrice)})` : ''}` : null,
         ]
       : isCakeItem(i) && i.line === 'CUPCAKE'
         ? [
@@ -136,8 +137,10 @@ export function toOrderLine(i: CartItem) {
       productDesignId: i.designId,
       colorId: i.colorId,
       sizeId: i.sizeId,
-      bizcochoId: i.bizcochoId,
-      rellenoId: i.rellenoId,
+      // Small alfajores send the quantity + box instead of the flavors.
+      ...(i.quantityId
+        ? { quantityId: i.quantityId, boxId: i.boxId }
+        : { bizcochoId: i.bizcochoId, rellenoId: i.rellenoId }),
       shapeId: i.shapeId,
       customText: i.customText,
       customImageUrls: i.customImageUrls,
@@ -181,7 +184,10 @@ export function cartItemsFromOrder(order: ManagedOrderView): CartItem[] {
         colorId: '',
         color: it.color ?? '',
         sizeId: '',
-        sizeLabel: it.sizeLabel ?? '',
+        // A small-alfajor line's size snapshot is "Mini x15 · caja Clásica";
+        // the cart shows the alfajor size alone, plus the box from `color`.
+        sizeLabel: (it.unitsPerBox ? it.sizeLabel?.replace(/ x\d+ · caja .*$/, '') : it.sizeLabel) ?? '',
+        boxName: it.unitsPerBox && it.color ? it.color : undefined,
         portions: 0,
         bizcochoId: '',
         bizcochoName: it.bizcocho ?? '',

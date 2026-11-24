@@ -103,9 +103,11 @@ export default function NewOrderPage() {
       navigate('/admin', { replace: true });
       return;
     }
-    // Cakes and alfajor cakes: both can be added as catalog lines.
+    // Cakes, alfajor cakes and cupcakes can be added as catalog lines. Small
+    // alfajores (flavor + quantity + box) aren't offered in this form yet: they
+    // go as a free line.
     getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog', { config: { params: { category: 'ALL' } } })
-      .then(setCatalog)
+      .then((data) => setCatalog({ ...data, designs: data.designs.filter((d) => d.category !== 'ALFAJOR_UNIT') }))
       .catch(() => setError('No se pudo cargar el catálogo'));
     api
       .get<CakeSettings>('/cake-settings')

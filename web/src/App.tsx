@@ -18,6 +18,7 @@ import AlfajorCakePage from './pages/AlfajorCakePage';
 import AlfajorCakeModulePage from './pages/AlfajorCakeModulePage';
 import AlfajorUnitModulePage from './pages/AlfajorUnitModulePage';
 import CupcakeModulePage from './pages/CupcakeModulePage';
+import AlfajorBoxesPage from './pages/AlfajorBoxesPage';
 import ScrollToTop from './components/ScrollToTop';
 
 export default function App() {
@@ -62,12 +63,18 @@ export default function App() {
         <Route path="/admin/alfajores/torta/anterior" element={<AlfajorCakePage />} />
         <Route path="/admin/alfajores/sueltos" element={<AlfajorUnitModulePage />} />
         <Route
-          path="/admin/alfajores/sueltos/tamanos-sabores"
+          path="/admin/alfajores/sueltos/tamanos-formas"
           element={<CakeSettingsPage key="ALFAJOR_UNIT" category="ALFAJOR_UNIT" />}
         />
         <Route
-          path="/admin/alfajores/sueltos/cajas"
+          path="/admin/alfajores/sueltos/sabores"
           element={<CakeDesignsPage key="ALFAJOR_UNIT" category="ALFAJOR_UNIT" />}
+        />
+        <Route path="/admin/alfajores/sueltos/cajas" element={<AlfajorBoxesPage />} />
+        {/* Old addresses of the box-as-design screens (Nov 2026). */}
+        <Route
+          path="/admin/alfajores/sueltos/tamanos-sabores"
+          element={<Navigate to="/admin/alfajores/sueltos/tamanos-formas" replace />}
         />
         <Route path="/admin/cupcakes" element={<CupcakeModulePage />} />
         <Route path="/admin/cupcakes/sabores-tamanos" element={<CakeSettingsPage key="CUPCAKE" category="CUPCAKE" />} />
