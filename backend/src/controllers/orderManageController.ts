@@ -102,9 +102,11 @@ function itemPrepMinutes(item: ManagedOrder['items'][number]): number {
   return item.prepMinutesAtOrder ?? item.variant?.prepMinutes ?? 0;
 }
 
-// Alfajores in a booked line: its box size when it's a small-alfajor box, else 0.
+// Alfajores in a booked line: the quantity picked when it's a small-alfajor
+// line (older box-as-design lines: the design's unitsPerBox), else 0.
 function itemAlfajorUnits(item: ManagedOrder['items'][number]): number {
-  return item.productDesign?.category === ItemCategory.ALFAJOR_UNIT ? item.productDesign.unitsPerBox ?? 0 : 0;
+  if (item.productDesign?.category !== ItemCategory.ALFAJOR_UNIT) return 0;
+  return item.unitsAtOrder ?? item.productDesign.unitsPerBox ?? 0;
 }
 
 // What the client sees of their order. Ids let the web reopen each line in the
@@ -140,7 +142,7 @@ function orderView(order: ManagedOrder) {
       printImageType: it.printImageType,
       price: Number(it.priceAtOrder),
       prepMinutes: itemPrepMinutes(it),
-      // Alfajores per box for a small-alfajor line, else null.
+      // Alfajores in a small-alfajor line (the quantity picked), else null.
       unitsPerBox: itemAlfajorUnits(it) || null,
     })),
   };

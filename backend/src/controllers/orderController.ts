@@ -613,8 +613,9 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
         const baseLabel = item.variant?.label ?? item.customSize ?? item.customName ?? 'Personalizado';
         // A catalog-v2 alfajor cake may share its size name with a cake
         // ("MiniCake"); prefix it so the two never merge in the bake list.
-        // A small-alfajor box reads "Alfajores Mini · caja de 15 · Navideña"
-        // (size · box · packaging), so gretica sees what to pack. Built here,
+        // A small-alfajor line reads "Alfajores Mini x15 · caja Clásica" (its
+        // customSize already carries size, quantity and box), so gretica sees
+        // what to pack; the flavor level is the alfajor's flavor. Built here,
         // so the installed app shows it with no APK update.
         const design = item.productDesign;
         const isAlfajorBox = !item.variantId && design?.category === ItemCategory.ALFAJOR_UNIT;
@@ -625,9 +626,12 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
         const sizeLabel = isCupcakeBox
           ? `Cupcakes ${baseLabel}`
           : isAlfajorBox
-          ? [`Alfajores ${baseLabel}`, design?.unitsPerBox ? `caja de ${design.unitsPerBox}` : design?.name, item.color]
-              .filter(Boolean)
-              .join(' · ')
+          ? item.unitsAtOrder
+            ? `Alfajores ${baseLabel}`
+            : // Older box-as-design lines (never booked from the public web).
+              [`Alfajores ${baseLabel}`, design?.unitsPerBox ? `caja de ${design.unitsPerBox}` : design?.name, item.color]
+                .filter(Boolean)
+                .join(' · ')
           : !item.variantId && design?.category === ItemCategory.ALFAJOR_CAKE
             ? `Torta de alfajor · ${baseLabel}`
             : baseLabel;
@@ -638,7 +642,7 @@ export async function getDaySummary(req: AuthRequest, res: Response) {
         if (!sizeGroup) {
           // Cupcakes go after the cakes, then alfajor boxes (smallest box first).
           const sortKey = isAlfajorBox
-            ? 100000 + (design?.unitsPerBox ?? 0)
+            ? 100000 + (item.unitsAtOrder ?? design?.unitsPerBox ?? 0)
             : isCupcakeBox
               ? 50000
               : item.pointsAtOrder;
