@@ -10,6 +10,8 @@ import EditBanner from '../components/EditBanner';
 import { catalogPhotoUrl, pesos } from '../bookingShared';
 import { CATALOG_LINES, type CatalogLine } from '../catalogLines';
 import { searchByName } from '../fuzzySearch';
+import { waLink, ALFAJOR_QUOTE_MESSAGE } from '../config';
+import { MAX_ALFAJORES } from '../bookingShared';
 import './CatalogPage.css';
 
 // How many price buttons to show at most. When there are more distinct prices,
@@ -149,10 +151,14 @@ function CatalogCard({ design }: CatalogCardProps) {
 // of the arrows away. The price buttons filter by MiniCake price (most sales are
 // minicakes); bigger sizes and flavor surcharges show while building the order.
 // The same page, with category="ALFAJOR_CAKE", is the alfajor cake catalog
-// (/catalogo-alfajor); cupcakes and postres will get their own later.
+// (/catalogo-alfajor), with "ALFAJOR_UNIT" the small alfajores, one card per
+// flavor (/catalogo-alfajores, "Antojo de alfajores"), and with "CUPCAKE" the
+// cupcakes.
 export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogLine }) {
   const line = CATALOG_LINES[category];
   const isAlfajor = category === 'ALFAJOR_CAKE';
+  const cupcakes = category === 'CUPCAKE';
+  const boxes = line.boxes;
   const { isAdmin } = useAdminAuth();
   const [designs, setDesigns] = useState<PublicCakeDesign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,11 +195,17 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
     loadCatalog();
   }, [loadCatalog]);
 
-  const buckets = useMemo(
-    () => priceBuckets(designs.map(minicakePrice).filter((p): p is number => p !== null)),
-    [designs],
+  // Small alfajores have no price filter: a card is a flavor, and its price
+  // depends on the quantity and box picked next (and flavors are few).
+  const filterValue = useCallback(
+    (d: PublicCakeDesign) => (boxes ? null : minicakePrice(d)),
+    [boxes],
   );
-  const priceFiltered = bucket ? designs.filter((d) => inBucket(minicakePrice(d), bucket)) : designs;
+  const buckets = useMemo(
+    () => priceBuckets(designs.map(filterValue).filter((v): v is number => v !== null)),
+    [designs, filterValue],
+  );
+  const priceFiltered = bucket ? designs.filter((d) => inBucket(filterValue(d), bucket)) : designs;
   // Name search runs inside the price filter; no matches → closest names instead.
   const search = useMemo(() => searchByName(priceFiltered, query, (d) => d.name), [priceFiltered, query]);
   const searching = query.trim() !== '';
@@ -212,32 +224,66 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
       <main className="section">
         <div className="section-inner">
           <EditBanner />
-          <p className="eyebrow">{isAlfajor ? 'Catálogo de tortas de alfajor' : 'Catálogo de tortas'}</p>
-          <h1>Elige tu diseño</h1>
+          <p className="eyebrow">
+            {boxes
+              ? 'Antojo de alfajores'
+              : cupcakes
+                ? 'Catálogo de cupcakes'
+                : isAlfajor
+                  ? 'Catálogo de tortas de alfajor'
+                  : 'Catálogo de tortas'}
+          </p>
+          <h1>{boxes ? 'Elige tu sabor' : 'Elige tu diseño'}</h1>
           {isAdmin && (
             <Link to={line.designsHref} className="btn btn-ghost catalog-admin-cta">
-              Editar diseños
+              {boxes ? 'Editar sabores' : 'Editar diseños'}
             </Link>
           )}
-          <p className="section-lead">
-            Toca la foto de un diseño para empezar tu pedido. En el siguiente paso eliges el color, el tamaño y los
-            sabores, y ves el precio.
-          </p>
-          <p className="catalog-notice">
-            En este momento solo estamos agendando los diseños y colores que verás a continuación.
-            Solo puedes editar la imagen y/o el texto, si el diseño lo permite.
-          </p>
+          {boxes ? (
+            <>
+              <p className="section-lead">
+                Toca la foto de un sabor para empezar tu pedido. En el siguiente paso eliges cuántos alfajores
+                quieres, el tamaño, la forma y la caja, y ves el precio. Puedes agregar varias cajas al mismo
+                pedido.
+              </p>
+              <div className="catalog-notice">
+                <p>
+                  Por la web puedes pedir hasta {MAX_ALFAJORES} alfajores. ¿Necesitas más? Te cotizamos por
+                  WhatsApp.
+                </p>
+                <a className="btn btn-ghost" href={waLink(ALFAJOR_QUOTE_MESSAGE)} target="_blank" rel="noreferrer">
+                  +{MAX_ALFAJORES} alfajores: cotizar por WhatsApp
+                </a>
+              </div>
+            </>
+          ) : cupcakes ? (
+            <p className="section-lead">
+              Toca la foto de un diseño para empezar tu pedido. En el siguiente paso eliges el color, la caja (x3,
+              x6 o x12), el sabor y si lo quieres con relleno, y ves el precio. Si quieres, le agregas tu imagen.
+            </p>
+          ) : (
+            <>
+              <p className="section-lead">
+                Toca la foto de un diseño para empezar tu pedido. En el siguiente paso eliges el color, el tamaño y
+                los sabores, y ves el precio.
+              </p>
+              <p className="catalog-notice">
+                En este momento solo estamos agendando los diseños y colores que verás a continuación.
+                Solo puedes editar la imagen y/o el texto, si el diseño lo permite.
+              </p>
+            </>
+          )}
 
           {!loading && !error && designs.length > 0 && (
             <div className="catalog-search">
               <label htmlFor="catalog-search-input" className="price-tabs-label">
-                Busca tu torta por nombre:
+                {boxes ? 'Busca tu alfajor por nombre:' : cupcakes ? 'Busca tu cupcake por nombre:' : 'Busca tu torta por nombre:'}
               </label>
               <input
                 id="catalog-search-input"
                 type="search"
                 className="catalog-search-input"
-                placeholder="Ej: corazón, vintage..."
+                placeholder={boxes ? 'Ej: chocolate, coco...' : cupcakes ? 'Ej: flores, unicornio...' : 'Ej: corazón, vintage...'}
                 value={query}
                 autoComplete="off"
                 enterKeyHint="search"
@@ -248,8 +294,14 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
 
           {!loading && !error && buckets.length > 0 && (
             <>
-              <p className="price-tabs-label">{isAlfajor ? 'Precio desde:' : 'Precio MiniCake:'}</p>
-              <div className="price-tabs" role="group" aria-label="Filtrar diseños por precio">
+              <p className="price-tabs-label">
+                {isAlfajor || cupcakes ? 'Precio desde:' : 'Precio MiniCake:'}
+              </p>
+              <div
+                className="price-tabs"
+                role="group"
+                aria-label="Filtrar diseños por precio"
+              >
                 <button
                   type="button"
                   className={`price-tab ${bucket === null ? 'price-tab-active' : ''}`}
@@ -293,13 +345,19 @@ export default function CatalogPage({ category = 'CAKE' }: { category?: CatalogL
             </p>
           )}
           {!loading && !error && designs.length === 0 && (
-            <p className="muted">Pronto vamos a subir nuestros diseños acá.</p>
+            <p className="muted">
+              {boxes
+                ? 'Pronto vamos a subir nuestros alfajores acá.'
+                : cupcakes
+                  ? 'Pronto vamos a subir nuestros cupcakes acá.'
+                  : 'Pronto vamos a subir nuestros diseños acá.'}
+            </p>
           )}
 
           {searching && search.matches.length === 0 && (
             <div className="catalog-search-empty">
               <p>
-                No encontramos una torta llamada <strong>“{query.trim()}”</strong>
+                No encontramos {boxes ? 'un alfajor llamado' : cupcakes ? 'un cupcake llamado' : 'una torta llamada'} <strong>“{query.trim()}”</strong>
                 {bucket ? ' en este precio' : ''}.
                 {search.suggestions.length > 0 && ' ¿Quisiste decir alguna de estas?'}
               </p>

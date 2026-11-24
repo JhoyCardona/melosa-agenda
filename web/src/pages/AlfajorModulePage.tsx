@@ -4,8 +4,8 @@ import { useAdminAuth } from '../context/AdminAuth';
 import './adminLegacy.css';
 import './cakeSettings.css';
 
-// "Módulo alfajores": hub for everything alfajor-related in the admin. Only the
-// alfajor cake exists today; loose alfajores come later.
+// "Módulo alfajores": hub for everything alfajor-related in the admin — the
+// alfajor cake and the small alfajores sold in boxes.
 export default function AlfajorModulePage() {
   const navigate = useNavigate();
   const { isAdmin } = useAdminAuth();
@@ -24,7 +24,9 @@ export default function AlfajorModulePage() {
         <Link to="/admin/alfajores/torta" className="cs-menu-item">
           Torta de alfajor
         </Link>
-        <span className="cs-menu-item is-disabled">Alfajores sueltos · próximamente</span>
+        <Link to="/admin/alfajores/sueltos" className="cs-menu-item">
+          Alfajores en caja
+        </Link>
       </nav>
     </div>
   );

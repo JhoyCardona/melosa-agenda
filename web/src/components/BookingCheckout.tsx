@@ -3,11 +3,13 @@ import { Link } from 'react-router-dom';
 import api from '../api';
 import type { DeliveryPreview } from '../types';
 import { useOrderDraft } from '../context/OrderDraft';
-import { waLink, BUSINESS } from '../config';
+import { waLink, BUSINESS, ALFAJOR_QUOTE_MESSAGE } from '../config';
 import { isCakeItem } from '../types';
 import {
+  MAX_ALFAJORES,
   MAX_CLIENT_NAME,
   MAX_ITEMS,
+  alfajorCount,
   cartItemSummary,
   earliestDeliveryDateString,
   formatDeliveryDate,
@@ -65,11 +67,15 @@ export default function BookingCheckout({ catalogHref }: { catalogHref: string }
   // the backend rejects it anyway, this just stops a confusing "preview says OK,
   // submit says no".
   const dateTooSoon = !!draft.deliveryDate && draft.deliveryDate < earliestDate;
+  // Over 200 alfajores the order is quoted by WhatsApp instead (backend cap too).
+  const alfajores = alfajorCount(draft.items);
+  const tooManyAlfajores = alfajores > MAX_ALFAJORES;
 
   const canSubmit =
     draft.items.length > 0 &&
     !!draft.deliveryDate &&
     !dateTooSoon &&
+    !tooManyAlfajores &&
     !!preview?.isBusinessDay &&
     !preview?.isBlocked &&
     !!preview?.fits &&
@@ -200,9 +206,20 @@ export default function BookingCheckout({ catalogHref }: { catalogHref: string }
             </li>
           ))}
         </ul>
+        {tooManyAlfajores && (
+          <div className="warning">
+            <p>
+              Tu pedido tiene {alfajores} alfajores. Por la web puedes pedir hasta {MAX_ALFAJORES}; para más te
+              cotizamos por WhatsApp.
+            </p>
+            <a className="btn btn-ghost" href={waLink(ALFAJOR_QUOTE_MESSAGE)} target="_blank" rel="noreferrer">
+              Cotizar +{MAX_ALFAJORES} alfajores por WhatsApp
+            </a>
+          </div>
+        )}
         {draft.items.length < MAX_ITEMS && (
           <Link to={catalogHref} className="btn btn-ghost">
-            Agregar otra torta
+            Agregar otro producto
           </Link>
         )}
       </section>

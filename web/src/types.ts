@@ -71,6 +71,8 @@ export interface DeliveryPreview {
 }
 
 export type ItemCategory = 'CAKE' | 'ALFAJOR_CAKE' | 'ALFAJOR_UNIT' | 'CUPCAKE' | 'DESSERT';
+// Product lines on the catalog v2 machinery (see catalogLines.ts).
+export type CatalogCategory = 'CAKE' | 'ALFAJOR_CAKE' | 'ALFAJOR_UNIT' | 'CUPCAKE';
 
 // One configured product line in the in-progress order. Carries a snapshot so
 // the cart can render without re-fetching the catalog. Two shapes:
@@ -131,6 +133,20 @@ export interface CakeCartItem {
   // Snapshot of the price/minutes shown when added; the server re-prices.
   price: number;
   prepMinutes: number;
+  // Small alfajores: how many alfajores this line is (the quantity picked).
+  // Absent on cakes.
+  unitsPerBox?: number;
+  // Small alfajores only: the quantity and box picked (ids for the order, the
+  // box name/photo for the cart). bizcochoId/rellenoId are '' on these lines.
+  quantityId?: string;
+  boxId?: string;
+  boxName?: string;
+  boxImageUrl?: string | null;
+  // Price of the box alone, already inside `price` (shown to the client).
+  boxPrice?: number;
+  // Product line, for labels ("Cupcakes x6"). Absent on lines added before it
+  // existed and on lines kept from an order being modified.
+  line?: CatalogCategory;
   customText?: string;
   customImageUrls?: string[];
   // Set only when customImageUrls has at least one image; its surcharge is
@@ -168,6 +184,8 @@ export interface ManagedOrderItem {
   printImageType: PrintImageType | null;
   price: number;
   prepMinutes: number;
+  // Alfajores in a small-alfajor line (the quantity picked), else null.
+  unitsPerBox: number | null;
 }
 
 export interface ManagedOrderView {
@@ -215,6 +233,7 @@ export interface PublicCakeColor {
   id: string;
   colorName: string;
   imageUrl: string;
+  // Small alfajores: `price` is the price of ONE alfajor of that size.
   sizes: PublicCakeSize[];
   bizcochoIds: string[];
   rellenoIds: string[];
@@ -224,12 +243,15 @@ export interface PublicCakeColor {
 export interface PublicCakeDesign {
   id: string;
   name: string;
-  // Product line: cakes and alfajor cakes share this catalog shape.
-  category: 'CAKE' | 'ALFAJOR_CAKE';
+  // Product line: cakes, alfajor cakes and small-alfajor boxes share this
+  // catalog shape.
+  category: CatalogCategory;
   allowsCustomImage: boolean;
   requiresCustomImage: boolean;
   allowsCustomText: boolean;
   customTextMaxLength: number;
+  // Legacy (old alfajor box designs); always null now.
+  unitsPerBox: number | null;
   imageLimits: Record<string, number>;
   colors: PublicCakeColor[];
 }
@@ -244,8 +266,56 @@ export interface PublicCakeFlavor {
 export interface PublicCakeCatalog {
   designs: PublicCakeDesign[];
   flavors: PublicCakeFlavor[];
-  // Per-cake surcharge for adding print image(s), by print type.
+  // Per-cake surcharge for adding print image(s), by print type (cake prices).
   printImagePrices: Record<PrintImageType, number>;
+  // The same, per product line (cupcakes charge their own, once per box).
+  // Missing on an older backend — read it through linePrintImagePrices().
+  printImagePricesByLine?: Partial<Record<CatalogCategory, Record<PrintImageType, number>>>;
+  // Small alfajores: quantities and boxes every flavor shares. Null/missing
+  // when the request didn't include ALFAJOR_UNIT.
+  alfajorBoxes?: PublicAlfajorBoxes | null;
+}
+
+export interface PublicAlfajorQuantity {
+  id: string;
+  units: number;
+  prepMinutes: number;
+}
+
+export interface PublicAlfajorBox {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  // { quantityId: { sizeId: box price } } — a missing entry isn't offered.
+  prices: Record<string, Record<string, number>>;
+}
+
+export interface PublicAlfajorBoxes {
+  quantities: PublicAlfajorQuantity[];
+  boxes: PublicAlfajorBox[];
+}
+
+// ─── Small alfajores: admin "Cajas y cantidades" (GET /alfajor-boxes) ───
+
+export interface AlfajorQuantitySetting {
+  id: string;
+  units: number;
+  prepMinutes: number;
+  active: boolean;
+}
+
+export interface AlfajorBoxSetting {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  active: boolean;
+  prices: Record<string, Record<string, number>>;
+}
+
+export interface AlfajorBoxSettings {
+  quantities: AlfajorQuantitySetting[];
+  boxes: AlfajorBoxSetting[];
+  sizes: { id: string; label: string; active: boolean }[];
 }
 
 // ─── Catalog v2: global cake settings (GET /cake-settings, admin only) ───
@@ -309,6 +379,10 @@ export interface CakeDesignV2 {
   requiresCustomImage: boolean;
   allowsCustomText: boolean;
   customTextMaxLength: number;
+  // Small-alfajor boxes: alfajores per box, and the box's own minutes on the
+  // timeline (null = the size's). Null on cakes.
+  unitsPerBox: number | null;
+  prepMinutes: number | null;
   // { sizeId: max print images } — a size missing from the map allows 1.
   imageLimits: Record<string, number>;
   colors: DesignColorConfig[];

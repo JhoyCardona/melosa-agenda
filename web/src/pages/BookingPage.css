@@ -546,3 +546,67 @@
 .cart-empty {
   text-align: center;
 }
+
+/* ---------- Small alfajores: box decoration picker + price breakdown ---------- */
+.box-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.box-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  width: 104px;
+  padding: var(--space-2);
+  background: #fff;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.box-option img,
+.box-option-noimg {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--color-bg-soft);
+}
+
+.box-option-name {
+  font-weight: 600;
+  text-align: center;
+}
+
+.box-option-price {
+  color: var(--color-muted);
+}
+
+.box-option-active {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.alfajor-price-breakdown {
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.alfajor-price-breakdown p {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.alfajor-price-breakdown .cake-line-price {
+  display: block;
+  margin-top: var(--space-3);
+  font-size: inherit;
+}

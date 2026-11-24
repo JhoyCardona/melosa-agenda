@@ -3,6 +3,7 @@ import { getWithRetry } from './api';
 import { rellenoSurcharge } from './config';
 import type {
   CakeCartItem,
+  CatalogCategory,
   CartItem,
   LegacyCartItem,
   PrintImageType,
@@ -16,10 +17,22 @@ import { isCakeItem } from './types';
 // design, option or price changed since it was added is dropped with a warning
 // instead of failing on submit. Shared by the booking pages and the cart page.
 
+// Print-image surcharges of one product line (cupcakes have their own). Falls
+// back to the cake prices on a backend that predates per-line prices.
+export function linePrintImagePrices(
+  catalog: PublicCakeCatalog,
+  category: CatalogCategory
+): Record<PrintImageType, number> {
+  return catalog.printImagePricesByLine?.[category] ?? catalog.printImagePrices;
+}
+
 // Price of one cake as configured: this color's size price + the chosen
 // flavors' surcharges for that size + the print-image surcharge, if any.
+// (Cupcake flavor surcharges come from the server already multiplied by the
+// cupcakes in the box.)
 export function cakeLinePrice(
   catalog: PublicCakeCatalog,
+  category: CatalogCategory,
   size: PublicCakeSize,
   bizcochoId: string,
   rellenoId: string,
@@ -27,8 +40,32 @@ export function cakeLinePrice(
 ): number {
   const extra = (flavorId: string) =>
     catalog.flavors.find((f) => f.id === flavorId)?.surcharges[size.sizeId] ?? 0;
-  const imageExtra = printImageType ? catalog.printImagePrices[printImageType] : 0;
+  const imageExtra = printImageType ? linePrintImagePrices(catalog, category)[printImageType] : 0;
   return size.price + extra(bizcochoId) + extra(rellenoId) + imageExtra;
+}
+
+// Small alfajores: the box price for this box, quantity and alfajor size, or
+// null when that combination isn't offered.
+export function alfajorBoxPrice(
+  catalog: PublicCakeCatalog,
+  boxId: string,
+  quantityId: string,
+  sizeId: string
+): number | null {
+  return catalog.alfajorBoxes?.boxes.find((b) => b.id === boxId)?.prices[quantityId]?.[sizeId] ?? null;
+}
+
+// Small alfajores: price of 1 alfajor × quantity + the box. Null when the
+// combination isn't offered.
+export function alfajorLinePrice(
+  catalog: PublicCakeCatalog,
+  size: PublicCakeSize,
+  quantityId: string,
+  boxId: string
+): number | null {
+  const quantity = catalog.alfajorBoxes?.quantities.find((q) => q.id === quantityId);
+  const box = alfajorBoxPrice(catalog, boxId, quantityId, size.sizeId);
+  return quantity && box !== null ? size.price * quantity.units + box : null;
 }
 
 // Is a saved cake line still valid against the live catalog, at the same price?
@@ -36,11 +73,16 @@ export function cakeItemStillValid(catalog: PublicCakeCatalog, item: CakeCartIte
   const design = catalog.designs.find((d) => d.id === item.designId);
   const color = design?.colors.find((c) => c.id === item.colorId);
   const size = color?.sizes.find((s) => s.sizeId === item.sizeId);
-  if (!color || !size) return false;
+  if (!design || !color || !size) return false;
+  if (design.category === 'ALFAJOR_UNIT') {
+    if (!item.quantityId || !item.boxId || !color.shapes.some((s) => s.id === item.shapeId)) return false;
+    return alfajorLinePrice(catalog, size, item.quantityId, item.boxId) === item.price;
+  }
   if (!color.bizcochoIds.includes(item.bizcochoId) || !color.rellenoIds.includes(item.rellenoId)) return false;
-  if (!color.shapes.some((s) => s.id === item.shapeId)) return false;
+  // Cupcakes have no shape (their colors list none).
+  if (design.category !== 'CUPCAKE' && !color.shapes.some((s) => s.id === item.shapeId)) return false;
   const printType = item.customImageUrls?.length ? item.printImageType ?? 'NON_EDIBLE' : undefined;
-  return cakeLinePrice(catalog, size, item.bizcochoId, item.rellenoId, printType) === item.price;
+  return cakeLinePrice(catalog, design.category, size, item.bizcochoId, item.rellenoId, printType) === item.price;
 }
 
 // Same check for a legacy line (alfajor cake): design and variant still

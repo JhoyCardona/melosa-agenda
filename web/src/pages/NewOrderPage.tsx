@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api, { getWithRetry } from '../api';
 import type { CakeSettings, PrintImageType, PublicCakeCatalog, PublicCakeDesign } from '../types';
+import { linePrintImagePrices } from '../cartValidation';
 import { useAdminAuth } from '../context/AdminAuth';
 import PasswordPrompt from '../components/PasswordPrompt';
 import { PRINT_TYPE_LABELS } from '../bookingShared';
@@ -54,9 +55,9 @@ function newKey(): string {
 function catalogLinePrice(catalog: PublicCakeCatalog, l: CatalogLine): number | null {
   const design = catalog.designs.find((d) => d.id === l.designId);
   const size = design?.colors.find((c) => c.id === l.colorId)?.sizes.find((s) => s.sizeId === l.sizeId);
-  if (!size) return null;
+  if (!design || !size) return null;
   const extra = (flavorId: string) => catalog.flavors.find((f) => f.id === flavorId)?.surcharges[size.sizeId] ?? 0;
-  const image = l.customImageUrl ? catalog.printImagePrices[l.printImageType] : 0;
+  const image = l.customImageUrl ? linePrintImagePrices(catalog, design.category)[l.printImageType] : 0;
   return size.price + extra(l.bizcochoId) + extra(l.rellenoId) + image;
 }
 
@@ -102,9 +103,11 @@ export default function NewOrderPage() {
       navigate('/admin', { replace: true });
       return;
     }
-    // Cakes and alfajor cakes: both can be added as catalog lines.
+    // Cakes, alfajor cakes and cupcakes can be added as catalog lines. Small
+    // alfajores (flavor + quantity + box) aren't offered in this form yet: they
+    // go as a free line.
     getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog', { config: { params: { category: 'ALL' } } })
-      .then(setCatalog)
+      .then((data) => setCatalog({ ...data, designs: data.designs.filter((d) => d.category !== 'ALFAJOR_UNIT') }))
       .catch(() => setError('No se pudo cargar el catálogo'));
     api
       .get<CakeSettings>('/cake-settings')
@@ -214,7 +217,14 @@ export default function NewOrderPage() {
       }
       if (l.kind === 'catalog') {
         if (!l.designId) reasons.push(`${label}: falta elegir el diseño`);
-        else if (!l.colorId || !l.sizeId || !l.bizcochoId || !l.rellenoId || !l.shapeId) {
+        // Cupcakes have no shape.
+        else if (
+          !l.colorId ||
+          !l.sizeId ||
+          !l.bizcochoId ||
+          !l.rellenoId ||
+          (!l.shapeId && catalog?.designs.find((d) => d.id === l.designId)?.category !== 'CUPCAKE')
+        ) {
           reasons.push(`${label}: falta elegir color, tamaño, sabores o forma`);
         }
         const design = catalog?.designs.find((d) => d.id === l.designId);
@@ -519,7 +529,10 @@ export default function NewOrderPage() {
                         {/* Catalog cakes add the surcharge; on a free line the
                             admin's own price already includes it. */}
                         {l.kind === 'catalog' && catalog
-                          ? ` (+$${catalog.printImagePrices[t].toLocaleString('es-CO')})`
+                          ? ` (+$${linePrintImagePrices(
+                              catalog,
+                              catalog.designs.find((d) => d.id === l.designId)?.category ?? 'CAKE'
+                            )[t].toLocaleString('es-CO')})`
                           : ''}
                       </button>
                     ))}
@@ -733,12 +746,14 @@ function CatalogLineEditor({
             value={line.rellenoId}
             onChange={(rellenoId) => onChange({ rellenoId })}
           />
-          <PillGroup
-            label="Forma"
-            options={color.shapes.map((s) => ({ id: s.id, text: s.name }))}
-            value={line.shapeId}
-            onChange={(shapeId) => onChange({ shapeId })}
-          />
+          {color.shapes.length > 0 && (
+            <PillGroup
+              label="Forma"
+              options={color.shapes.map((s) => ({ id: s.id, text: s.name }))}
+              value={line.shapeId}
+              onChange={(shapeId) => onChange({ shapeId })}
+            />
+          )}
         </>
       )}
     </>
