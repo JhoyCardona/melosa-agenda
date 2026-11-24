@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { getWithRetry } from '../api';
+import type { PublicCakeCatalog } from '../types';
 import { Link } from 'react-router-dom';
 import { BUSINESS, SOCIAL, waLink } from '../config';
 import { useAdminAuth } from '../context/AdminAuth';
 import CartButton, { CART_HREF } from './CartButton';
 import MarqueeAnnounce from './MarqueeAnnounce';
-import { PRODUCT_LINES } from '../productLines';
+import { PRODUCT_LINES, loadEmptyLines } from '../productLines';
 import './SiteChrome.css';
 
 export const HOME_HREF = '/';
@@ -33,6 +35,19 @@ export function SiteHeader() {
   const { isAdmin } = useAdminAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [productsOpen, setProductsOpen] = useState(false);
+  // Lines with no bookable product yet (alfajores, cupcakes before gretica
+  // loads them): listed as "Próximamente". Checked the first time the menu opens.
+  const [emptyLines, setEmptyLines] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!productsOpen) return;
+    let alive = true;
+    loadEmptyLines((category) =>
+      getWithRetry<PublicCakeCatalog>('/public-orders/cake-catalog', { config: { params: { category } } })
+    ).then((keys) => alive && setEmptyLines(keys));
+    return () => {
+      alive = false;
+    };
+  }, [productsOpen]);
 
   function closeAll() {
     setMenuOpen(false);
@@ -76,7 +91,7 @@ export function SiteHeader() {
             <ul id="site-nav-products" className="site-nav-products">
               {PRODUCT_LINES.map((line) => (
                 <li key={line.key}>
-                  {line.href ? (
+                  {line.href && !emptyLines.has(line.key) ? (
                     <Link to={line.href} onClick={closeAll}>
                       {line.name}
                     </Link>
